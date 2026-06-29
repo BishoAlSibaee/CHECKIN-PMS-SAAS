@@ -23,11 +23,11 @@ class OccupancyBoardCache
     {
         if (! Cache::has(self::VERSION_KEY)) {
             Cache::forever(self::VERSION_KEY, 2);
-
-            return;
+        } else {
+            Cache::increment(self::VERSION_KEY);
         }
 
-        Cache::increment(self::VERSION_KEY);
+        app(HotelLivePublisher::class)->publishBoardChanged();
     }
 
     /**

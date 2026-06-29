@@ -247,6 +247,8 @@ class HotelDemoSeeder extends Seeder
         $this->command?->info('  Property: ' . self::BUILDING_COUNT . ' buildings, '
             . (self::BUILDING_COUNT * self::FLOORS_PER_BUILDING) . ' floors, '
             . $this->rooms->count() . ' rooms.');
+
+        $this->call(DemoSuitesSeeder::class);
     }
 
     private function seedPricingPlans(): void

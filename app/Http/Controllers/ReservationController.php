@@ -34,10 +34,12 @@ use App\Services\ReservationRoomStatusService;
 use App\Services\Accounting\AccountingPostingService;
 use App\Services\ReservationFinancialService;
 use App\Services\RefundPolicyService;
+use App\Services\HotelLivePublisher;
 use App\Exceptions\RefundNotAllowedException;
 use App\Http\Requests\Reservation\CancelReservationRequest;
 use App\Http\Requests\Reservation\ExtendReservationRequest;
 use App\Http\Requests\Reservation\ShortenReservationRequest;
+use App\Services\ReservationChangeLogService;
 use App\Services\ReservationShortenService;
 use Carbon\CarbonPeriod;
 
@@ -50,8 +52,48 @@ class ReservationController extends Controller
         private AccountingPostingService $accountingPostingService,
         private ReservationFinancialService $reservationFinancialService,
         private RefundPolicyService $refundPolicyService,
-        private ReservationShortenService $shortenService
+        private ReservationShortenService $shortenService,
+        private HotelLivePublisher $livePublisher,
+        private ReservationChangeLogService $changeLogService
     ) {
+    }
+
+    private function notifyReservationLive(int $reservationId, string $action, bool $affectsInventory = false): void
+    {
+        try {
+            $scopes = [
+                HotelLivePublisher::SCOPE_RESERVATIONS,
+                HotelLivePublisher::SCOPE_RESERVATION_DETAIL,
+                HotelLivePublisher::SCOPE_COLLECTIONS,
+            ];
+
+            if ($affectsInventory) {
+                $scopes = array_merge($scopes, [
+                    HotelLivePublisher::SCOPE_OCCUPANCY_BOARD,
+                    HotelLivePublisher::SCOPE_PROPERTY,
+                    HotelLivePublisher::SCOPE_DASHBOARD,
+                ]);
+            }
+
+            $this->livePublisher->publish(array_values(array_unique($scopes)), $action, [
+                'type' => 'reservation',
+                'id'   => $reservationId,
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+
+    /**
+     * Roll back an open transaction and return a failed API response.
+     */
+    private function failedTransaction(string $message, int $status = 500)
+    {
+        if (DB::transactionLevel() > 0) {
+            DB::rollBack();
+        }
+
+        return \Failed($message, $status);
     }
 
     public function index(Request $request)
@@ -150,6 +192,8 @@ class ReservationController extends Controller
 
             $reservation = Reservation::with(['reservationRooms.room', 'payments'])->findOrFail($id);
 
+            $beforeSnapshot = $this->changeLogService->snapshot($reservation);
+
             $today = Carbon::today()->toDateString();
             $isCheckingOut = false;
             $pendingLogedin = null;
@@ -159,15 +203,15 @@ class ReservationController extends Controller
 
             if ($request->filled('start_date') || $request->filled('expire_date')) {
                 if (Reservation::isCancelled((int) $reservation->reservation_status)) {
-                    return \Failed('Cannot modify dates of a cancelled reservation.');
+                    return $this->failedTransaction('Cannot modify dates of a cancelled reservation.');
                 }
 
                 if ($reservation->expire_date < $today && !$willCheckOut) {
-                    return \Failed('Cannot modify dates of a completed stay.');
+                    return $this->failedTransaction('Cannot modify dates of a completed stay.');
                 }
 
                 if ((int) $reservation->logedin === 1 && $request->filled('start_date')) {
-                    return \Failed('Cannot change check-in date while the guest is checked in.');
+                    return $this->failedTransaction('Cannot change check-in date while the guest is checked in.');
                 }
 
                 $newStart = $request->filled('start_date')
@@ -178,11 +222,11 @@ class ReservationController extends Controller
                     : $reservation->expire_date;
 
                 if ($newExpire < $today) {
-                    return \Failed('Checkout date cannot be before today.');
+                    return $this->failedTransaction('Checkout date cannot be before today.');
                 }
 
                 if ($newExpire <= $newStart) {
-                    return \Failed('Checkout date must be after check-in date.');
+                    return $this->failedTransaction('Checkout date must be after check-in date.');
                 }
 
                 $reservation->start_date = $newStart;
@@ -197,27 +241,27 @@ class ReservationController extends Controller
                 $newLogedin = (int) $request->logedin;
 
                 if (Reservation::isCancelled((int) $reservation->reservation_status)) {
-                    return \Failed('Cannot change check-in status of a cancelled reservation.');
+                    return $this->failedTransaction('Cannot change check-in status of a cancelled reservation.');
                 }
 
                 if ($expireDate < $today) {
                     if ($newLogedin === Reservation::LOGEDIN_IN_HOUSE) {
-                        return \Failed('Check-in is not allowed after the scheduled departure date.');
+                        return $this->failedTransaction('Check-in is not allowed after the scheduled departure date.');
                     }
                     if ((int) $reservation->logedin !== Reservation::LOGEDIN_IN_HOUSE) {
-                        return \Failed('This stay has already ended.');
+                        return $this->failedTransaction('This stay has already ended.');
                     }
                 }
 
                 if ($newLogedin === 1 && $reservation->start_date > $today) {
-                    return \Failed('Check-in is not allowed before the arrival date.');
+                    return $this->failedTransaction('Check-in is not allowed before the arrival date.');
                 }
 
                 if ($newLogedin === 1) {
                     try {
                         $this->roomStatusService->assertRoomsReadyForCheckIn($reservation);
                     } catch (\RuntimeException $e) {
-                        return \Failed($e->getMessage());
+                        return $this->failedTransaction($e->getMessage());
                     }
                 }
 
@@ -242,9 +286,7 @@ class ReservationController extends Controller
             if ($isCheckingOut) {
                 $balance = $reservation->balanceDue();
                 if ($balance > 0.005) {
-                    DB::rollBack();
-
-                    return \Failed(
+                    return $this->failedTransaction(
                         'Outstanding balance must be paid before check-out. Remaining: ' . number_format($balance, 2, '.', ''),
                         422
                     );
@@ -275,11 +317,35 @@ class ReservationController extends Controller
 
             $this->roomStatusService->syncForReservation($reservation->fresh(['reservationRooms']));
 
+            $logAction = 'updated';
+            if ($pendingLogedin === Reservation::LOGEDIN_IN_HOUSE) {
+                $logAction = 'checked_in';
+            } elseif ($isCheckingOut) {
+                $logAction = 'checked_out';
+            }
+            $afterSnapshot = $this->changeLogService->snapshot(
+                $reservation->fresh(['reservationRooms.room', 'payments'])
+            );
+            $this->changeLogService->recordIfChanged($id, $logAction, $beforeSnapshot, $afterSnapshot);
+
             DB::commit();
+
+            $action = 'reservation_updated';
+            if ($pendingLogedin === Reservation::LOGEDIN_IN_HOUSE) {
+                $action = 'checked_in';
+            } elseif ($isCheckingOut) {
+                $action = 'checked_out';
+            }
+            $affectsInventory = $pendingLogedin !== null
+                || $request->filled('start_date')
+                || $request->filled('expire_date');
+            $this->notifyReservationLive($id, $action, $affectsInventory);
 
             return $this->show($id);
         } catch (\Exception $e) {
-            DB::rollBack();
+            if (DB::transactionLevel() > 0) {
+                DB::rollBack();
+            }
 
             return \Failed($e->getMessage());
         }
@@ -345,18 +411,20 @@ class ReservationController extends Controller
 
             $reservation = Reservation::with('reservationRooms')->findOrFail($id);
 
+            $beforeSnapshot = $this->changeLogService->snapshot($reservation);
+
             if (Reservation::isCancelled((int) $reservation->reservation_status)) {
-                return \Failed('Reservation is already cancelled');
+                return $this->failedTransaction('Reservation is already cancelled');
             }
 
             $today = Carbon::today()->toDateString();
 
             if ($reservation->expire_date < $today) {
-                return \Failed('Cannot cancel a completed stay.');
+                return $this->failedTransaction('Cannot cancel a completed stay.');
             }
 
             if ((int) $reservation->logedin === 1) {
-                return \Failed('Cannot cancel while the guest is checked in. Use check-out instead.');
+                return $this->failedTransaction('Cannot cancel while the guest is checked in. Use check-out instead.');
             }
 
             $reservation->reservation_status = Reservation::STATUS_CANCELLED;
@@ -365,7 +433,12 @@ class ReservationController extends Controller
 
             $this->roomStatusService->syncForReservation($reservation);
 
+            $afterSnapshot = $this->changeLogService->snapshot($reservation->fresh(['reservationRooms.room', 'payments']));
+            $this->changeLogService->recordIfChanged($id, 'cancelled', $beforeSnapshot, $afterSnapshot);
+
             DB::commit();
+
+            $this->notifyReservationLive($id, 'reservation_cancelled', true);
 
             return $this->show($id);
         } catch (\Exception $e) {
@@ -382,25 +455,27 @@ class ReservationController extends Controller
 
             $reservation = Reservation::with('reservationRooms.room')->findOrFail($id);
 
+            $beforeSnapshot = $this->changeLogService->snapshot($reservation);
+
             if (Reservation::isCancelled((int) $reservation->reservation_status)) {
-                return \Failed('Cannot extend a cancelled reservation');
+                return $this->failedTransaction('Cannot extend a cancelled reservation');
             }
 
             $today = Carbon::today()->toDateString();
 
             if ($reservation->expire_date < $today) {
-                return \Failed('Cannot extend a completed stay.');
+                return $this->failedTransaction('Cannot extend a completed stay.');
             }
 
             if ($request->expire_date < $today) {
-                return \Failed('New checkout date cannot be before today.');
+                return $this->failedTransaction('New checkout date cannot be before today.');
             }
 
             $newExpire = Carbon::parse($request->expire_date)->startOfDay();
             $startDate = Carbon::parse($reservation->start_date)->startOfDay();
 
             if ($newExpire->lte($startDate)) {
-                return \Failed('New checkout must be after check-in date');
+                return $this->failedTransaction('New checkout must be after check-in date');
             }
 
             foreach ($reservation->reservationRooms as $resRoom) {
@@ -410,7 +485,7 @@ class ReservationController extends Controller
                     $newExpire->toDateString(),
                     $reservation->id
                 )) {
-                    return \Failed('Room is not available for the extended period');
+                    return $this->failedTransaction('Room is not available for the extended period');
                 }
             }
 
@@ -453,7 +528,12 @@ class ReservationController extends Controller
             $reservation->save();
             $this->roomStatusService->syncForReservation($reservation->fresh(['reservationRooms']));
 
+            $afterSnapshot = $this->changeLogService->snapshot($reservation->fresh(['reservationRooms.room', 'payments']));
+            $this->changeLogService->recordIfChanged($id, 'extended', $beforeSnapshot, $afterSnapshot);
+
             DB::commit();
+
+            $this->notifyReservationLive($id, 'reservation_extended', true);
 
             return $this->show($id);
         } catch (\Exception $e) {
@@ -466,11 +546,18 @@ class ReservationController extends Controller
     public function shorten(ShortenReservationRequest $request, int $id)
     {
         try {
-            $reservation = Reservation::with('reservationRooms')->findOrFail($id);
+            $reservation = Reservation::with(['reservationRooms.room', 'payments'])->findOrFail($id);
+            $beforeSnapshot = $this->changeLogService->snapshot($reservation);
+
             $this->shortenService->applyShorten(
                 $reservation,
                 Carbon::parse($request->expire_date)->startOfDay()
             );
+
+            $afterSnapshot = $this->changeLogService->snapshot($reservation->fresh(['reservationRooms.room', 'payments']));
+            $this->changeLogService->recordIfChanged($id, 'shortened', $beforeSnapshot, $afterSnapshot);
+
+            $this->notifyReservationLive($id, 'reservation_shortened', true);
 
             return $this->show($id);
         } catch (\InvalidArgumentException $e) {
@@ -484,12 +571,29 @@ class ReservationController extends Controller
     {
         try {
             $reservation = Reservation::with('payments')->findOrFail($id);
+            $beforeSnapshot = [
+                'paid_amount' => round($reservation->paidNetAmount(), 2),
+                'balance_due' => round($reservation->balanceDue(), 2),
+            ];
 
             $payment = $this->reservationFinancialService->recordPayment(
                 $reservation,
                 (float) $request->pay,
                 (int) auth()->id(),
                 (int) ($request->type ?? ReservationPay::TYPE_PAYMENT)
+            );
+
+            $reservation->refresh()->load('payments');
+            $afterSnapshot = [
+                'paid_amount' => round($reservation->paidNetAmount(), 2),
+                'balance_due' => round($reservation->balanceDue(), 2),
+                'payment_amount' => round((float) $request->pay, 2),
+            ];
+            $this->changeLogService->recordIfChanged(
+                $id,
+                'payment_recorded',
+                $beforeSnapshot,
+                $afterSnapshot
             );
 
             return \SuccessData('Payment recorded', $payment);
@@ -576,6 +680,11 @@ public function makeReservation(MakeReservationRequest $request)
         $penalties = $request->penalties ?? 0;
         $subtotal = $totalBasePrice - $discount + $extras + $penalties;
 $taxes = round($subtotal * 0.15, 2, PHP_ROUND_HALF_UP);        $total = $subtotal + $taxes;
+
+        $payAmount = (float) ($request->pay_amount ?? 0);
+        if ($payAmount > 0.005 && $payAmount > $total + 0.005) {
+            throw new \InvalidArgumentException('Payment amount exceeds the reservation total.');
+        }
 
         if ((int) ($request->logedin ?? Reservation::LOGEDIN_NOT_IN_HOUSE) === Reservation::LOGEDIN_IN_HOUSE) {
             foreach ($roomsData as $data) {
@@ -718,8 +827,23 @@ $taxes = round($subtotal * 0.15, 2, PHP_ROUND_HALF_UP);        $total = $subtota
         $this->roomStatusService->syncForReservation($reservation->fresh(['reservationRooms']));
 
         DB::commit();
-        return \SuccessData('تم إنشاء الحجز بنجاح', $reservation);
 
+        $this->notifyReservationLive((int) $reservation->id, 'reservation_created', true);
+
+        $reservation->load([
+            'client',
+            'reservationRooms.room.roomType',
+            'reservationRooms.room.building',
+            'reservationRooms.room.floor',
+            'payments',
+            'user',
+        ]);
+
+        return \SuccessData('تم إنشاء الحجز بنجاح', $this->reservationDetailPayload($reservation));
+
+    } catch (\InvalidArgumentException $e) {
+        DB::rollBack();
+        return \Failed($e->getMessage(), 422);
     } catch (\Exception $e) {
         DB::rollBack();
         return \Failed($e->getMessage());
@@ -778,6 +902,12 @@ $taxes = round($subtotal * 0.15, 2, PHP_ROUND_HALF_UP);        $total = $subtota
 
             DB::commit();
 
+            $this->livePublisher->publishPaymentChanged(
+                (int) $request->reservation_id,
+                $newExpireDate ? 'partial_refund' : 'refund_processed'
+            );
+            $this->notifyReservationLive((int) $request->reservation_id, 'reservation_refunded');
+
             $reservation = Reservation::with([
                 'client',
                 'reservationRooms.room.roomType',
@@ -821,6 +951,10 @@ private function isRoomAvailable($roomId, $startDate, $endDate, ?int $excludeRes
             ->where('active', 1)
             ->first();
         if (!$room) {
+            return false;
+        }
+
+        if ($this->roomStatusService->roomHasActiveInHouseStay((int) $roomId, $excludeReservationId)) {
             return false;
         }
 
@@ -1183,6 +1317,7 @@ case 2:
             $roomIds = $rooms->pluck('id')->all();
 
             $conflictsByRoom = collect();
+            $inHouseByRoom = collect();
             if (!empty($roomIds)) {
                 $conflictsByRoom = ReservationRoom::whereIn('room_id', $roomIds)
                     ->whereHas('reservation', function ($q) use ($startDate, $endDate) {
@@ -1194,23 +1329,39 @@ case 2:
                     ->get()
                     ->groupBy('room_id')
                     ->map(fn ($rows) => $rows->first());
+
+                $inHouseByRoom = ReservationRoom::whereIn('room_id', $roomIds)
+                    ->whereHas('reservation', function ($q) {
+                        $q->where('reservation_status', Reservation::STATUS_CONFIRMED)
+                            ->where('logedin', Reservation::LOGEDIN_IN_HOUSE);
+                    })
+                    ->with(['reservation.client'])
+                    ->get()
+                    ->groupBy('room_id')
+                    ->map(fn ($rows) => $rows->first());
             }
 
-            $payload = $rooms->map(function (Room $room) use ($conflictsByRoom) {
+            $payload = $rooms->map(function (Room $room) use ($conflictsByRoom, $inHouseByRoom) {
+                $inHouseRow = $inHouseByRoom->get($room->id);
                 $conflictRow = $conflictsByRoom->get($room->id);
-                $reservation = $conflictRow?->reservation;
+                $reservation = $inHouseRow?->reservation ?? $conflictRow?->reservation;
 
                 $unavailableReason = null;
                 $availableForPeriod = true;
                 $needsCleaningBeforeCheckin = (int) $room->roomStatus === 3;
 
-                if ((int) $room->roomStatus === 2 && $reservation) {
+                if ($inHouseRow) {
                     $availableForPeriod = false;
                     $unavailableReason = 'occupied';
-                } elseif ((int) $room->roomStatus === 4) {
+                } elseif ((int) $room->roomStatus === 2) {
+                    $this->roomStatusService->setAvailableIfNoActiveStay((int) $room->id);
+                    $room->refresh();
+                }
+
+                if ((int) $room->roomStatus === 4) {
                     $availableForPeriod = false;
                     $unavailableReason = 'out_of_service';
-                } elseif ($reservation) {
+                } elseif ($conflictRow && !$inHouseRow) {
                     $availableForPeriod = false;
                     $unavailableReason = 'booked';
                 }
@@ -1498,6 +1649,7 @@ case 2:
             'balance_due' => $reservation->balanceDue(),
             'room_numbers' => $roomNumbers,
             'room_numbers_label' => $roomNumbers !== [] ? implode(', ', array_map('strval', $roomNumbers)) : null,
+            'change_logs' => $this->changeLogService->listForReservation((int) $reservation->id),
         ];
     }
 }

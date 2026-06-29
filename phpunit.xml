@@ -35,7 +35,15 @@
     <php>
         <env name="APP_ENV" value="testing"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
+        <env name="BROADCAST_DRIVER" value="log"/>
+        <env name="REVERB_APP_ID" value="hotel-test"/>
+        <env name="REVERB_APP_KEY" value="hotel-test-key"/>
+        <env name="REVERB_APP_SECRET" value="hotel-test-secret"/>
+        <env name="REVERB_HOST" value="127.0.0.1"/>
+        <env name="REVERB_PORT" value="8080"/>
+        <env name="REVERB_SCHEME" value="http"/>
         <env name="CACHE_DRIVER" value="array"/>
+        <!-- WARNING: tests use your dev MySQL unless you uncomment sqlite below. -->
         <!-- <env name="DB_CONNECTION" value="sqlite"/> -->
         <!-- <env name="DB_DATABASE" value=":memory:"/> -->
         <env name="MAIL_MAILER" value="array"/>

@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\HotelLiveChannelAccess;
 use Illuminate\Support\Facades\Broadcast;
 
 /*
@@ -16,3 +17,9 @@ use Illuminate\Support\Facades\Broadcast;
 Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
     return (int) $user->id === (int) $id;
 });
+
+Broadcast::channel('hotel.operations', function ($user) {
+    return HotelLiveChannelAccess::allows($user)
+        ? ['id' => $user->id]
+        : false;
+}, ['guards' => ['api']]);

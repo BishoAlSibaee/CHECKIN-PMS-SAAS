@@ -71,12 +71,33 @@ class ReservationRoomStatusService
         OccupancyBoardCache::bump();
     }
 
+    public function roomHasActiveInHouseStay(int $roomId, ?int $excludeReservationId = null): bool
+    {
+        return $this->findActiveInHouseReservationId($roomId, $excludeReservationId) !== null;
+    }
+
+    public function findActiveInHouseReservationId(int $roomId, ?int $excludeReservationId = null): ?int
+    {
+        $row = ReservationRoom::where('room_id', $roomId)
+            ->whereHas('reservation', function ($query) use ($excludeReservationId) {
+                $query->where('reservation_status', Reservation::STATUS_CONFIRMED)
+                    ->where('logedin', Reservation::LOGEDIN_IN_HOUSE);
+                if ($excludeReservationId) {
+                    $query->where('id', '!=', $excludeReservationId);
+                }
+            })
+            ->first();
+
+        return $row ? (int) $row->reservation_id : null;
+    }
+
     /**
      * @throws \RuntimeException when the room is not ready for check-in
      */
-    public function assertRoomReadyForCheckIn(Room $room): void
+    public function assertRoomReadyForCheckIn(Room $room, ?int $excludeReservationId = null): void
     {
         $status = (int) $room->roomStatus;
+        $roomId = (int) $room->id;
 
         if ($status === self::ROOM_OUT_OF_SERVICE) {
             throw new \RuntimeException('Cannot check in — room is out of service.');
@@ -86,8 +107,18 @@ class ReservationRoomStatusService
             throw new \RuntimeException('Cannot check in — room needs cleaning first.');
         }
 
+        $blockingReservationId = $this->findActiveInHouseReservationId($roomId, $excludeReservationId);
+        if ($blockingReservationId !== null) {
+            $label = $room->number ?: (string) $roomId;
+            throw new \RuntimeException(
+                "Cannot check in — room {$label} is occupied by reservation #{$blockingReservationId}."
+            );
+        }
+
         if ($status === self::ROOM_OCCUPIED) {
-            throw new \RuntimeException('Cannot check in — room is currently occupied.');
+            $this->setAvailableIfNoActiveStay($roomId, $excludeReservationId);
+            $room->refresh();
+            $status = (int) $room->roomStatus;
         }
 
         if ($status !== self::ROOM_AVAILABLE) {
@@ -107,7 +138,7 @@ class ReservationRoomStatusService
                 continue;
             }
 
-            $this->assertRoomReadyForCheckIn($resRoom->room);
+            $this->assertRoomReadyForCheckIn($resRoom->room, (int) $reservation->id);
         }
     }
 

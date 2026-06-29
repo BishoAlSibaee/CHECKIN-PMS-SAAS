@@ -17,6 +17,18 @@ class FinanceAuditCommand extends Command
 
     public function handle(RevenueAccrualService $revenue): int
     {
+        $demoAsOf = env('FINANCE_DEMO_AS_OF', '2026-09-01');
+        Carbon::setTestNow(Carbon::parse($demoAsOf)->endOfDay());
+
+        try {
+            return $this->runAudit($revenue);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    private function runAudit(RevenueAccrualService $revenue): int
+    {
         $this->info('=== Finance Audit ===');
         $results = ['pass' => 0, 'fail' => 0, 'warn' => 0];
 

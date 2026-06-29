@@ -2,13 +2,16 @@
 
 namespace Tests\Feature\Reservation;
 
+use App\Events\HotelLiveUpdated;
 use App\Models\Client;
 use App\Models\Reservation_source;
 use App\Models\Room;
 use App\Models\Stay_reason;
+use App\Services\HotelLivePublisher;
 use App\Services\ReservationRoomStatusService;
 use Carbon\Carbon;
 use Database\Seeders\ReservationTestDataSeeder;
+use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
 
 class ReservationCheckInOutTest extends TestCase
@@ -27,16 +30,16 @@ class ReservationCheckInOutTest extends TestCase
         $client = Client::first();
         $stayReason = Stay_reason::first();
         $source = Reservation_source::first();
-        $room = Room::where('active', 1)->whereHas('roomType')->first();
+        $room = $this->findOrCreateAvailableRoom('2026-08-15', '2026-08-18');
+        $this->assertNotNull($room);
 
         $this->assertNotNull($client);
         $this->assertNotNull($stayReason);
         $this->assertNotNull($source);
         $this->assertNotNull($room);
 
-        Room::where('id', $room->id)->update([
-            'roomStatus' => ReservationRoomStatusService::ROOM_AVAILABLE,
-        ]);
+        $room = $this->findOrCreateAvailableRoom('2026-08-15', '2026-08-18');
+        $this->assertNotNull($room);
 
         $create = $this->actingAs($user, 'api')->postJson('/api/users/makeReservation', [
             'client_id' => $client->id,
@@ -58,8 +61,28 @@ class ReservationCheckInOutTest extends TestCase
         $create->assertOk();
         $create->assertJsonPath('success', true);
 
-        $reservationId = $create->json('data.id');
+        $reservationId = $create->json('data.reservation.id') ?? $create->json('data.id');
         $this->assertNotNull($reservationId);
+
+        Event::fake([HotelLiveUpdated::class]);
+
+        Room::where('id', $room->id)->update(['roomStatus' => ReservationRoomStatusService::ROOM_PREPARATION]);
+
+        $blocked = $this->actingAs($user, 'api')->patchJson("/api/users/reservations/{$reservationId}", [
+            'logedin' => 1,
+            'login_time' => '2026-08-15',
+        ]);
+        $blocked->assertJsonPath('success', false);
+        $this->assertDatabaseHas('reservations', [
+            'id' => $reservationId,
+            'logedin' => 0,
+        ]);
+
+        $showAfterBlock = $this->actingAs($user, 'api')->getJson("/api/users/reservations/{$reservationId}");
+        $showAfterBlock->assertOk();
+        $showAfterBlock->assertJsonPath('data.reservation.id', $reservationId);
+
+        Room::where('id', $room->id)->update(['roomStatus' => ReservationRoomStatusService::ROOM_AVAILABLE]);
 
         $checkIn = $this->actingAs($user, 'api')->patchJson("/api/users/reservations/{$reservationId}", [
             'logedin' => 1,
@@ -71,6 +94,13 @@ class ReservationCheckInOutTest extends TestCase
             'id' => $reservationId,
             'logedin' => 1,
         ]);
+
+        Event::assertDispatched(HotelLiveUpdated::class, function (HotelLiveUpdated $event) {
+            return $event->action === 'checked_in'
+                || in_array(HotelLivePublisher::SCOPE_OCCUPANCY_BOARD, $event->scopes, true);
+        });
+
+        Event::fake([HotelLiveUpdated::class]);
 
         $reservation = \App\Models\Reservation::with('payments')->findOrFail($reservationId);
         $balance = $reservation->balanceDue();
@@ -94,6 +124,11 @@ class ReservationCheckInOutTest extends TestCase
             'id' => $reservationId,
             'logedin' => 0,
         ]);
+
+        Event::assertDispatched(HotelLiveUpdated::class, function (HotelLiveUpdated $event) {
+            return $event->action === 'checked_out'
+                || in_array(HotelLivePublisher::SCOPE_OCCUPANCY_BOARD, $event->scopes, true);
+        });
 
         Carbon::setTestNow();
     }

@@ -14,7 +14,8 @@ class ReservationFinancialService
     private const TAX_RATE = 0.15;
 
     public function __construct(
-        private AccountingPostingService $accountingPostingService
+        private AccountingPostingService $accountingPostingService,
+        private HotelLivePublisher $livePublisher,
     ) {
     }
 
@@ -133,6 +134,8 @@ class ReservationFinancialService
 
         $this->accountingPostingService->postPayment($payment);
 
+        $this->livePublisher->publishPaymentChanged((int) $reservation->id);
+
         return $payment;
     }
 
@@ -203,6 +206,15 @@ class ReservationFinancialService
                     });
                 }
             });
+
+        if ($items !== []) {
+            $this->livePublisher->publish([
+                HotelLivePublisher::SCOPE_COLLECTIONS,
+                HotelLivePublisher::SCOPE_OCCUPANCY_BOARD,
+                HotelLivePublisher::SCOPE_DASHBOARD,
+                HotelLivePublisher::SCOPE_RESERVATIONS,
+            ], 'collect_all_completed');
+        }
 
         return [
             'collected_count' => count($items),
