@@ -4,11 +4,9 @@ namespace Tests\Feature\Finance;
 
 use App\Models\Client;
 use App\Models\Reservation;
+use App\Models\Reservation_source;
 use App\Models\ReservationDailyCharge;
 use App\Models\ReservationPay;
-use App\Models\ReservationRoom;
-use App\Models\Reservation_source;
-use App\Models\Room;
 use App\Models\Stay_reason;
 use App\Services\RevenueAccrualService;
 use Carbon\Carbon;
@@ -173,15 +171,15 @@ class BookingFinancialCrossValidationTest extends TestCase
         $client = Client::first();
         $stayReason = Stay_reason::first();
         $source = Reservation_source::first();
-        if (!$client || !$stayReason || !$source) {
+        if (! $client || ! $stayReason || ! $source) {
             return null;
         }
 
-        $start = '2026-08-25';
-        $end = '2026-08-28';
+        $start = '2026-08-15';
+        $end = '2026-08-16';
 
-        $room = $this->findOrCreateAvailableRoom($start, $end);
-        if (!$room) {
+        $room = $this->createIsolatedTestRoom() ?? $this->findOrCreateAvailableRoom($start, $end);
+        if (! $room) {
             return null;
         }
 
@@ -203,7 +201,7 @@ class BookingFinancialCrossValidationTest extends TestCase
             'logedin' => 0,
         ]);
 
-        if ($response->status() !== 200 || !$response->json('success')) {
+        if ($response->status() !== 200 || ! $response->json('success')) {
             return null;
         }
 

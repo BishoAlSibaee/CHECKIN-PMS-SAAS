@@ -1,0 +1,12 @@
+# Optional: Laravel Horizon on VPS (not for shared cPanel)
+# Install: composer require laravel/horizon && php artisan horizon:install
+# Supervisor program example:
+#
+# [program:hotel-horizon]
+# process_name=%(program_name)s
+# command=php /path/to/artisan horizon
+# autostart=true
+# autorestart=true
+# user=www-data
+# redirect_stderr=true
+# stdout_logfile=/path/to/storage/logs/horizon.log

@@ -4,6 +4,8 @@ namespace App\Services\Accounting;
 
 use App\Models\ChartOfAccount;
 use App\Models\JournalEntryLine;
+use App\Models\ReservationDailyCharge;
+use App\Models\ReservationPay;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
@@ -195,7 +197,7 @@ class FinancialStatementService
         }
         unset($row);
 
-        if (!$merged) {
+        if (! $merged) {
             $retained = ChartOfAccount::query()->where('code', '3000')->first();
             $equity[] = [
                 'account_id' => $retained?->id ?? 0,
@@ -267,8 +269,13 @@ class FinancialStatementService
         ];
     }
 
-    public function generalLedger(Carbon $start, Carbon $end, ?int $accountId = null): array
-    {
+    public function generalLedger(
+        Carbon $start,
+        Carbon $end,
+        ?int $accountId = null,
+        ?string $accountType = null,
+        ?\App\Services\Reports\AccountingReportFilters $filters = null
+    ): array {
         $query = JournalEntryLine::query()
             ->join('journal_entries', 'journal_entry_lines.journal_entry_id', '=', 'journal_entries.id')
             ->join('chart_of_accounts', 'journal_entry_lines.account_id', '=', 'chart_of_accounts.id')
@@ -294,10 +301,54 @@ class FinancialStatementService
                 'journal_entry_lines.memo',
                 'journal_entry_lines.reservation_id',
                 'journal_entry_lines.client_id',
+                'journal_entries.source_type',
+                'journal_entries.source_id',
             ]);
 
         if ($accountId !== null) {
             $query->where('journal_entry_lines.account_id', $accountId);
+        } elseif ($accountType !== null) {
+            $query->where('chart_of_accounts.type', $accountType);
+        }
+
+        if ($filters !== null) {
+            if ($filters->reservationId !== null) {
+                $query->where('journal_entry_lines.reservation_id', $filters->reservationId);
+            }
+
+            if ($filters->search !== null) {
+                $term = '%'.$filters->search.'%';
+                $referenceTerms = AccountingPostingService::accrualReferenceSearchTerms($filters->search);
+                $query->where(function ($builder) use ($term, $referenceTerms) {
+                    foreach ($referenceTerms as $referenceTerm) {
+                        $builder->orWhere('journal_entries.reference', 'like', '%'.$referenceTerm.'%');
+                    }
+                    $builder->orWhere('journal_entries.description', 'like', $term)
+                        ->orWhere('chart_of_accounts.code', 'like', $term)
+                        ->orWhere('chart_of_accounts.name_en', 'like', $term)
+                        ->orWhere('chart_of_accounts.name_ar', 'like', $term)
+                        ->orWhere('journal_entry_lines.memo', 'like', $term);
+                });
+            }
+
+            if ($filters->minAmount !== null) {
+                $query->where(function ($builder) use ($filters) {
+                    $builder->where('journal_entry_lines.debit', '>=', $filters->minAmount)
+                        ->orWhere('journal_entry_lines.credit', '>=', $filters->minAmount);
+                });
+            }
+
+            if ($filters->maxAmount !== null) {
+                $query->where(function ($builder) use ($filters) {
+                    $builder->where(function ($inner) use ($filters) {
+                        $inner->where('journal_entry_lines.debit', '>', 0)
+                            ->where('journal_entry_lines.debit', '<=', $filters->maxAmount);
+                    })->orWhere(function ($inner) use ($filters) {
+                        $inner->where('journal_entry_lines.credit', '>', 0)
+                            ->where('journal_entry_lines.credit', '<=', $filters->maxAmount);
+                    });
+                });
+            }
         }
 
         $lines = $query->get()->map(function ($line) {
@@ -314,7 +365,7 @@ class FinancialStatementService
                 'debit' => round((float) $line->debit, 2),
                 'credit' => round((float) $line->credit, 2),
                 'memo' => $line->memo,
-                'reservation_id' => $line->reservation_id ? (int) $line->reservation_id : null,
+                'reservation_id' => $this->resolveReservationIdForLedgerLine($line),
                 'client_id' => $line->client_id ? (int) $line->client_id : null,
             ];
         })->all();
@@ -328,6 +379,7 @@ class FinancialStatementService
                 'end' => $end->toDateString(),
             ],
             'account_id' => $accountId,
+            'account_type' => $accountType,
             'lines' => $lines,
             'totals' => [
                 'debit' => $totalDebit,
@@ -342,6 +394,37 @@ class FinancialStatementService
             'asset', 'expense' => round($debit - $credit, 2),
             default => round($credit - $debit, 2),
         };
+    }
+
+    private function resolveReservationIdForLedgerLine(object $line): ?int
+    {
+        if (! empty($line->reservation_id)) {
+            return (int) $line->reservation_id;
+        }
+
+        $sourceType = (string) ($line->source_type ?? '');
+        $sourceId = (int) ($line->source_id ?? 0);
+
+        if ($sourceType === 'reservation_pay' && $sourceId > 0) {
+            $reservationId = ReservationPay::query()->whereKey($sourceId)->value('reservation_id');
+
+            return $reservationId ? (int) $reservationId : null;
+        }
+
+        if ($sourceType === 'daily_charge' && $sourceId > 0) {
+            $reservationId = ReservationDailyCharge::query()->whereKey($sourceId)->value('reservation_id');
+
+            return $reservationId ? (int) $reservationId : null;
+        }
+
+        $reference = (string) ($line->reference ?? '');
+        if (preg_match('/^PAY-(\d+)/', $reference, $matches) === 1) {
+            $reservationId = ReservationPay::query()->whereKey((int) $matches[1])->value('reservation_id');
+
+            return $reservationId ? (int) $reservationId : null;
+        }
+
+        return null;
     }
 
     /**

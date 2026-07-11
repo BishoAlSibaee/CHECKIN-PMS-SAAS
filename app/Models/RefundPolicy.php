@@ -27,25 +27,50 @@ class RefundPolicy extends Model
         'payment_status',
         'payment_statuses',
         'during_stay',
+        'priority',
     ];
 
     protected $casts = [
         'refund_percent' => 'decimal:2',
         'threshold_percent' => 'decimal:2',
         'payment_statuses' => 'array',
+        'priority' => 'integer',
     ];
 
-    public function resolveThresholdDays(int $totalNights): int
+    public function effectiveThresholdDays(int $totalNights): float
     {
         $mode = $this->threshold_mode ?? self::THRESHOLD_FIXED_DAYS;
 
         if ($mode === self::THRESHOLD_PERCENT_OF_STAY) {
-            $percent = (float) ($this->threshold_percent ?? 0);
-
-            return (int) ceil($totalNights * $percent / 100);
+            return $totalNights * ((float) ($this->threshold_percent ?? 0)) / 100;
         }
 
-        return (int) ($this->days_threshold ?? $this->days_before_checkin ?? 0);
+        return (float) ($this->days_threshold ?? $this->days_before_checkin ?? 0);
+    }
+
+    public function resolveThresholdDays(int $totalNights): int
+    {
+        return (int) round($this->effectiveThresholdDays($totalNights));
+    }
+
+    public function matchesTimingContext(array $context, int $totalNights): bool
+    {
+        $timing = $this->timing ?? ((int) $this->during_stay === 1 ? 'after_start' : 'before_start');
+        $thresholdDays = $this->effectiveThresholdDays($totalNights);
+
+        if ($timing === 'before_start') {
+            if ($context['during_stay']) {
+                return false;
+            }
+            $days = (float) $context['days_until_start'];
+        } else {
+            if (! $context['during_stay']) {
+                return false;
+            }
+            $days = (float) $context['days_since_start'];
+        }
+
+        return $days >= $thresholdDays;
     }
 
     protected static function booted(): void
@@ -105,4 +130,3 @@ class RefundPolicy extends Model
         return $query->where('payment_status', $status);
     }
 }
-

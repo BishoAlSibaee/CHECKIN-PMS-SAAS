@@ -5,11 +5,9 @@ namespace Tests\Feature\Reservation;
 use App\Models\Client;
 use App\Models\RefundPolicy;
 use App\Models\Reservation;
-use App\Models\ReservationPay;
 use App\Models\Reservation_source;
-use App\Models\Room;
+use App\Models\ReservationPay;
 use App\Models\Stay_reason;
-use App\Services\ReservationRoomStatusService;
 use Carbon\Carbon;
 use Database\Seeders\RefundPolicySeeder;
 use Database\Seeders\ReservationTestDataSeeder;
@@ -38,7 +36,7 @@ class RefundPolicyTest extends TestCase
         $reservation->update(['expire_date' => '2026-08-31', 'start_date' => '2026-08-20']);
 
         $response = $this->actingAs($user, 'api')->getJson(
-            '/api/users/refund-policies/preview?reservation_id=' . $reservation->id
+            '/api/users/refund-policies/preview?reservation_id='.$reservation->id
         );
 
         $response->assertStatus(422);
@@ -56,7 +54,7 @@ class RefundPolicyTest extends TestCase
         $this->assertNotNull($reservation);
 
         $preview = $this->actingAs($user, 'api')->getJson(
-            '/api/users/refund-policies/preview?reservation_id=' . $reservation->id
+            '/api/users/refund-policies/preview?reservation_id='.$reservation->id
         );
         $preview->assertStatus(200);
         $preview->assertJsonPath('success', true);
@@ -125,7 +123,7 @@ class RefundPolicyTest extends TestCase
         $this->assertNotNull($reservation);
 
         $preview = $this->actingAs($user, 'api')->getJson(
-            '/api/users/refund-policies/preview?reservation_id=' . $reservation->id
+            '/api/users/refund-policies/preview?reservation_id='.$reservation->id
         );
         $preview->assertStatus(200);
         $preview->assertJsonPath('success', true);
@@ -133,9 +131,196 @@ class RefundPolicyTest extends TestCase
 
         Carbon::setTestNow('2026-06-12');
         $tooLate = $this->actingAs($user, 'api')->getJson(
-            '/api/users/refund-policies/preview?reservation_id=' . $reservation->id
+            '/api/users/refund-policies/preview?reservation_id='.$reservation->id
         );
         $tooLate->assertStatus(422);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_priority_breaks_threshold_tie_between_percent_and_fixed(): void
+    {
+        RefundPolicy::query()->delete();
+
+        RefundPolicy::create([
+            'name' => 'After one day',
+            'rent_type' => null,
+            'timing' => 'after_start',
+            'threshold_mode' => RefundPolicy::THRESHOLD_FIXED_DAYS,
+            'days_threshold' => 1,
+            'days_before_checkin' => 1,
+            'refund_percent' => 30,
+            'refund_basis' => 'paid_net',
+            'during_stay' => 1,
+            'priority' => 0,
+            'payment_statuses' => ['paid'],
+        ]);
+
+        RefundPolicy::create([
+            'name' => 'Half of stay',
+            'rent_type' => null,
+            'timing' => 'after_start',
+            'threshold_mode' => RefundPolicy::THRESHOLD_PERCENT_OF_STAY,
+            'threshold_percent' => 50,
+            'days_threshold' => 0,
+            'days_before_checkin' => 0,
+            'refund_percent' => 40,
+            'refund_basis' => 'paid_net',
+            'during_stay' => 1,
+            'priority' => 0,
+            'payment_statuses' => ['paid'],
+        ]);
+
+        Carbon::setTestNow('2026-07-06');
+
+        $user = $this->userWithApiPermissions(['manage refunds']);
+        $reservation = $this->createPaidReservation('2026-07-06', '2026-07-08', $user);
+        $this->assertNotNull($reservation);
+
+        $service = app(\App\Services\RefundPolicyService::class);
+
+        Carbon::setTestNow('2026-07-07');
+        $this->assertSame('After one day', $service->resolvePolicy($reservation->fresh(['payments']))?->name);
+
+        RefundPolicy::query()->where('name', 'Half of stay')->update(['priority' => 1]);
+        $this->assertSame('Half of stay', $service->resolvePolicy($reservation->fresh(['payments']))?->name);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_refund_policy_crud_accepts_priority_for_percent_policy(): void
+    {
+        $user = $this->userWithApiPermissions(['manage refund policies']);
+
+        $create = $this->actingAs($user, 'api')->postJson('/api/users/refund-policies', [
+            'name' => 'Percent with tie priority',
+            'rent_type' => 0,
+            'timing' => 'after_start',
+            'threshold_mode' => 'percent_of_stay',
+            'threshold_percent' => 50,
+            'refund_percent' => 40,
+            'refund_basis' => 'paid_net',
+            'payment_statuses' => ['paid'],
+            'priority' => 1,
+        ]);
+        $create->assertStatus(200);
+        $create->assertJsonPath('data.priority', 1);
+
+        $id = $create->json('data.id');
+        $this->actingAs($user, 'api')->putJson("/api/users/refund-policies/{$id}", [
+            'priority' => 0,
+        ])->assertStatus(200)->assertJsonPath('data.priority', 0);
+
+        $this->actingAs($user, 'api')->deleteJson('/api/users/refund-policies', ['id' => $id])
+            ->assertStatus(200);
+    }
+
+    public function test_highest_matching_threshold_policy_wins(): void
+    {
+        RefundPolicy::query()->delete();
+
+        RefundPolicy::create([
+            'name' => 'Base tier',
+            'rent_type' => null,
+            'timing' => 'after_start',
+            'threshold_mode' => RefundPolicy::THRESHOLD_FIXED_DAYS,
+            'days_threshold' => 0,
+            'days_before_checkin' => 0,
+            'refund_percent' => 50,
+            'refund_basis' => 'total',
+            'during_stay' => 1,
+            'payment_statuses' => ['paid'],
+        ]);
+
+        RefundPolicy::create([
+            'name' => 'Higher tier',
+            'rent_type' => null,
+            'timing' => 'after_start',
+            'threshold_mode' => RefundPolicy::THRESHOLD_PERCENT_OF_STAY,
+            'threshold_percent' => 50,
+            'days_threshold' => 0,
+            'days_before_checkin' => 0,
+            'refund_percent' => 40,
+            'refund_basis' => 'paid_net',
+            'during_stay' => 1,
+            'payment_statuses' => ['paid'],
+        ]);
+
+        Carbon::setTestNow('2026-07-06');
+
+        $user = $this->userWithApiPermissions(['manage refunds']);
+        $reservation = $this->createPaidReservation('2026-07-06', '2026-07-13', $user);
+        $this->assertNotNull($reservation);
+
+        $service = app(\App\Services\RefundPolicyService::class);
+
+        Carbon::setTestNow('2026-07-07');
+        $this->assertSame('Base tier', $service->resolvePolicy($reservation->fresh(['payments']))?->name);
+
+        Carbon::setTestNow('2026-07-10');
+        $this->assertSame('Higher tier', $service->resolvePolicy($reservation->fresh(['payments']))?->name);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_same_day_policy_does_not_apply_after_half_stay_threshold(): void
+    {
+        RefundPolicy::query()->delete();
+
+        RefundPolicy::create([
+            'name' => 'Same day of stay',
+            'rent_type' => null,
+            'timing' => 'after_start',
+            'threshold_mode' => RefundPolicy::THRESHOLD_FIXED_DAYS,
+            'days_threshold' => 0,
+            'days_before_checkin' => 0,
+            'refund_percent' => 50,
+            'refund_basis' => 'total',
+            'payment_status' => 2,
+            'during_stay' => 1,
+            'payment_statuses' => ['paid'],
+        ]);
+
+        RefundPolicy::create([
+            'name' => 'After half of stay',
+            'rent_type' => null,
+            'timing' => 'after_start',
+            'threshold_mode' => RefundPolicy::THRESHOLD_PERCENT_OF_STAY,
+            'threshold_percent' => 50,
+            'days_threshold' => 0,
+            'days_before_checkin' => 0,
+            'refund_percent' => 40,
+            'refund_basis' => 'paid_net',
+            'payment_status' => 2,
+            'during_stay' => 1,
+            'payment_statuses' => ['paid'],
+        ]);
+
+        Carbon::setTestNow('2026-07-06');
+
+        $user = $this->userWithApiPermissions(['manage refunds']);
+        $reservation = $this->createPaidReservation('2026-07-06', '2026-07-13', $user);
+        $this->assertNotNull($reservation);
+
+        $service = app(\App\Services\RefundPolicyService::class);
+        $sameDay = $service->resolvePolicy($reservation->fresh(['payments']));
+        $this->assertSame('Same day of stay', $sameDay?->name);
+
+        Carbon::setTestNow('2026-07-07');
+        $dayOne = $service->resolvePolicy($reservation->fresh(['payments']));
+        $this->assertSame('Same day of stay', $dayOne?->name);
+
+        Carbon::setTestNow('2026-07-08');
+        $dayTwo = $service->resolvePolicy($reservation->fresh(['payments']));
+        $this->assertSame('Same day of stay', $dayTwo?->name);
+
+        Carbon::setTestNow('2026-07-09');
+        $beforeHalf = $service->resolvePolicy($reservation->fresh(['payments']));
+        $this->assertSame('Same day of stay', $beforeHalf?->name);
+
+        Carbon::setTestNow('2026-07-10');
+        $halfStay = $service->resolvePolicy($reservation->fresh(['payments']));
+        $this->assertSame('After half of stay', $halfStay?->name);
 
         Carbon::setTestNow();
     }
@@ -166,17 +351,76 @@ class RefundPolicyTest extends TestCase
 
         Carbon::setTestNow('2026-06-04');
         $early = $this->actingAs($user, 'api')->getJson(
-            '/api/users/refund-policies/preview?reservation_id=' . $reservation->id
+            '/api/users/refund-policies/preview?reservation_id='.$reservation->id
         );
         $early->assertStatus(422);
 
         Carbon::setTestNow('2026-06-05');
         $eligible = $this->actingAs($user, 'api')->getJson(
-            '/api/users/refund-policies/preview?reservation_id=' . $reservation->id
+            '/api/users/refund-policies/preview?reservation_id='.$reservation->id
         );
         $eligible->assertStatus(200);
         $eligible->assertJsonPath('success', true);
         $this->assertEquals(4, (int) $eligible->json('data.breakdown.resolved_threshold_days'));
+
+        Carbon::setTestNow();
+    }
+
+    public function test_partial_refund_preview_uses_selected_checkout_for_policy(): void
+    {
+        RefundPolicy::query()->delete();
+
+        RefundPolicy::create([
+            'name' => 'Same day of stay',
+            'rent_type' => null,
+            'timing' => 'after_start',
+            'threshold_mode' => RefundPolicy::THRESHOLD_FIXED_DAYS,
+            'days_threshold' => 0,
+            'days_before_checkin' => 0,
+            'refund_percent' => 50,
+            'refund_basis' => 'total',
+            'payment_status' => 2,
+            'during_stay' => 1,
+            'payment_statuses' => ['paid'],
+        ]);
+
+        RefundPolicy::create([
+            'name' => 'After half of stay',
+            'rent_type' => null,
+            'timing' => 'after_start',
+            'threshold_mode' => RefundPolicy::THRESHOLD_PERCENT_OF_STAY,
+            'threshold_percent' => 50,
+            'days_threshold' => 0,
+            'days_before_checkin' => 0,
+            'refund_percent' => 40,
+            'refund_basis' => 'paid_net',
+            'payment_status' => 2,
+            'during_stay' => 1,
+            'payment_statuses' => ['paid'],
+        ]);
+
+        Carbon::setTestNow('2026-07-06');
+
+        $user = $this->userWithApiPermissions(['manage refunds']);
+        $reservation = $this->createPaidReservation('2026-07-06', '2026-07-13', $user);
+        $this->assertNotNull($reservation);
+
+        $preview = $this->actingAs($user, 'api')->getJson(
+            '/api/users/refund-policies/preview?reservation_id='.$reservation->id
+            .'&new_expire_date=2026-07-07'
+        );
+        $preview->assertStatus(200);
+        $preview->assertJsonPath('data.policy.name', 'Same day of stay');
+        $this->assertEquals(1, (int) $preview->json('data.breakdown.days_since_start'));
+
+        $previewHalf = $this->actingAs($user, 'api')->getJson(
+            '/api/users/refund-policies/preview?reservation_id='.$reservation->id
+            .'&new_expire_date=2026-07-11'
+        );
+        $previewHalf->assertStatus(200);
+        $previewHalf->assertJsonPath('success', true);
+        $previewHalf->assertJsonPath('data.policy.name', 'After half of stay');
+        $this->assertEquals(5, (int) $previewHalf->json('data.breakdown.days_since_start'));
 
         Carbon::setTestNow();
     }
@@ -235,7 +479,7 @@ class RefundPolicyTest extends TestCase
         $policy->assertStatus(200);
 
         $preview = $this->actingAs($user, 'api')->getJson(
-            '/api/users/refund-policies/preview?reservation_id=' . $reservation->id
+            '/api/users/refund-policies/preview?reservation_id='.$reservation->id
         );
         $preview->assertStatus(200);
         $preview->assertJsonPath('success', true);
@@ -255,13 +499,13 @@ class RefundPolicyTest extends TestCase
         $client = Client::first();
         $stayReason = Stay_reason::first();
         $source = Reservation_source::first();
-        if (!$client || !$stayReason || !$source) {
+        if (! $client || ! $stayReason || ! $source) {
             return null;
         }
 
         $room = $this->findOrCreateAvailableRoom($startDate, $endDate)
             ?? $this->createIsolatedTestRoom();
-        if (!$room) {
+        if (! $room) {
             return null;
         }
 
@@ -281,13 +525,13 @@ class RefundPolicyTest extends TestCase
             'penalties' => 0,
         ]);
 
-        if ($create->status() !== 200 || !$create->json('success')) {
-            $this->fail('makeReservation failed: ' . ($create->json('message') ?? $create->getContent()));
+        if ($create->status() !== 200 || ! $create->json('success')) {
+            $this->fail('makeReservation failed: '.($create->json('message') ?? $create->getContent()));
         }
 
         $id = $create->json('data.id') ?? $create->json('data.reservation.id') ?? null;
         $reservation = $id ? Reservation::find($id) : Reservation::latest('id')->first();
-        if (!$reservation) {
+        if (! $reservation) {
             return null;
         }
 
@@ -296,7 +540,7 @@ class RefundPolicyTest extends TestCase
             ['pay' => (float) $reservation->total, 'type' => ReservationPay::TYPE_PAYMENT]
         );
 
-        if ($pay->status() !== 200 || !$pay->json('success')) {
+        if ($pay->status() !== 200 || ! $pay->json('success')) {
             return null;
         }
 

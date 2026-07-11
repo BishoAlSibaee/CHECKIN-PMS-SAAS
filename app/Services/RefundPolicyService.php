@@ -24,7 +24,7 @@ class RefundPolicyService
         $context = $this->buildContext($reservation, $newExpireDate);
         $policy = $this->resolvePolicy($reservation, $context);
 
-        if (!$policy) {
+        if (! $policy) {
             throw new RefundNotAllowedException(
                 'No refund policy applies to this reservation.'
             );
@@ -78,14 +78,17 @@ class RefundPolicyService
      */
     public function buildContext(Reservation $reservation, ?string $newExpireDate = null): array
     {
-        $now = Carbon::now();
         $start = Carbon::parse($reservation->start_date)->startOfDay();
         $expire = Carbon::parse($reservation->expire_date)->startOfDay();
         $totalNights = (int) $start->diffInDays($expire);
 
-        $daysUntilStart = $now->lt($start) ? (int) $now->diffInDays($start, false) : 0;
-        $daysSinceStart = $now->gte($start) ? (int) $start->diffInDays($now, false) : 0;
-        $duringStay = $now->betweenIncluded($start, $expire);
+        $evalMoment = $newExpireDate !== null
+            ? Carbon::parse($newExpireDate)->startOfDay()
+            : Carbon::now();
+
+        $daysUntilStart = $evalMoment->lt($start) ? (int) $evalMoment->diffInDays($start, false) : 0;
+        $daysSinceStart = $evalMoment->gte($start) ? (int) $start->diffInDays($evalMoment, false) : 0;
+        $duringStay = $evalMoment->betweenIncluded($start, $expire);
 
         $netPaid = $this->netPaid($reservation);
         $total = (float) $reservation->total;
@@ -102,6 +105,7 @@ class RefundPolicyService
             'total_nights' => $totalNights,
             'remaining_base' => round($this->remainingNightsBase($reservation), 2),
             'tax_rate' => self::TAX_RATE,
+            'policy_eval_date' => $evalMoment->toDateString(),
         ];
 
         if ($newExpireDate !== null) {
@@ -130,13 +134,65 @@ class RefundPolicyService
             ->where('reservation_id', $reservation->id)
             ->where('charge_date', '>=', $newExpire->toDateString())
             ->where('charge_date', '<', $currentExpire->toDateString())
-            ->count();
+            ->distinct()
+            ->count('charge_date');
 
         return [
             'new_expire_date' => $newExpire->toDateString(),
             'cancelled_nights_count' => $cancelledCount,
             'cancelled_nights_base' => round($cancelledBase, 2),
         ];
+    }
+
+    /**
+     * Nights removed when reservation dates shrink (later arrival and/or earlier departure).
+     *
+     * @return array{cancelled_nights_count: int, cancelled_nights_base: float}
+     */
+    public function removedNightsContextForDateChange(
+        int $reservationId,
+        string $oldStart,
+        string $oldExpire,
+        string $newStart,
+        string $newExpire
+    ): array {
+        $oldStartDate = Carbon::parse($oldStart)->startOfDay()->toDateString();
+        $oldExpireDate = Carbon::parse($oldExpire)->startOfDay()->toDateString();
+        $newStartDate = Carbon::parse($newStart)->startOfDay()->toDateString();
+        $newExpireDate = Carbon::parse($newExpire)->startOfDay()->toDateString();
+
+        $query = ReservationDailyCharge::query()
+            ->where('reservation_id', $reservationId)
+            ->where('charge_date', '>=', $oldStartDate)
+            ->where('charge_date', '<', $oldExpireDate)
+            ->where(function ($q) use ($newStartDate, $newExpireDate) {
+                $q->where('charge_date', '<', $newStartDate)
+                    ->orWhere('charge_date', '>=', $newExpireDate);
+            });
+
+        return [
+            'cancelled_nights_count' => (int) (clone $query)->distinct()->count('charge_date'),
+            'cancelled_nights_base' => round((float) (clone $query)->sum('base_amount'), 2),
+        ];
+    }
+
+    /**
+     * @param  array{cancelled_nights_count?: int, cancelled_nights_base?: float}  $removedContext
+     */
+    public function refundAmountForRemovedNights(Reservation $reservation, array $removedContext): float
+    {
+        if ((int) ($removedContext['cancelled_nights_count'] ?? 0) === 0) {
+            return 0.0;
+        }
+
+        $reservation->loadMissing('payments');
+        $context = array_merge($this->buildContext($reservation), $removedContext);
+        $policy = $this->resolvePolicy($reservation, $context);
+        if (! $policy) {
+            return 0.0;
+        }
+
+        return $this->calculateRefundAmount($reservation, $policy, $context);
     }
 
     public function resolvePolicy(Reservation $reservation, ?array $context = null): ?RefundPolicy
@@ -152,23 +208,33 @@ class RefundPolicyService
             ->get();
 
         $matched = $candidates->filter(function (RefundPolicy $policy) use ($context, $totalNights) {
-            if (!$policy->matchesPaymentContext($context)) {
+            if (! $policy->matchesPaymentContext($context)) {
                 return false;
             }
 
-            $timing = $policy->timing ?? ((int) $policy->during_stay === 1 ? 'after_start' : 'before_start');
-            $threshold = $policy->resolveThresholdDays($totalNights);
-
-            if ($timing === 'before_start') {
-                return !$context['during_stay'] && $context['days_until_start'] >= $threshold;
-            }
-
-            return $context['during_stay'] && $context['days_since_start'] >= $threshold;
+            return $policy->matchesTimingContext($context, $totalNights);
         });
 
-        return $matched->sortByDesc(
-            fn (RefundPolicy $p) => $p->resolveThresholdDays($totalNights)
-        )->first();
+        return $matched
+            ->sort(function (RefundPolicy $a, RefundPolicy $b) use ($totalNights) {
+                $byThreshold = $b->effectiveThresholdDays($totalNights) <=> $a->effectiveThresholdDays($totalNights);
+                if ($byThreshold !== 0) {
+                    return $byThreshold;
+                }
+
+                $byPriority = ((int) ($b->priority ?? 0)) <=> ((int) ($a->priority ?? 0));
+                if ($byPriority !== 0) {
+                    return $byPriority;
+                }
+
+                $byRefundPercent = (float) $a->refund_percent <=> (float) $b->refund_percent;
+                if ($byRefundPercent !== 0) {
+                    return $byRefundPercent;
+                }
+
+                return ((int) $b->id) <=> ((int) $a->id);
+            })
+            ->first();
     }
 
     public function calculateRefundAmount(

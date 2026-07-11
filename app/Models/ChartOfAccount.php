@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ChartOfAccount extends Model
 {
+    public const TYPES = ['asset', 'liability', 'equity', 'revenue', 'expense'];
+
     protected $fillable = ['code', 'name_en', 'name_ar', 'type', 'parent_id', 'active'];
 
     public function parent(): BelongsTo

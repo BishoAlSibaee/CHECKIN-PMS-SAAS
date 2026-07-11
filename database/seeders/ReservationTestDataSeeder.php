@@ -7,19 +7,19 @@ use App\Models\PeakDay;
 use App\Models\PeakMonth;
 use App\Models\Pricingplan;
 use App\Models\Reservation;
-use App\Models\ReservationPay;
-use App\Support\ReservationCashQuery;
-use App\Models\ReservationRoom;
 use App\Models\Reservation_source;
 use App\Models\ReservationDailyCharge;
+use App\Models\ReservationPay;
+use App\Models\ReservationRoom;
 use App\Models\Room;
 use App\Models\RoomPrice;
-use App\Models\RoomtypePricingplan;
 use App\Models\RoomType;
+use App\Models\RoomtypePricingplan;
 use App\Models\Stay_reason;
 use App\Models\User;
 use App\Services\PricingEngine;
 use App\Services\RevenueAccrualService;
+use App\Support\ReservationCashQuery;
 use App\Support\ReservationRelatedCleanup;
 use Carbon\Carbon;
 use Illuminate\Database\Seeder;
@@ -30,7 +30,7 @@ use Illuminate\Support\Facades\Schema;
  * Test reservations for financial / revenue reports.
  *
  * Run alone:  php artisan db:seed --class=ReservationTestDataSeeder
- * With all:   php artisan db:seed
+ * Demo flow: php artisan demo:setup --fresh
  */
 class ReservationTestDataSeeder extends Seeder
 {
@@ -86,13 +86,11 @@ class ReservationTestDataSeeder extends Seeder
 
         $this->enableFridayPeak();
 
-        $shouldClear = app()->environment('testing')
-            || (bool) env('SEED_RESERVATIONS_FRESH', false)
-            || (bool) env('DEMO_SEED', false)
-            || ($this->command && !$this->command->option('no-interaction')
-                && $this->command->confirm('Remove existing test reservations (' . $this->demoYear() . ')?', true));
+        $shouldClear = \App\Support\ReservationTestDataGuard::mayPurgeDemoYearReservations()
+            || ($this->command && ! $this->command->option('no-interaction')
+                && $this->command->confirm('Remove existing test reservations ('.$this->demoYear().')?', true));
 
-        if ($shouldClear && !$this->skipClearOnRun) {
+        if ($shouldClear && ! $this->skipClearOnRun) {
             $this->clearTestReservations();
         }
 
@@ -120,6 +118,7 @@ class ReservationTestDataSeeder extends Seeder
                 if ($this->roomHasOverlap($room->id, $scenario['start'], $scenario['end'])) {
                     $this->command?->warn("Skip overlap: room {$room->id}, {$scenario['start']} – {$scenario['end']}");
                     $skipped++;
+
                     continue;
                 }
 
@@ -164,7 +163,7 @@ class ReservationTestDataSeeder extends Seeder
         ReservationRoom::whereIn('reservation_id', $ids)->delete();
         Reservation::whereIn('id', $ids)->delete();
 
-        $this->command?->info('Removed ' . $ids->count() . ' test reservation(s) from ' . $this->demoYear() . " ({$accountingRows} accounting row(s) purged).");
+        $this->command?->info('Removed '.$ids->count().' test reservation(s) from '.$this->demoYear()." ({$accountingRows} accounting row(s) purged).");
     }
 
     private function createTestReservation(
@@ -206,34 +205,34 @@ class ReservationTestDataSeeder extends Seeder
         };
 
         $reservation = Reservation::create([
-            'client_id'             => $clientId,
-            'start_date'            => $startDate->toDateString(),
-            'nights'                => $nights,
-            'expire_date'           => $endDate->toDateString(),
-            'reservation_type'      => 0,
-            'reservation_status'    => $scenario['status'] ?? 1,
-            'stay_reason_id'        => $stayReasonId,
+            'client_id' => $clientId,
+            'start_date' => $startDate->toDateString(),
+            'nights' => $nights,
+            'expire_date' => $endDate->toDateString(),
+            'reservation_type' => 0,
+            'reservation_status' => $scenario['status'] ?? 1,
+            'stay_reason_id' => $stayReasonId,
             'reservation_source_id' => $sourceId,
-            'rent_type'             => $rentType,
-            'base_price'            => $basePrice,
-            'discount'              => $discount,
-            'extras'                => $extras,
-            'penalties'             => $penalties,
-            'subtotal'              => $subtotal,
-            'taxes'                 => $taxes,
-            'total'                 => $total,
-            'logedin'               => 1,
-            'login_time'            => $startDate->toDateString(),
-            'user_id'               => $userId,
+            'rent_type' => $rentType,
+            'base_price' => $basePrice,
+            'discount' => $discount,
+            'extras' => $extras,
+            'penalties' => $penalties,
+            'subtotal' => $subtotal,
+            'taxes' => $taxes,
+            'total' => $total,
+            'logedin' => 1,
+            'login_time' => $startDate->toDateString(),
+            'user_id' => $userId,
         ]);
 
         $finalRoomPrice = ($basePrice - $discount + $extras + $penalties) * 1.15;
 
         $resRoom = ReservationRoom::create([
             'reservation_id' => $reservation->id,
-            'room_id'        => $room->id,
-            'suite_id'       => null,
-            'price'          => round($finalRoomPrice, 2),
+            'room_id' => $room->id,
+            'suite_id' => null,
+            'price' => round($finalRoomPrice, 2),
         ]);
 
         $revenueAccrual->persistDailyCharges(
@@ -250,11 +249,11 @@ class ReservationTestDataSeeder extends Seeder
             $paidAt = ReservationCashQuery::capPaymentTimestampToToday($startDate->copy()->subDays(2));
             ReservationPay::create([
                 'reservation_id' => $reservation->id,
-                'pay'            => $payAmount,
-                'type'           => ReservationPay::TYPE_PAYMENT,
-                'user_id'        => $userId,
-                'created_at'     => $paidAt,
-                'updated_at'     => $paidAt,
+                'pay' => $payAmount,
+                'type' => ReservationPay::TYPE_PAYMENT,
+                'user_id' => $userId,
+                'created_at' => $paidAt,
+                'updated_at' => $paidAt,
             ]);
         }
     }
@@ -262,7 +261,7 @@ class ReservationTestDataSeeder extends Seeder
     private function createRoomPriceSnapshot(Room $room, int $reservationRoomId, Carbon $start, Carbon $end, int $rentType): void
     {
         $roomType = $room->roomType;
-        if (!$roomType) {
+        if (! $roomType) {
             return;
         }
 
@@ -340,18 +339,18 @@ class ReservationTestDataSeeder extends Seeder
 
         foreach ($names as $i => [$first, $last]) {
             Client::firstOrCreate(
-                ['IdNumber' => 'TEST' . (100000 + $i)],
+                ['IdNumber' => 'TEST'.(100000 + $i)],
                 [
-                    'first_name'         => $first,
-                    'last_name'          => $last,
-                    'email'              => strtolower($first) . '.test' . $i . '@hotel.test',
+                    'first_name' => $first,
+                    'last_name' => $last,
+                    'email' => strtolower($first).'.test'.$i.'@hotel.test',
                     'international_code' => '+966',
-                    'mobile'             => '0500000' . str_pad((string) (100 + $i), 3, '0', STR_PAD_LEFT),
-                    'IdType'             => 'ID',
-                    'birth_date'         => '1990-01-15',
-                    'gender'             => 'MALE',
-                    'guest_type'         => 'VISITOR',
-                    'nationality'        => 'SA',
+                    'mobile' => '0500000'.str_pad((string) (100 + $i), 3, '0', STR_PAD_LEFT),
+                    'IdType' => 'ID',
+                    'birth_date' => '1990-01-15',
+                    'gender' => 'MALE',
+                    'guest_type' => 'VISITOR',
+                    'nationality' => 'SA',
                 ]
             );
         }
@@ -378,20 +377,20 @@ class ReservationTestDataSeeder extends Seeder
         $plan = Pricingplan::firstOrCreate(
             ['NameEn' => 'Summer Test Plan'],
             [
-                'NameAr'     => 'خطة صيف تجريبية',
-                'StartDate'  => "{$y}-07-01",
-                'EndDate'    => "{$y}-08-31",
+                'NameAr' => 'خطة صيف تجريبية',
+                'StartDate' => "{$y}-07-01",
+                'EndDate' => "{$y}-08-31",
                 'ActiveType' => 1,
             ]
         );
 
         RoomtypePricingplan::firstOrCreate(
             [
-                'roomtype_id'     => $roomType->id,
-                'pricingplan_id'  => $plan->id,
+                'roomtype_id' => $roomType->id,
+                'pricingplan_id' => $plan->id,
             ],
             [
-                'DailyPrice'   => 150,
+                'DailyPrice' => 150,
                 'MonthlyPrice' => 3500,
             ]
         );
@@ -417,10 +416,10 @@ class ReservationTestDataSeeder extends Seeder
                 ['number' => (string) $n, 'building_id' => $buildingId],
                 [
                     'room_type_id' => $roomType->id,
-                    'floor_id'     => $floorId,
-                    'suite_id'     => null,
-                    'active'       => 1,
-                    'roomStatus'   => 1,
+                    'floor_id' => $floorId,
+                    'suite_id' => null,
+                    'active' => 1,
+                    'roomStatus' => 1,
                 ]
             );
         }
@@ -435,24 +434,24 @@ class ReservationTestDataSeeder extends Seeder
     private function ensureBuildingAndFloor(): array
     {
         $buildingId = DB::table('buildings')->value('id');
-        if (!$buildingId) {
+        if (! $buildingId) {
             $buildingId = DB::table('buildings')->insertGetId([
-                'name'       => 'Main Building',
-                'number'     => 'B1',
-                'active'     => 1,
+                'name' => 'Main Building',
+                'number' => 'B1',
+                'active' => 1,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
         }
 
         $floorId = DB::table('floors')->where('building_id', $buildingId)->value('id');
-        if (!$floorId) {
+        if (! $floorId) {
             $floorId = DB::table('floors')->insertGetId([
                 'building_id' => $buildingId,
-                'number'      => '1',
-                'active'      => 1,
-                'created_at'  => now(),
-                'updated_at'  => now(),
+                'number' => '1',
+                'active' => 1,
+                'created_at' => now(),
+                'updated_at' => now(),
             ]);
         }
 

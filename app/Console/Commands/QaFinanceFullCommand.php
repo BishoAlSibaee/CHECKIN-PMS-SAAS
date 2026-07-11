@@ -15,7 +15,7 @@ class QaFinanceFullCommand extends Command
 
     public function handle(): int
     {
-        if (!$this->option('skip-migrate')) {
+        if (! $this->option('skip-migrate')) {
             $this->info('Running migrate:fresh --seed (full demo)...');
             $code = Artisan::call('migrate:fresh', ['--seed' => true, '--force' => true]);
             if ($code !== 0) {
@@ -30,13 +30,13 @@ class QaFinanceFullCommand extends Command
         Artisan::call('accounting:backfill-journal');
         $this->line(Artisan::output());
 
-        if (!$this->option('skip-tests')) {
+        if (! $this->option('skip-tests')) {
             foreach ([
                 ['test', ['--compact' => true, '--filter' => 'Finance']],
                 ['test', ['--compact' => true, '--filter' => 'Reports']],
                 ['test', ['--compact' => true, 'path' => 'tests/Feature/Accounting']],
             ] as [$cmd, $args]) {
-                $this->info('Running php artisan ' . $cmd . ' ...');
+                $this->info('Running php artisan '.$cmd.' ...');
                 $code = Artisan::call($cmd, $args);
                 $this->line(Artisan::output());
                 if ($code !== 0) {

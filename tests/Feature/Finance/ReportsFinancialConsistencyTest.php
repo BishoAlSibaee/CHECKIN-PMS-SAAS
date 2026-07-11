@@ -70,7 +70,6 @@ class ReportsFinancialConsistencyTest extends TestCase
             'peak-analysis',
             'revpar',
             'trial-balance',
-            'balance-sheet',
             'cash-flow',
             'general-ledger',
             'financial-audit-log',
@@ -83,6 +82,6 @@ class ReportsFinancialConsistencyTest extends TestCase
     public function test_all_report_slugs_still_valid(): void
     {
         $provider = AllReportsSlugTest::reportSlugProvider();
-        $this->assertGreaterThanOrEqual(24, count($provider));
+        $this->assertGreaterThanOrEqual(23, count($provider));
     }
 }

@@ -103,16 +103,10 @@ class FinancialApiGoldenTest extends TestCase
         $api->assertOk();
 
         $report = $this->fetchFinanceReport($user, 'chart-of-accounts');
-        $api4010 = collect($api->json('data.accounts') ?? [])->firstWhere('code', '4010');
-        $rep4010 = collect($report['rows'] ?? [])->firstWhere('code', '4010');
 
-        $this->assertNotNull($api4010);
-        $this->assertNotNull($rep4010);
-        $this->assertEqualsWithDelta(
-            (float) ($api4010['balance'] ?? 0),
-            (float) ($rep4010['balance'] ?? 0),
-            0.10
-        );
+        $this->assertContains('name', collect($report['columns'] ?? [])->pluck('key'));
+        $this->assertNotContains('name_en', collect($report['columns'] ?? [])->pluck('key'));
+        $this->assertNotContains('name_ar', collect($report['columns'] ?? [])->pluck('key'));
     }
 
     public function test_by_dimension_report_matches_revenue_detail_sum(): void

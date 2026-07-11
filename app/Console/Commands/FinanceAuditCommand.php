@@ -59,6 +59,7 @@ class FinanceAuditCommand extends Command
                 $missingCharges++;
                 $results['fail']++;
                 $this->error("FAIL reservation #{$r->id}: no daily_charges rows (run reservations:backfill-daily-charges)");
+
                 continue;
             }
 
@@ -66,7 +67,7 @@ class FinanceAuditCommand extends Command
             $expectedTotal = round((float) $r->subtotal + (float) $r->taxes, 2);
             $baseOk = abs($sumBase - (float) $r->base_price) < 0.02;
             $totalOk = abs($expectedTotal - (float) $r->total) < 0.02;
-            $formulaOk = abs((float) $r->subtotal - ((float) $r->base_price - (float) $r->discount + (float) $r->extras + (float) $r->penalties)) < 0.02;
+            $formulaOk = abs((float) $r->subtotal - ((float) $r->base_price - (float) $r->classification_discount - (float) $r->discount + (float) $r->extras + (float) $r->penalties)) < 0.02;
 
             if ($baseOk && $totalOk && $formulaOk) {
                 $results['pass']++;
@@ -153,7 +154,7 @@ class FinanceAuditCommand extends Command
             $this->info('PASS: status=2 reservations not in August revenue report');
             $results['pass']++;
         } else {
-            $this->error('FAIL: status=2 leaked into revenue: ' . $leaked->implode(','));
+            $this->error('FAIL: status=2 leaked into revenue: '.$leaked->implode(','));
             $results['fail']++;
         }
         $this->line("(status=2 charge rows in DB: {$inRev} — excluded by query)");
@@ -248,7 +249,7 @@ class FinanceAuditCommand extends Command
             $results['fail']++;
         }
         if (abs($closingTax - $golden['accrual_tax']) < 0.20) {
-            $this->info("PASS: Closing package tax matches accrual");
+            $this->info('PASS: Closing package tax matches accrual');
             $results['pass']++;
         } else {
             $this->error('FAIL: Closing package tax');

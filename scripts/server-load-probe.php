@@ -1,4 +1,5 @@
 <?php
+
 /** Light load test: N parallel workers x M requests each */
 $api = rtrim($argv[1] ?? 'https://hotelsystemback.osus.network/api', '/');
 $workers = (int) ($argv[2] ?? 25);
@@ -9,7 +10,7 @@ function worker(string $api, int $id, int $count): array
     $times = [];
     $errors = 0;
 
-    $login = json_decode(file_get_contents($api . '/users/login', false, stream_context_create([
+    $login = json_decode(file_get_contents($api.'/users/login', false, stream_context_create([
         'http' => [
             'method' => 'POST',
             'header' => "Content-Type: application/json\r\nAccept: application/json\r\n",
@@ -19,7 +20,7 @@ function worker(string $api, int $id, int $count): array
     ])), true);
 
     $token = $login['data']['token'] ?? '';
-    if (!$token) {
+    if (! $token) {
         return ['worker' => $id, 'errors' => $count, 'times' => []];
     }
 
@@ -44,7 +45,7 @@ function worker(string $api, int $id, int $count): array
         $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
         $j = json_decode($raw, true);
-        if ($code !== 200 || !($j['success'] ?? false)) {
+        if ($code !== 200 || ! ($j['success'] ?? false)) {
             $errors++;
         } else {
             $times[] = $ms;
@@ -54,7 +55,7 @@ function worker(string $api, int $id, int $count): array
     return ['worker' => $id, 'errors' => $errors, 'times' => $times];
 }
 
-echo "Load test: $workers workers x $perWorker requests = " . ($workers * $perWorker) . " total\n";
+echo "Load test: $workers workers x $perWorker requests = ".($workers * $perWorker)." total\n";
 echo "Target: $api\n\n";
 
 $allTimes = [];

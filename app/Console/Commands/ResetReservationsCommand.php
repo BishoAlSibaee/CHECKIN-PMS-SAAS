@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Artisan;
 class ResetReservationsCommand extends Command
 {
     protected $signature = 'demo:reset-reservations
+                            {--no-seed : Purge only; do not seed the 6 test bookings}
                             {--no-journal : Skip accounting:backfill-journal after seeding}
                             {--force : Skip confirmation prompt}';
 
@@ -25,6 +26,13 @@ class ResetReservationsCommand extends Command
         $this->info('Purging reservation data...');
         $counts = $cleaner->purge();
         $this->table(['Table / action', 'Rows affected'], collect($counts)->map(fn ($n, $k) => [$k, $n])->values()->all());
+
+        if ($this->option('no-seed')) {
+            $this->newLine();
+            $this->info('Purge complete. Database is empty of reservations and financial data (no seed).');
+
+            return self::SUCCESS;
+        }
 
         $this->info('Seeding 3 reservations per month (July + August 2026)...');
         Artisan::call('db:seed', [

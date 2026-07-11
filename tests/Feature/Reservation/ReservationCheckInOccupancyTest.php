@@ -112,6 +112,66 @@ class ReservationCheckInOccupancyTest extends TestCase
         $this->assertSame($blockingId, $row['conflict']['reservation_id'] ?? null);
     }
 
+    public function test_booking_availability_ignores_in_house_stay_that_ended_before_selected_period(): void
+    {
+        $this->seedReservationFixtures();
+
+        $user = $this->userWithApiPermissions(['view reservations', 'update reservations']);
+        $room = Room::where('active', 1)->whereHas('roomType')->first();
+        $this->assertNotNull($room);
+
+        Carbon::setTestNow('2026-06-01');
+        $pastId = $this->createReservationId($user, $room, '2026-06-01', '2026-06-05');
+        $this->actingAs($user, 'api')->patchJson("/api/users/reservations/{$pastId}", [
+            'logedin' => 1,
+            'login_time' => '2026-06-01',
+        ])->assertOk();
+
+        Carbon::setTestNow('2026-06-10');
+
+        $response = $this->actingAs($user, 'api')->getJson(
+            '/api/users/booking-room-availability?' . http_build_query([
+                'building_id' => $room->building_id,
+                'start_date' => '2026-06-20',
+                'expire_date' => '2026-06-25',
+            ])
+        );
+
+        $response->assertOk();
+        $row = collect($response->json('data.rooms') ?? [])->firstWhere('id', $room->id);
+        $this->assertNotNull($row);
+        $this->assertTrue($row['available_for_period'], 'Past in-house stay must not block a later period.');
+        $this->assertNull($row['unavailable_reason']);
+    }
+
+    public function test_booking_availability_ignores_confirmed_reservation_that_ended_before_selected_period(): void
+    {
+        $this->seedReservationFixtures();
+
+        $user = $this->userWithApiPermissions(['view reservations', 'update reservations']);
+        $room = $this->findOrCreateAvailableRoom('2026-06-20', '2026-06-25');
+        $this->assertNotNull($room);
+
+        Carbon::setTestNow('2026-06-01');
+        $this->createReservationId($user, $room, '2026-06-01', '2026-06-05');
+
+        Carbon::setTestNow('2026-06-10');
+
+        $response = $this->actingAs($user, 'api')->getJson(
+            '/api/users/booking-room-availability?' . http_build_query([
+                'building_id' => $room->building_id,
+                'start_date' => '2026-06-20',
+                'expire_date' => '2026-06-25',
+            ])
+        );
+
+        $response->assertOk();
+        $row = collect($response->json('data.rooms') ?? [])->firstWhere('id', $room->id);
+        $this->assertNotNull($row);
+        $this->assertTrue($row['available_for_period']);
+        $this->assertNull($row['conflict']);
+    }
+
     private function seedReservationFixtures(): void
     {
         $this->artisan('db:seed', [

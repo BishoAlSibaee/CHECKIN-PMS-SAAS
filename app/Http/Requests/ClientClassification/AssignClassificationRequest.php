@@ -2,9 +2,11 @@
 
 namespace App\Http\Requests\ClientClassification;
 
+use App\Models\Client;
+use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Exceptions\HttpResponseException;
-use Illuminate\Contracts\Validation\Validator;
+use Illuminate\Validation\Rule;
 
 class AssignClassificationRequest extends FormRequest
 {
@@ -16,7 +18,7 @@ class AssignClassificationRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'client_id' => 'required|numeric',
+            'client_id' => ['required', 'numeric', Rule::exists(Client::class, 'id')],
             'classifications_id' => 'required|numeric|exists:guest_classifications,id',
         ];
     }
@@ -27,7 +29,7 @@ class AssignClassificationRequest extends FormRequest
             'success' => false,
             'message' => $validator->errors()->first(),
             'code' => 422,
-            'data' => null
+            'data' => null,
         ], 422);
         throw new HttpResponseException($response);
     }

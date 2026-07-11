@@ -28,6 +28,7 @@ class UpdateRefundPolicyRequest extends FormRequest
             'payment_statuses.*' => 'string|in:partial,full,paid',
             'days_before_checkin' => 'nullable|integer|min:0',
             'during_stay' => 'nullable|in:0,1',
+            'priority' => 'nullable|integer|in:0,1',
         ];
     }
 
@@ -41,8 +42,14 @@ class UpdateRefundPolicyRequest extends FormRequest
         if ($this->has('days_threshold')) {
             $merge['days_before_checkin'] = $this->input('days_threshold');
         }
-        if ($this->has('threshold_mode') && $this->input('threshold_mode') === 'percent_of_stay') {
+        $mode = $this->input('threshold_mode');
+        if ($mode === 'percent_of_stay') {
             $merge['days_threshold'] = 0;
+            if ($this->has('priority')) {
+                $merge['priority'] = (int) $this->input('priority', 0);
+            }
+        } elseif ($mode === 'fixed_days') {
+            $merge['priority'] = 0;
         }
         if ($this->has('payment_statuses')) {
             $statuses = RefundPolicyPaymentStatus::normalize($this->input('payment_statuses'));

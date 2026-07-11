@@ -26,9 +26,9 @@ class RefundPolicyResource extends JsonResource
             'payment_status' => $this->payment_status,
             'payment_statuses' => $this->resource->resolvedPaymentStatuses(),
             'during_stay' => $this->during_stay,
+            'priority' => (int) ($this->priority ?? 0),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];
     }
 }
-

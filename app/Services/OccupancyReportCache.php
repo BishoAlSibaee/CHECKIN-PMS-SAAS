@@ -6,7 +6,8 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 
 /**
- * File-based cache for monthly occupancy report payloads.
+ * Versioned cache for occupancy report payloads (file or redis via CACHE_DRIVER).
+ * Keys include board_version so bump() invalidates stale occupancy reports.
  */
 class OccupancyReportCache
 {

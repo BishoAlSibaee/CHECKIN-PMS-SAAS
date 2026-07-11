@@ -9,7 +9,7 @@ function api(string $method, string $url, ?array $body = null, ?string $token = 
     $ch = curl_init($url);
     $headers = ['Accept: application/json', 'Content-Type: application/json'];
     if ($token) {
-        $headers[] = 'Authorization: Bearer ' . $token;
+        $headers[] = 'Authorization: Bearer '.$token;
     }
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
@@ -31,11 +31,13 @@ $token = $login['body']['data']['token'] ?? '';
 
 $targets = [
     'dashboard' => "$api/users/dashboard/summary",
+    'collections-summary' => "$api/users/collections/summary",
     'occupancy-board' => "$api/users/rooms/occupancy-board?date=2026-08-10",
     'occupancy-report' => "$api/users/reports/occupancy?start_date=$monthStart&end_date=$monthEnd",
+    'room-board-report' => "$api/users/reports/room-board?end_date=2026-08-10",
 ];
 
-echo "Benchmark (3 runs each)\n";
+echo "Benchmark (3 runs each — 2nd/3rd runs show Redis cache hits)\n";
 foreach ($targets as $name => $url) {
     $times = [];
     for ($i = 0; $i < 3; $i++) {

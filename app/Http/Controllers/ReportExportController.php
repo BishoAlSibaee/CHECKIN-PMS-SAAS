@@ -2,28 +2,28 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\ProcessReportExportJob;
 use App\Models\ReportExport;
 use App\Services\Reports\ReportExportProcessor;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 
 class ReportExportController extends Controller
 {
-    public function __construct(private ReportExportProcessor $exportProcessor)
-    {
-    }
+    public function __construct(private ReportExportProcessor $exportProcessor) {}
 
     public function downloadNow(string $slug, Request $request)
     {
-        if (!ReportExportProcessor::isValidSlug($slug)) {
+        if (! ReportExportProcessor::isValidSlug($slug)) {
             return Failed('Unknown report slug.', 422);
         }
 
         if (ReportExportProcessor::slugRequiresAccountingPermission($slug)) {
             $user = auth()->user();
-            if (!$user || !$user->can('view accounting reports')) {
+            if (! $user || ! $user->can('view accounting reports')) {
                 return Failed('You do not have permission to export this report.', 403);
             }
         }
@@ -39,13 +39,13 @@ class ReportExportController extends Controller
         $startDate = $validated['start_date'] ?? null;
         $endDate = $validated['end_date'] ?? null;
 
-        if ($slug !== 'room-board' && (!$startDate || !$endDate)) {
+        if ($slug !== 'room-board' && (! $startDate || ! $endDate)) {
             throw ValidationException::withMessages([
                 'start_date' => ['Start date and end date are required.'],
             ]);
         }
 
-        if ($slug === 'room-board' && !$endDate) {
+        if ($slug === 'room-board' && ! $endDate) {
             throw ValidationException::withMessages([
                 'end_date' => ['Snapshot date is required for room board report.'],
             ]);
@@ -70,20 +70,20 @@ class ReportExportController extends Controller
 
         return response($file['content'], 200, [
             'Content-Type' => $file['mime'],
-            'Content-Disposition' => 'attachment; filename="' . $file['filename'] . '"',
+            'Content-Disposition' => 'attachment; filename="'.$file['filename'].'"',
             'Cache-Control' => 'no-store, no-cache, must-revalidate',
         ]);
     }
 
     public function requestEmail(string $slug, Request $request)
     {
-        if (!ReportExportProcessor::isValidSlug($slug)) {
+        if (! ReportExportProcessor::isValidSlug($slug)) {
             return Failed('Unknown report slug.', 422);
         }
 
         if (ReportExportProcessor::slugRequiresAccountingPermission($slug)) {
             $user = auth()->user();
-            if (!$user || !$user->can('view accounting reports')) {
+            if (! $user || ! $user->can('view accounting reports')) {
                 return Failed('You do not have permission to export this report.', 403);
             }
         }
@@ -98,44 +98,56 @@ class ReportExportController extends Controller
         ]);
 
         $userId = auth()->id();
-        $pendingCount = ReportExport::query()
-            ->where('user_id', $userId)
-            ->where('status', ReportExport::STATUS_PENDING)
-            ->count();
+        $lock = Cache::lock('report-export:user:'.$userId.':'.$slug, 120);
 
-        if ($pendingCount >= (int) config('reports.max_pending_per_user', 3)) {
-            return Failed('You already have pending report requests. Please wait until they are processed.', 429);
+        if (! $lock->get()) {
+            return Failed('A report export for this report is already being queued. Please wait.', 429);
         }
 
-        $startDate = $validated['start_date'] ?? null;
-        $endDate = $validated['end_date'] ?? null;
+        try {
+            $pendingCount = ReportExport::query()
+                ->where('user_id', $userId)
+                ->where('status', ReportExport::STATUS_PENDING)
+                ->count();
 
-        if ($slug !== 'room-board' && (!$startDate || !$endDate)) {
-            throw ValidationException::withMessages([
-                'start_date' => ['Start date and end date are required.'],
+            if ($pendingCount >= (int) config('reports.max_pending_per_user', 3)) {
+                return Failed('You already have pending report requests. Please wait until they are processed.', 429);
+            }
+
+            $startDate = $validated['start_date'] ?? null;
+            $endDate = $validated['end_date'] ?? null;
+
+            if ($slug !== 'room-board' && (! $startDate || ! $endDate)) {
+                throw ValidationException::withMessages([
+                    'start_date' => ['Start date and end date are required.'],
+                ]);
+            }
+
+            if ($slug === 'room-board' && ! $endDate) {
+                throw ValidationException::withMessages([
+                    'end_date' => ['Snapshot date is required for room board report.'],
+                ]);
+            }
+
+            $export = ReportExport::create([
+                'user_id' => $userId,
+                'slug' => $slug,
+                'file_format' => $validated['format'] ?? ReportExport::FORMAT_EXCEL,
+                'recipient_email' => $validated['email'],
+                'start_date' => $startDate ? Carbon::parse($startDate)->toDateString() : null,
+                'end_date' => $endDate ? Carbon::parse($endDate)->toDateString() : null,
+                'compare_start_date' => ! empty($validated['compare_start_date'])
+                    ? Carbon::parse($validated['compare_start_date'])->toDateString() : null,
+                'compare_end_date' => ! empty($validated['compare_end_date'])
+                    ? Carbon::parse($validated['compare_end_date'])->toDateString() : null,
+                'status' => ReportExport::STATUS_PENDING,
+                'download_token' => ReportExport::generateToken(),
             ]);
-        }
 
-        if ($slug === 'room-board' && !$endDate) {
-            throw ValidationException::withMessages([
-                'end_date' => ['Snapshot date is required for room board report.'],
-            ]);
+            ProcessReportExportJob::dispatch($export->id);
+        } finally {
+            $lock->release();
         }
-
-        $export = ReportExport::create([
-            'user_id' => $userId,
-            'slug' => $slug,
-            'file_format' => $validated['format'] ?? ReportExport::FORMAT_EXCEL,
-            'recipient_email' => $validated['email'],
-            'start_date' => $startDate ? Carbon::parse($startDate)->toDateString() : null,
-            'end_date' => $endDate ? Carbon::parse($endDate)->toDateString() : null,
-            'compare_start_date' => !empty($validated['compare_start_date'])
-                ? Carbon::parse($validated['compare_start_date'])->toDateString() : null,
-            'compare_end_date' => !empty($validated['compare_end_date'])
-                ? Carbon::parse($validated['compare_end_date'])->toDateString() : null,
-            'status' => ReportExport::STATUS_PENDING,
-            'download_token' => ReportExport::generateToken(),
-        ]);
 
         return SuccessData('Report export queued. You will receive an email when it is ready.', [
             'export' => [
@@ -165,7 +177,7 @@ class ReportExportController extends Controller
                 'row_count' => $export->row_count,
                 'start_date' => $export->start_date?->toDateString(),
                 'end_date' => $export->end_date?->toDateString(),
-                'download_url' => $export->status === ReportExport::STATUS_READY && !$export->isExpired()
+                'download_url' => $export->status === ReportExport::STATUS_READY && ! $export->isExpired()
                     ? $export->downloadUrl() : null,
                 'expires_at' => $export->expires_at?->toDateTimeString(),
                 'error_message' => $export->error_message,
@@ -178,7 +190,7 @@ class ReportExportController extends Controller
     public function download(ReportExport $export, Request $request)
     {
         $token = (string) $request->query('token', '');
-        if ($token === '' || !hash_equals($export->download_token, $token)) {
+        if ($token === '' || ! hash_equals($export->download_token, $token)) {
             return Failed('Invalid download link.', 403);
         }
 
@@ -195,11 +207,11 @@ class ReportExportController extends Controller
             return Failed('Download link has expired.', 410);
         }
 
-        if (!$export->file_path || !Storage::disk('local')->exists($export->file_path)) {
+        if (! $export->file_path || ! Storage::disk('local')->exists($export->file_path)) {
             return Failed('Report file not found.', 404);
         }
 
-        $filename = $export->slug . '-' . ($export->end_date?->format('Y-m-d') ?? $export->id) . '.' . $export->fileExtension();
+        $filename = $export->slug.'-'.($export->end_date?->format('Y-m-d') ?? $export->id).'.'.$export->fileExtension();
 
         return Storage::disk('local')->download($export->file_path, $filename, [
             'Content-Type' => $export->mimeType(),

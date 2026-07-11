@@ -1,6 +1,7 @@
 <?php
+
 $api = rtrim($argv[1] ?? 'https://hotelsystemback.osus.network/api', '/');
-$login = json_decode(file_get_contents($api . '/users/login', false, stream_context_create([
+$login = json_decode(file_get_contents($api.'/users/login', false, stream_context_create([
     'http' => [
         'method' => 'POST',
         'header' => "Content-Type: application/json\r\nAccept: application/json\r\n",
@@ -9,7 +10,7 @@ $login = json_decode(file_get_contents($api . '/users/login', false, stream_cont
     ],
 ])), true);
 $token = $login['data']['token'] ?? '';
-if (!$token) {
+if (! $token) {
     fwrite(STDERR, "Login failed\n");
     exit(1);
 }
@@ -19,7 +20,7 @@ $slugs = [
     'accrual-revenue', 'cash-box', 'revenue-summary', 'accrual-cash-reconciliation', 'ar-aging',
     'adjustments', 'tax', 'revpar', 'by-dimension', 'peak-analysis', 'payments-refunds',
     'closing-package', 'chart-of-accounts', 'journal-entries', 'general-ledger', 'trial-balance',
-    'balance-sheet', 'cash-flow', 'financial-audit-log',
+    'cash-flow', 'financial-audit-log',
 ];
 $start = date('Y-m-01');
 $end = date('Y-m-t');
@@ -42,7 +43,7 @@ foreach ($slugs as $slug) {
     curl_close($ch);
     $j = json_decode($raw, true);
     $ok = $code === 200 && ($j['success'] ?? false);
-    echo ($ok ? 'PASS' : 'FAIL') . "  $slug  HTTP $code  {$ms}ms\n";
+    echo ($ok ? 'PASS' : 'FAIL')."  $slug  HTTP $code  {$ms}ms\n";
     if ($ok) {
         $pass++;
     } else {
@@ -55,6 +56,6 @@ foreach ($slugs as $slug) {
 
 echo "\nSummary: $pass/24 PASS, $fail FAIL\n";
 if ($slow) {
-    echo 'Slow (>3s): ' . implode(', ', $slow) . "\n";
+    echo 'Slow (>3s): '.implode(', ', $slow)."\n";
 }
 exit($fail > 0 ? 1 : 0);

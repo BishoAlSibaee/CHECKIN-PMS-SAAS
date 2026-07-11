@@ -2,13 +2,15 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\Penaltie\AddPenaltieRequest;
+use App\Http\Requests\Penaltie\AddReservationPenaltyRequest;
+use App\Http\Requests\Penaltie\DeletePenaltieRequest;
+use App\Http\Requests\Penaltie\GetPenaltiesByReservationRequest;
+use App\Http\Requests\Penaltie\UpdatePenaltieRequest;
 use App\Models\Penaltie;
 use App\Models\ReservationPenalty;
-use App\Http\Requests\Penaltie\AddPenaltieRequest;
-use App\Http\Requests\Penaltie\UpdatePenaltieRequest;
-use App\Http\Requests\Penaltie\DeletePenaltieRequest;
-use App\Http\Requests\Penaltie\AddReservationPenaltyRequest;
-use App\Http\Requests\Penaltie\GetPenaltiesByReservationRequest;
+use App\Services\Cache\CacheInvalidator;
+use App\Services\Cache\ReferenceDataCache;
 
 class PenaltiesController extends Controller
 {
@@ -16,7 +18,13 @@ class PenaltiesController extends Controller
     {
         try {
             $perPage = \returnPerPage();
-            $penalties = Penaltie::paginate($perPage);
+            $page = max(1, (int) request()->input('page', 1));
+            $penalties = ReferenceDataCache::remember(
+                'penalties',
+                "page:{$page}:per:{$perPage}",
+                fn () => Penaltie::query()->paginate($perPage)
+            );
+
             return \Pagination($penalties);
         } catch (\Exception $e) {
             return \Failed($e->getMessage());
@@ -33,6 +41,7 @@ class PenaltiesController extends Controller
                 'name_en' => $request->name_en,
                 'description' => $request->description,
             ]);
+            CacheInvalidator::penaltiesChanged();
 
             return \SuccessData('Penalty added successfully', $penalty);
         } catch (\Exception $e) {
@@ -52,6 +61,7 @@ class PenaltiesController extends Controller
                 'name_en' => $request->name_en ?? $penalty->name_en,
                 'description' => $request->description ?? $penalty->description,
             ]);
+            CacheInvalidator::penaltiesChanged();
 
             return \SuccessData('Penalty updated successfully', $penalty);
         } catch (\Exception $e) {
@@ -69,6 +79,7 @@ class PenaltiesController extends Controller
             }
 
             $penalty->delete();
+            CacheInvalidator::penaltiesChanged();
 
             return \Success('Penalty deleted successfully');
         } catch (\Exception $e) {

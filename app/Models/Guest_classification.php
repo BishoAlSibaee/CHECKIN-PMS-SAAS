@@ -9,15 +9,19 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Guest_classification extends Model
 {
     use HasFactory;
+
+    protected $connection = 'mysql';
+
     protected $table = 'guest_classifications';
 
     protected $fillable = ['name_ar', 'name_en', 'description', 'discount_id', 'active'];
 
-    function guest_classification_features(): HasMany
+    public function guest_classification_features(): HasMany
     {
         return $this->hasMany(Guest_classification_feature::class);
     }
-    function features()
+
+    public function features()
     {
         return $this->belongsToMany(
             Guest_feature::class,
@@ -26,12 +30,14 @@ class Guest_classification extends Model
             'guest_feature_id'
         );
     }
-    function discount()
+
+    public function discount()
     {
         return $this->belongsTo(Discount::class, 'discount_id');
     }
+
     public function guest_features()
-{
-    return $this->belongsToMany(Guest_feature::class, 'guest_classification_features');
-}
+    {
+        return $this->belongsToMany(Guest_feature::class, 'guest_classification_features');
+    }
 }

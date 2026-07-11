@@ -3,12 +3,15 @@
 namespace Tests\Feature\Reservation;
 
 use App\Models\Client;
+use App\Models\JournalEntry;
 use App\Models\Reservation;
 use App\Models\Reservation_source;
+use App\Models\ReservationPay;
 use App\Models\ReservationRoom;
 use App\Models\Room;
 use App\Models\Stay_reason;
 use Carbon\Carbon;
+use Database\Seeders\ChartOfAccountsSeeder;
 use Database\Seeders\ReservationTestDataSeeder;
 use Tests\TestCase;
 
@@ -81,6 +84,64 @@ class ReservationPaymentValidationTest extends TestCase
         $this->assertStringContainsString('exceeds', strtolower((string) $response->json('message')));
     }
 
+    public function test_initial_payment_on_make_reservation_posts_accounting_journal(): void
+    {
+        $this->artisan('db:seed', [
+            '--class' => ReservationTestDataSeeder::class,
+            '--force' => true,
+            '--no-interaction' => true,
+        ]);
+        $this->artisan('db:seed', [
+            '--class' => ChartOfAccountsSeeder::class,
+            '--force' => true,
+            '--no-interaction' => true,
+        ]);
+
+        $user = $this->userWithApiPermissions();
+        $payload = $this->availableRoomPayload('2026-12-10', '2026-12-13');
+        $this->assertNotNull($payload, 'No free room for test dates');
+
+        $response = $this->actingAs($user, 'api')->postJson('/api/users/makeReservation', array_merge($payload, [
+            'pay_amount' => 100,
+        ]));
+
+        if ($response->status() === 500) {
+            $this->fail('makeReservation 500: '.($response->json('message') ?? $response->getContent()));
+        }
+
+        $response->assertStatus(200);
+        $response->assertJsonPath('success', true);
+
+        $reservationId = $response->json('data.reservation.id') ?? $response->json('data.id');
+        $this->assertNotNull($reservationId);
+
+        $payment = ReservationPay::query()
+            ->where('reservation_id', $reservationId)
+            ->where('pay', 100)
+            ->first();
+
+        $this->assertNotNull($payment);
+
+        $entry = JournalEntry::query()
+            ->where('source_type', 'reservation_pay')
+            ->where('source_id', $payment->id)
+            ->first();
+
+        $this->assertNotNull($entry, 'Initial reservation payment must be posted to accounting journal.');
+        $this->assertDatabaseHas('journal_entry_lines', [
+            'journal_entry_id' => $entry->id,
+            'reservation_id' => $reservationId,
+            'debit' => 100,
+            'credit' => 0,
+        ]);
+        $this->assertDatabaseHas('journal_entry_lines', [
+            'journal_entry_id' => $entry->id,
+            'reservation_id' => $reservationId,
+            'debit' => 0,
+            'credit' => 100,
+        ]);
+    }
+
     /**
      * @return array<string, mixed>|null
      */
@@ -89,12 +150,12 @@ class ReservationPaymentValidationTest extends TestCase
         $client = Client::first();
         $stayReason = Stay_reason::first();
         $source = Reservation_source::first();
-        if (!$client || !$stayReason || !$source) {
+        if (! $client || ! $stayReason || ! $source) {
             return null;
         }
 
-        $room = $this->findFreeRoom($start, $end);
-        if (!$room) {
+        $room = $this->createIsolatedTestRoom() ?? $this->findOrCreateAvailableRoom($start, $end);
+        if (! $room) {
             return null;
         }
 
@@ -129,7 +190,7 @@ class ReservationPaymentValidationTest extends TestCase
                         ->where('expire_date', '>', $start);
                 })->exists();
 
-            if (!$overlap) {
+            if (! $overlap) {
                 return $candidate;
             }
         }

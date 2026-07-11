@@ -7,7 +7,6 @@ use App\Models\Reservation;
 use App\Models\User;
 use App\Services\Reports\ReportQueryService;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Route;
 
 class SiteQaAuditCommand extends Command
 {
@@ -39,35 +38,36 @@ class SiteQaAuditCommand extends Command
 
         if ($this->option('json')) {
             $this->line(json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+
             return self::SUCCESS;
         }
 
-        $this->info('Site QA Audit — ' . $report['generated_at']);
+        $this->info('Site QA Audit — '.$report['generated_at']);
         $this->newLine();
-        $this->line('Database: users=' . $report['database']['users']
-            . ', clients=' . $report['database']['clients']
-            . ', reservations=' . $report['database']['reservations']);
-        $this->line('Reports: ' . ($report['reports']['passed'] ?? 0) . '/' . ($report['reports']['total'] ?? 0) . ' OK');
+        $this->line('Database: users='.$report['database']['users']
+            .', clients='.$report['database']['clients']
+            .', reservations='.$report['database']['reservations']);
+        $this->line('Reports: '.($report['reports']['passed'] ?? 0).'/'.($report['reports']['total'] ?? 0).' OK');
 
-        if (!empty($report['reports']['failures'])) {
+        if (! empty($report['reports']['failures'])) {
             $this->warn('Report failures:');
             foreach ($report['reports']['failures'] as $fail) {
                 $this->line("  - {$fail['slug']}: {$fail['error']}");
             }
         }
 
-        if (!empty($report['issues'])) {
+        if (! empty($report['issues'])) {
             $this->warn('Issues:');
             foreach ($report['issues'] as $issue) {
-                $this->line('  - ' . $issue);
+                $this->line('  - '.$issue);
             }
         } else {
             $this->info('No data issues detected.');
         }
 
         $this->newLine();
-        $this->line('UI routes mapped: ' . count($report['routes']));
-        $this->line('Overall: ' . $report['summary']['status']);
+        $this->line('UI routes mapped: '.count($report['routes']));
+        $this->line('Overall: '.$report['summary']['status']);
 
         return $report['summary']['status'] === 'PASS' ? self::SUCCESS : self::FAILURE;
     }
@@ -95,6 +95,7 @@ class SiteQaAuditCommand extends Command
             ->filter(function ($r) {
                 $paid = (float) $r->payments()->where('type', 0)->sum('pay');
                 $refunded = (float) $r->payments()->where('type', 1)->sum('pay');
+
                 return $paid - $refunded > (float) $r->total + 0.01;
             })
             ->count();
@@ -113,7 +114,7 @@ class SiteQaAuditCommand extends Command
             'arrivals-departures', 'reservations-list', 'occupancy', 'revenue-summary',
             'accrual-cash-reconciliation', 'ar-aging', 'adjustments', 'tax', 'revpar',
             'by-dimension', 'peak-analysis', 'payments-refunds', 'closing-package',
-            'general-ledger', 'trial-balance', 'balance-sheet', 'cash-flow',
+            'general-ledger', 'trial-balance', 'cash-flow',
             'financial-audit-log',
         ];
 
@@ -125,7 +126,7 @@ class SiteQaAuditCommand extends Command
         foreach ($slugs as $slug) {
             try {
                 $data = $service->run($slug, $params);
-                if (!isset($data['columns'], $data['rows'])) {
+                if (! isset($data['columns'], $data['rows'])) {
                     throw new \RuntimeException('Missing columns/rows in response');
                 }
                 $passed++;

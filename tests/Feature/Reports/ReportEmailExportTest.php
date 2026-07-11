@@ -2,17 +2,20 @@
 
 namespace Tests\Feature\Reports;
 
+use App\Jobs\ProcessReportExportJob;
 use App\Mail\ReportReadyMail;
 use App\Models\ReportExport;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class ReportEmailExportTest extends TestCase
 {
-
     public function test_user_can_queue_email_export_with_custom_recipient(): void
     {
+        Queue::fake();
+
         $user = $this->userWithApiPermissions(['view reports', 'view financial reports']);
 
         $response = $this->actingAs($user, 'api')->postJson('/api/users/reports/revenue-summary/email-request', [
@@ -35,6 +38,8 @@ class ReportEmailExportTest extends TestCase
             'status' => ReportExport::STATUS_PENDING,
         ]);
 
+        Queue::assertPushed(ProcessReportExportJob::class);
+
         ReportExport::query()
             ->where('recipient_email', 'finance@hotel.test')
             ->where('status', ReportExport::STATUS_PENDING)
@@ -49,7 +54,7 @@ class ReportEmailExportTest extends TestCase
 
         $response = $this->actingAs($user, 'api')->get(
             '/api/users/reports/accrual-revenue/download?'
-            . http_build_query([
+            .http_build_query([
                 'format' => 'pdf',
                 'start_date' => '2026-06-01',
                 'end_date' => '2026-06-30',
@@ -157,7 +162,7 @@ class ReportEmailExportTest extends TestCase
             'expires_at' => now()->addDay(),
         ]);
 
-        $response = $this->get('/api/users/reports/exports/' . $export->id . '/download?token=' . $token);
+        $response = $this->get('/api/users/reports/exports/'.$export->id.'/download?token='.$token);
 
         $response->assertOk();
         $response->assertHeader('content-disposition');

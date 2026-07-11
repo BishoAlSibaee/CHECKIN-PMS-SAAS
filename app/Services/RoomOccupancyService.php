@@ -21,18 +21,18 @@ class RoomOccupancyService
         $query = Room::with(['roomType', 'building', 'floor', 'suite.floor'])
             ->where('active', 1);
 
-        if (!empty($filters['building_id'])) {
+        if (! empty($filters['building_id'])) {
             $query->where('building_id', (int) $filters['building_id']);
         }
-        if (!empty($filters['floor_id'])) {
+        if (! empty($filters['floor_id'])) {
             $query->where('floor_id', (int) $filters['floor_id']);
         }
-        if (!empty($filters['suite_id'])) {
+        if (! empty($filters['suite_id'])) {
             $query->where('suite_id', (int) $filters['suite_id']);
         }
-        if (!empty($filters['search'])) {
+        if (! empty($filters['search'])) {
             $search = $filters['search'];
-            $query->where('number', 'like', '%' . $search . '%');
+            $query->where('number', 'like', '%'.$search.'%');
         }
 
         $rooms = $query->orderBy('building_id')->orderBy('floor_id')->orderBy('number')->get();
@@ -47,7 +47,7 @@ class RoomOccupancyService
             $reservation = $reservationByRoom->get($room->id);
             $occupancyStatus = $this->resolveOccupancyStatus($room, $reservation, $dateStr);
 
-            if (!empty($filters['occupancy_status']) && $filters['occupancy_status'] !== $occupancyStatus) {
+            if (! empty($filters['occupancy_status']) && $filters['occupancy_status'] !== $occupancyStatus) {
                 continue;
             }
 
@@ -167,6 +167,16 @@ class RoomOccupancyService
 
     public function checkOutsToday(Carbon $date): int
     {
+        return $this->checkoutsDueOnDateQuery($date)->count();
+    }
+
+    public function overdueCheckoutsCount(Carbon $date): int
+    {
+        return $this->overdueCheckoutsQuery($date)->count();
+    }
+
+    public function pendingCheckoutsCount(Carbon $date): int
+    {
         return $this->pendingCheckoutsQuery($date)->count();
     }
 
@@ -199,6 +209,30 @@ class RoomOccupancyService
             ->where('expire_date', '<=', $date->toDateString());
     }
 
+    private function checkoutsDueOnDateQuery(Carbon $date)
+    {
+        return Reservation::query()
+            ->where('reservation_status', Reservation::STATUS_CONFIRMED)
+            ->where('logedin', Reservation::LOGEDIN_IN_HOUSE)
+            ->whereDate('expire_date', $date->toDateString());
+    }
+
+    private function overdueCheckoutsQuery(Carbon $date)
+    {
+        return Reservation::query()
+            ->where('reservation_status', Reservation::STATUS_CONFIRMED)
+            ->where('logedin', Reservation::LOGEDIN_IN_HOUSE)
+            ->where('expire_date', '<', $date->toDateString());
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function pendingCheckouts(Carbon $date): array
+    {
+        return $this->departuresToday($date);
+    }
+
     private function formatMovementList($reservations): array
     {
         return $reservations->map(function (Reservation $r) {
@@ -206,7 +240,7 @@ class RoomOccupancyService
 
             return [
                 'reservation_id' => $r->id,
-                'guest' => trim(($r->client->first_name ?? '') . ' ' . ($r->client->last_name ?? '')),
+                'guest' => trim(($r->client->first_name ?? '').' '.($r->client->last_name ?? '')),
                 'room' => $room?->number ?? '—',
                 'start_date' => $r->start_date,
                 'expire_date' => $r->expire_date,
@@ -253,11 +287,11 @@ class RoomOccupancyService
             $existing = $byRoom->get($roomId);
             $reservation = $reservationRoom->reservation;
 
-            if (!$reservation) {
+            if (! $reservation) {
                 continue;
             }
 
-            if (!$existing || $this->reservationPriority($reservation, $dateStr)
+            if (! $existing || $this->reservationPriority($reservation, $dateStr)
                 > $this->reservationPriority($existing, $dateStr)) {
                 $byRoom->put($roomId, $reservation);
             }
@@ -306,15 +340,15 @@ class RoomOccupancyService
             }
 
             $reservation = $reservationRoom->reservation;
-            if (!$reservation) {
+            if (! $reservation) {
                 continue;
             }
 
-            if (!$this->reservationTouchesDate($reservation, $dateStr)) {
+            if (! $this->reservationTouchesDate($reservation, $dateStr)) {
                 continue;
             }
 
-            if (!$best || $this->reservationPriority($reservation, $dateStr)
+            if (! $best || $this->reservationPriority($reservation, $dateStr)
                 > $this->reservationPriority($best, $dateStr)) {
                 $best = $reservation;
             }
@@ -364,7 +398,7 @@ class RoomOccupancyService
         $roomStatus = is_object($room) && isset($room->roomStatus) ? (int) $room->roomStatus : 1;
         $active = is_object($room) && isset($room->active) ? (int) $room->active : 1;
 
-        if (!$active || $roomStatus === 4) {
+        if (! $active || $roomStatus === 4) {
             return 'out_of_service';
         }
 
@@ -372,7 +406,7 @@ class RoomOccupancyService
             return 'preparation';
         }
 
-        if (!$reservation) {
+        if (! $reservation) {
             if ($roomStatus === 2) {
                 return 'preparation';
             }
@@ -430,7 +464,7 @@ class RoomOccupancyService
             'building_id' => $room->building_id,
             'building_name' => $room->building?->name ?? null,
             'floor_id' => $room->floor_id,
-            'floor_name' => $room->floor ? 'Floor ' . ($room->floor->number ?? $room->floor_id) : null,
+            'floor_name' => $room->floor ? 'Floor '.($room->floor->number ?? $room->floor_id) : null,
             'floor_number' => $room->floor?->number ?? (string) $room->floor_id,
             'suite_id' => $room->suite_id,
             'suite_name' => $this->formatSuiteLabel($room->suite?->number),
@@ -456,7 +490,7 @@ class RoomOccupancyService
             $payload['reservation'] = [
                 'reservation_id' => $reservation->id,
                 'client_name' => $client
-                    ? trim(($client->first_name ?? '') . ' ' . ($client->last_name ?? ''))
+                    ? trim(($client->first_name ?? '').' '.($client->last_name ?? ''))
                     : '—',
                 'client_phone' => $client->mobile ?? null,
                 'start_date' => $reservation->start_date,
@@ -496,7 +530,7 @@ class RoomOccupancyService
             return $trimmed;
         }
 
-        return 'Suite ' . $trimmed;
+        return 'Suite '.$trimmed;
     }
 
     private function emptySummary(): array

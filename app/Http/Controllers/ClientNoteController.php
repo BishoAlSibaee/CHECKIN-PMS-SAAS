@@ -2,12 +2,11 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\ClientNote;
-use Illuminate\Http\Request;
+use App\Http\Requests\ClientNote\DeleteClientNoteRequest;
 use App\Http\Requests\ClientNote\GetNotesByClientIdRequest;
 use App\Http\Requests\ClientNote\StoreClientNoteRequest;
 use App\Http\Requests\ClientNote\UpdateClientNoteRequest;
-use App\Http\Requests\ClientNote\DeleteClientNoteRequest;
+use App\Models\ClientNote;
 
 class ClientNoteController extends Controller
 {
@@ -21,6 +20,7 @@ class ClientNoteController extends Controller
             $notes = ClientNote::where('client_id', $clientId)
                 ->orderBy('created_at', 'desc')
                 ->get();
+
             return \SuccessData('Notes fetched successfully', $notes);
         } catch (\Exception $e) {
             return \Failed($e->getMessage());
@@ -34,6 +34,7 @@ class ClientNoteController extends Controller
     {
         try {
             $note = ClientNote::create($request->all());
+
             return \SuccessData('Note added successfully', $note);
         } catch (\Exception $e) {
             return \Failed($e->getMessage());
@@ -48,6 +49,7 @@ class ClientNoteController extends Controller
         try {
             $note = ClientNote::findOrFail($request->id);
             $note->update($request->all());
+
             return \SuccessData('Note updated successfully', $note);
         } catch (\Exception $e) {
             return \Failed($e->getMessage());
@@ -62,6 +64,7 @@ class ClientNoteController extends Controller
         try {
             $note = ClientNote::findOrFail($request->id);
             $note->delete();
+
             return \Success('Note deleted successfully');
         } catch (\Exception $e) {
             return \Failed($e->getMessage());

@@ -2,13 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\Client\AddClientRequest;
+use App\Http\Requests\Client\GetClientByRequest;
 use App\Models\Client;
 use App\Models\Reservation;
 use App\Models\ReservationPay;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use App\Http\Requests\Client\AddClientRequest;
-use App\Http\Requests\Client\GetClientByRequest;
 
 class ClientsController extends Controller
 {
@@ -19,7 +19,7 @@ class ClientsController extends Controller
             $search = $request->search;
             $excludeAssigned = $request->exclude_assigned;
 
-            $query = Client::latest();
+            $query = Client::on('mysql2')->latest();
 
             if ($excludeAssigned) {
                 $query->whereDoesntHave('classifications');
@@ -43,6 +43,7 @@ class ClientsController extends Controller
             }
 
             $clients = $query->paginate($perPage);
+
             return \Pagination($clients);
         } catch (\Exception $e) {
             return \Failed($e->getMessage());
@@ -77,7 +78,7 @@ class ClientsController extends Controller
         try {
             $client = Client::find($request->id);
 
-            if (!$client) {
+            if (! $client) {
                 return \Failed('Client not found');
             }
 
@@ -106,7 +107,7 @@ class ClientsController extends Controller
         try {
             $client = Client::find($id);
 
-            if (!$client) {
+            if (! $client) {
                 return \Failed('Client not found');
             }
 
@@ -124,7 +125,7 @@ class ClientsController extends Controller
                 ->orWhere('IdNumber', $request->IdNumber)
                 ->first();
 
-            if (!$client) {
+            if (! $client) {
                 return \Failed('Client not found');
             }
 
@@ -139,7 +140,7 @@ class ClientsController extends Controller
         try {
             $client = Client::find($id);
 
-            if (!$client) {
+            if (! $client) {
                 return \Failed('Client not found');
             }
 

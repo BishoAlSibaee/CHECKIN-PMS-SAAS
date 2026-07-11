@@ -25,8 +25,7 @@ class ReportVerificationService
         private FinancialStatementService $financialStatementService,
         private FinancialAuditService $financialAuditService,
         private RoomOccupancyService $occupancyService,
-    ) {
-    }
+    ) {}
 
     /**
      * @return array<int, array{slug: string, pass: bool, message: string}>
@@ -55,7 +54,12 @@ class ReportVerificationService
     public function verifySlug(string $slug, Carbon $start, Carbon $end, array $params): array
     {
         try {
-            $report = $this->reportQueryService->run($slug, $params);
+            $runParams = $params;
+            if ($slug === 'general-ledger' && empty($runParams['account_type']) && empty($runParams['account_id'])) {
+                $runParams['account_type'] = 'asset';
+            }
+
+            $report = $this->reportQueryService->run($slug, $runParams);
             $message = match ($slug) {
                 'overview' => $this->verifyOverview($report, $start, $end),
                 'accrual-revenue' => $this->verifyAccrualRevenue($report, $start, $end),
@@ -72,8 +76,7 @@ class ReportVerificationService
                 'ar-aging' => $this->verifyArAging($report, $end),
                 'chart-of-accounts' => $this->verifyChartOfAccounts($report, $start, $end),
                 'trial-balance' => $this->verifyTrialBalance($report, $start, $end),
-                'general-ledger' => $this->verifyGeneralLedger($report, $start, $end),
-                'balance-sheet' => $this->verifyBalanceSheet($report, $end),
+                'general-ledger' => $this->verifyGeneralLedger($report, $start, $end, $runParams),
                 'cash-flow' => $this->verifyCashFlow($report, $start, $end),
                 'journal-entries' => $this->verifyJournalEntries($report, $start, $end),
                 'financial-audit-log' => $this->verifyFinancialAuditLog($report, $start, $end),
@@ -83,11 +86,11 @@ class ReportVerificationService
                 default => 'Unknown slug',
             };
 
-            $pass = !str_starts_with($message, 'FAIL');
+            $pass = ! str_starts_with($message, 'FAIL');
 
             return ['slug' => $slug, 'pass' => $pass, 'message' => $message];
         } catch (\Throwable $e) {
-            return ['slug' => $slug, 'pass' => false, 'message' => 'FAIL: ' . $e->getMessage()];
+            return ['slug' => $slug, 'pass' => false, 'message' => 'FAIL: '.$e->getMessage()];
         }
     }
 
@@ -121,14 +124,14 @@ class ReportVerificationService
         $expectedCashNet = round($cash['net_earnings'], 2);
         $expectedAr = $this->totalAccountsReceivable($end);
 
-        if (!$this->near($this->summaryFloat($report, 'Accrual revenue'), $expectedRevenue)) {
+        if (! $this->near($this->summaryFloat($report, 'Accrual revenue'), $expectedRevenue)) {
             return "FAIL: Accrual revenue {$this->summaryFloat($report, 'Accrual revenue')} vs {$expectedRevenue}";
         }
-        if (!$this->near($this->summaryFloat($report, 'Net cash'), $expectedCashNet)) {
-            return "FAIL: Net cash mismatch";
+        if (! $this->near($this->summaryFloat($report, 'Net cash'), $expectedCashNet)) {
+            return 'FAIL: Net cash mismatch';
         }
-        if (!$this->near($this->summaryFloat($report, 'A/R balance'), $expectedAr)) {
-            return "FAIL: AR balance mismatch";
+        if (! $this->near($this->summaryFloat($report, 'A/R balance'), $expectedAr)) {
+            return 'FAIL: AR balance mismatch';
         }
 
         return 'PASS: overview accrual/cash/AR';
@@ -143,7 +146,7 @@ class ReportVerificationService
         $rowSum = round(collect($report['rows'] ?? [])->sum(fn ($r) => (float) ($r['revenue'] ?? 0)), 2);
         $detailsByDate = collect($accrual['details'] ?? [])->groupBy('charge_date');
 
-        if (!$this->near($summary, $expected) || !$this->near($rowSum, $expected)) {
+        if (! $this->near($summary, $expected) || ! $this->near($rowSum, $expected)) {
             return "FAIL: accrual-revenue summary {$summary} rows {$rowSum} vs {$expected}";
         }
 
@@ -161,7 +164,7 @@ class ReportVerificationService
             $date = (string) ($row['charge_date'] ?? '');
             $items = $detailsByDate->get($date, collect());
             $expectedDayRevenue = round($items->sum('revenue'), 2);
-            if (!$this->near((float) ($row['revenue'] ?? 0), $expectedDayRevenue)) {
+            if (! $this->near((float) ($row['revenue'] ?? 0), $expectedDayRevenue)) {
                 return "FAIL: accrual-revenue revenue on {$date}";
             }
 
@@ -199,12 +202,12 @@ class ReportVerificationService
         $expectedEarnedNights = (int) $accrual['current']['count'];
         $detailsByDate = collect($accrual['details'] ?? [])->groupBy('charge_date');
 
-        if (!$this->near($this->summaryFloat($report, 'Total revenue'), $expectedRevenue)) {
+        if (! $this->near($this->summaryFloat($report, 'Total revenue'), $expectedRevenue)) {
             return 'FAIL: revenue-summary total revenue';
         }
 
         $rowRevenue = round(collect($report['rows'] ?? [])->sum(fn ($r) => (float) ($r['revenue'] ?? 0)), 2);
-        if (!$this->near($rowRevenue, $expectedRevenue)) {
+        if (! $this->near($rowRevenue, $expectedRevenue)) {
             return "FAIL: revenue-summary row revenue sum {$rowRevenue} vs {$expectedRevenue}";
         }
 
@@ -265,7 +268,7 @@ class ReportVerificationService
             }
 
             $expectedDayRevenue = round(collect($detailsByDate->get($date, collect()))->sum('revenue'), 2);
-            if (!$this->near((float) ($row['revenue'] ?? 0), $expectedDayRevenue)) {
+            if (! $this->near((float) ($row['revenue'] ?? 0), $expectedDayRevenue)) {
                 return "FAIL: revenue-summary revenue on {$date}";
             }
         }
@@ -276,7 +279,7 @@ class ReportVerificationService
     private function verifyTax(array $report, Carbon $start, Carbon $end): string
     {
         $expected = round((float) $this->revenueAccrualService->calculate('total', null, $start, $end, false)['current']['tax'], 2);
-        if (!$this->near($this->summaryFloat($report, 'Total tax'), $expected)) {
+        if (! $this->near($this->summaryFloat($report, 'Total tax'), $expected)) {
             return 'FAIL: tax total';
         }
 
@@ -295,13 +298,13 @@ class ReportVerificationService
         $expectedRevpar = $avail > 0 ? round($revenue / $avail, 2) : 0.0;
         $expectedAdr = $nights > 0 ? round($subtotal / $nights, 2) : 0.0;
 
-        if (!$this->near($this->summaryFloat($report, 'Revenue (incl. tax)'), $revenue)) {
+        if (! $this->near($this->summaryFloat($report, 'Revenue (incl. tax)'), $revenue)) {
             return 'FAIL: revpar revenue';
         }
-        if (!$this->near($this->summaryFloat($report, 'RevPAR (revenue / available room nights)'), $expectedRevpar)) {
+        if (! $this->near($this->summaryFloat($report, 'RevPAR (revenue / available room nights)'), $expectedRevpar)) {
             return 'FAIL: revpar value';
         }
-        if (!$this->near($this->summaryFloat($report, 'ADR (subtotal / room nights)'), $expectedAdr)) {
+        if (! $this->near($this->summaryFloat($report, 'ADR (subtotal / room nights)'), $expectedAdr)) {
             return 'FAIL: ADR';
         }
 
@@ -310,12 +313,33 @@ class ReportVerificationService
 
     private function verifyOccupancy(array $report, Carbon $start, Carbon $end): string
     {
-        $accrual = $this->revenueAccrualService->calculate('total', null, $start, $end, false);
-        $expectedNights = (int) $accrual['current']['count'];
+        $expectedNights = ReservationDailyCharge::query()
+            ->join('reservations', 'reservation_daily_charges.reservation_id', '=', 'reservations.id')
+            ->where('reservations.reservation_status', Reservation::STATUS_CONFIRMED)
+            ->whereBetween('reservation_daily_charges.charge_date', [
+                $start->toDateString(),
+                $end->toDateString(),
+            ])
+            ->count();
         $sold = (int) $this->summaryFloat($report, 'Total room nights sold');
 
         if ($sold !== $expectedNights) {
             return "FAIL: occupancy sold nights {$sold} vs {$expectedNights}";
+        }
+
+        $totalRooms = Room::query()
+            ->where('active', 1)
+            ->whereNotIn('roomStatus', [3, 4])
+            ->count();
+
+        foreach ($report['rows'] ?? [] as $row) {
+            $booked = (int) ($row['room_nights'] ?? 0);
+            $available = (int) ($row['available_rooms'] ?? 0);
+            $expectedAvailable = max(0, $totalRooms - $booked);
+
+            if (! $this->near($available, $expectedAvailable)) {
+                return "FAIL: occupancy available rooms {$available} vs {$expectedAvailable} on {$row['date']}";
+            }
         }
 
         return 'PASS: occupancy';
@@ -324,10 +348,10 @@ class ReportVerificationService
     private function verifyCashReport(array $report, Carbon $start, Carbon $end, string $slug): string
     {
         $cash = $this->cashForPeriod($start, $end);
-        if (!$this->near($this->summaryFloat($report, 'Cash in'), round($cash['total_in'], 2))) {
+        if (! $this->near($this->summaryFloat($report, 'Cash in'), round($cash['total_in'], 2))) {
             return "FAIL: {$slug} cash in";
         }
-        if (!$this->near($this->summaryFloat($report, 'Net'), round($cash['net_earnings'], 2))) {
+        if (! $this->near($this->summaryFloat($report, 'Net'), round($cash['net_earnings'], 2))) {
             return "FAIL: {$slug} net";
         }
 
@@ -340,13 +364,13 @@ class ReportVerificationService
         $cashNet = round($this->cashForPeriod($start, $end)['net_earnings'], 2);
         $diff = round($accrual - $cashNet, 2);
 
-        if (!$this->near($this->summaryFloat($report, 'Accrual revenue'), $accrual)) {
+        if (! $this->near($this->summaryFloat($report, 'Accrual revenue'), $accrual)) {
             return 'FAIL: reconciliation accrual';
         }
-        if (!$this->near($this->summaryFloat($report, 'Cash net'), $cashNet)) {
+        if (! $this->near($this->summaryFloat($report, 'Cash net'), $cashNet)) {
             return 'FAIL: reconciliation cash net';
         }
-        if (!$this->near($this->summaryFloat($report, 'Difference'), $diff)) {
+        if (! $this->near($this->summaryFloat($report, 'Difference'), $diff)) {
             return 'FAIL: reconciliation difference';
         }
 
@@ -373,7 +397,7 @@ class ReportVerificationService
 
         foreach ($checks as $metric => $expected) {
             $actual = (float) ($rows->get($metric)['amount'] ?? 0);
-            if (!$this->near($actual, $expected)) {
+            if (! $this->near($actual, $expected)) {
                 return "FAIL: closing-package {$metric} {$actual} vs {$expected}";
             }
         }
@@ -387,7 +411,7 @@ class ReportVerificationService
         $expected = round((float) $accrual['current']['total'], 2);
         $rowSum = round(collect($report['rows'] ?? [])->sum(fn ($r) => (float) ($r['revenue'] ?? 0)), 2);
 
-        if (!$this->near($this->summaryFloat($report, 'Total revenue'), $expected) || !$this->near($rowSum, $expected)) {
+        if (! $this->near($this->summaryFloat($report, 'Total revenue'), $expected) || ! $this->near($rowSum, $expected)) {
             return 'FAIL: by-dimension revenue sum';
         }
 
@@ -400,7 +424,7 @@ class ReportVerificationService
         $expected = round(collect($accrual['details'] ?? [])->sum('revenue'), 2);
         $peak = round(collect($report['rows'] ?? [])->sum(fn ($r) => (float) ($r['revenue'] ?? 0)), 2);
 
-        if (!$this->near($this->summaryFloat($report, 'Total revenue'), $expected) || !$this->near($peak, $expected)) {
+        if (! $this->near($this->summaryFloat($report, 'Total revenue'), $expected) || ! $this->near($peak, $expected)) {
             return 'FAIL: peak-analysis revenue';
         }
 
@@ -418,11 +442,11 @@ class ReportVerificationService
             ->whereIn('id', $reservationIds)
             ->where('reservation_status', 1)
             ->get()
-            ->sum(fn (Reservation $r) => (float) $r->extras + (float) $r->penalties - (float) $r->discount), 2);
+            ->sum(fn (Reservation $r) => (float) $r->extras + (float) $r->penalties - (float) $r->classification_discount - (float) $r->discount), 2);
 
         $rowSum = round(collect($report['rows'] ?? [])->sum(fn ($r) => (float) ($r['net_adjustment'] ?? 0)), 2);
 
-        if (!$this->near($rowSum, $expected)) {
+        if (! $this->near($rowSum, $expected)) {
             return "FAIL: adjustments {$rowSum} vs {$expected}";
         }
 
@@ -441,7 +465,7 @@ class ReportVerificationService
             2
         );
 
-        if (!$this->near($reportAr, $expected) || !$this->near($bucketSum, $expected)) {
+        if (! $this->near($reportAr, $expected) || ! $this->near($bucketSum, $expected)) {
             return "FAIL: ar-aging {$reportAr} buckets {$bucketSum} vs {$expected}";
         }
 
@@ -458,16 +482,16 @@ class ReportVerificationService
             return 'FAIL: chart-of-accounts missing 4010';
         }
 
-        if (!$this->near((float) $row4010['balance'], round((float) $accrual['current']['subtotal'], 2))) {
+        if (! $this->near((float) $row4010['balance'], round((float) $accrual['current']['subtotal'], 2))) {
             return 'FAIL: chart-of-accounts 4010';
         }
-        if (!$this->near(
+        if (! $this->near(
             (float) (collect($report['rows'] ?? [])->firstWhere('code', '2150')['balance'] ?? 0),
             round((float) $accrual['current']['tax'], 2)
         )) {
             return 'FAIL: chart-of-accounts 2150';
         }
-        if (!$this->near(
+        if (! $this->near(
             (float) ($row4010['balance'] ?? 0),
             round((float) ($balances->get('4010')->balance ?? 0), 2)
         )) {
@@ -482,58 +506,41 @@ class ReportVerificationService
         $service = $this->financialStatementService->trialBalance($start, $end);
         $balanced = ($this->reportSummaryString($report, 'Balanced') ?? '') === 'Yes';
 
-        if (!$balanced && $service['totals']['balanced']) {
+        if (! $balanced && $service['totals']['balanced']) {
             return 'FAIL: trial-balance balanced flag';
         }
-        if (!$this->near($this->summaryFloat($report, 'Total debit'), (float) $service['totals']['debit'])) {
+        if (! $this->near($this->summaryFloat($report, 'Total debit'), (float) $service['totals']['debit'])) {
             return 'FAIL: trial-balance debit';
         }
-        if (!$this->near($this->summaryFloat($report, 'Total credit'), (float) $service['totals']['credit'])) {
+        if (! $this->near($this->summaryFloat($report, 'Total credit'), (float) $service['totals']['credit'])) {
             return 'FAIL: trial-balance credit';
         }
 
         return 'PASS: trial-balance';
     }
 
-    private function verifyGeneralLedger(array $report, Carbon $start, Carbon $end): string
+    /**
+     * @param  array<string, mixed>  $params
+     */
+    private function verifyGeneralLedger(array $report, Carbon $start, Carbon $end, array $params): string
     {
-        $service = $this->financialStatementService->generalLedger($start, $end, null);
+        $accountType = (string) ($params['account_type'] ?? 'asset');
+        $accountId = ! empty($params['account_id']) ? (int) $params['account_id'] : null;
+        $service = $this->financialStatementService->generalLedger($start, $end, $accountId, $accountType);
         $debit = round(collect($report['rows'] ?? [])->sum(fn ($r) => (float) ($r['debit'] ?? 0)), 2);
         $credit = round(collect($report['rows'] ?? [])->sum(fn ($r) => (float) ($r['credit'] ?? 0)), 2);
 
-        if (!$this->near($debit, (float) $service['totals']['debit']) || !$this->near($credit, (float) $service['totals']['credit'])) {
+        if (! $this->near($debit, (float) $service['totals']['debit']) || ! $this->near($credit, (float) $service['totals']['credit'])) {
             return 'FAIL: general-ledger totals';
         }
 
         return 'PASS: general-ledger';
     }
 
-    private function verifyBalanceSheet(array $report, Carbon $asOf): string
-    {
-        $service = $this->financialStatementService->balanceSheet($asOf);
-
-        if (!$this->near($this->summaryFloat($report, 'Total assets'), (float) $service['totals']['assets'])) {
-            return 'FAIL: balance-sheet assets';
-        }
-        if (!$this->near($this->summaryFloat($report, 'Total liabilities'), (float) $service['totals']['liabilities'])) {
-            return 'FAIL: balance-sheet liabilities';
-        }
-        if (!$this->near($this->summaryFloat($report, 'Total equity'), (float) $service['totals']['equity'])) {
-            return 'FAIL: balance-sheet equity';
-        }
-
-        $balancedLabel = ($this->reportSummaryString($report, 'Balanced') ?? '') === 'Yes';
-        if ($balancedLabel !== (bool) $service['totals']['balanced']) {
-            return 'FAIL: balance-sheet balanced flag';
-        }
-
-        return 'PASS: balance-sheet';
-    }
-
     private function verifyCashFlow(array $report, Carbon $start, Carbon $end): string
     {
         $service = $this->financialStatementService->cashFlow($start, $end);
-        if (!$this->near($this->summaryFloat($report, 'Net change'), (float) $service['totals']['net_change'])) {
+        if (! $this->near($this->summaryFloat($report, 'Net change'), (float) $service['totals']['net_change'])) {
             return 'FAIL: cash-flow net change';
         }
 
@@ -632,7 +639,7 @@ class ReportVerificationService
                 if ($hasDeparture) {
                     $movements++;
                 }
-                if (!$hasArrival && !$hasDeparture) {
+                if (! $hasArrival && ! $hasDeparture) {
                     $movements++;
                 }
             });
@@ -690,14 +697,14 @@ class ReportVerificationService
 
         $totalIn = (float) ReservationPay::query()
             ->join('reservations', 'reservation_pay.reservation_id', '=', 'reservations.id')
-            ->whereIn('reservations.reservation_status', Reservation::cashReportStatuses())
+            ->whereIn('reservations.reservation_status', Reservation::cashMovementStatuses())
             ->whereBetween('reservation_pay.created_at', [$periodStart, $periodEnd])
             ->where('reservation_pay.type', ReservationPay::TYPE_PAYMENT)
             ->sum('reservation_pay.pay');
 
         $totalOut = (float) ReservationPay::query()
             ->join('reservations', 'reservation_pay.reservation_id', '=', 'reservations.id')
-            ->whereIn('reservations.reservation_status', Reservation::cashReportStatuses())
+            ->whereIn('reservations.reservation_status', Reservation::cashMovementStatuses())
             ->whereBetween('reservation_pay.created_at', [$periodStart, $periodEnd])
             ->where('reservation_pay.type', ReservationPay::TYPE_REFUND)
             ->sum('reservation_pay.pay');

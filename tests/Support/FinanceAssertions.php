@@ -16,6 +16,7 @@ trait FinanceAssertions
         $prefix = $context ? "{$context}: " : '';
 
         $base = (float) $reservation->base_price;
+        $classificationDiscount = (float) $reservation->classification_discount;
         $discount = (float) $reservation->discount;
         $extras = (float) $reservation->extras;
         $penalties = (float) $reservation->penalties;
@@ -23,21 +24,21 @@ trait FinanceAssertions
         $taxes = (float) $reservation->taxes;
         $total = (float) $reservation->total;
 
-        $expectedSubtotal = round($base - $discount + $extras + $penalties, 2);
+        $expectedSubtotal = round($base - $classificationDiscount - $discount + $extras + $penalties, 2);
         Assert::assertEqualsWithDelta(
             $expectedSubtotal,
             $subtotal,
             0.02,
-            $prefix . 'subtotal = base - discount + extras + penalties'
+            $prefix.'subtotal = base - classification_discount - discount + extras + penalties'
         );
 
         $expectedTaxes = round($subtotal * self::TAX_RATE, 2, PHP_ROUND_HALF_UP);
-        Assert::assertEqualsWithDelta($expectedTaxes, $taxes, 0.02, $prefix . 'taxes = 15% of subtotal');
+        Assert::assertEqualsWithDelta($expectedTaxes, $taxes, 0.02, $prefix.'taxes = 15% of subtotal');
 
-        Assert::assertEqualsWithDelta($subtotal + $taxes, $total, 0.02, $prefix . 'total = subtotal + taxes');
+        Assert::assertEqualsWithDelta($subtotal + $taxes, $total, 0.02, $prefix.'total = subtotal + taxes');
 
         $chargeSum = (float) ReservationDailyCharge::where('reservation_id', $reservation->id)->sum('base_amount');
-        Assert::assertEqualsWithDelta($base, $chargeSum, 0.02, $prefix . 'base_price = sum(daily charges)');
+        Assert::assertEqualsWithDelta($base, $chargeSum, 0.02, $prefix.'base_price = sum(daily charges)');
     }
 
     protected function assertPricingEngineMatchesReservation(
@@ -45,7 +46,7 @@ trait FinanceAssertions
         Reservation $reservation
     ): void {
         foreach ($reservation->reservationRooms as $resRoom) {
-            if (!$resRoom->room) {
+            if (! $resRoom->room) {
                 continue;
             }
 
@@ -109,8 +110,8 @@ trait FinanceAssertions
     ): void {
         $actual = $this->reportSummaryValue($reportData, $label);
         $prefix = $context !== '' ? "{$context}: " : '';
-        Assert::assertNotNull($actual, $prefix . "summary label missing: {$label}");
-        Assert::assertEqualsWithDelta($expected, $actual, $delta, $prefix . $label);
+        Assert::assertNotNull($actual, $prefix."summary label missing: {$label}");
+        Assert::assertEqualsWithDelta($expected, $actual, $delta, $prefix.$label);
     }
 
     /**
@@ -120,7 +121,7 @@ trait FinanceAssertions
     {
         $sum = round(collect($rows)->sum(fn ($r) => (float) ($r[$key] ?? 0)), 2);
         $prefix = $context !== '' ? "{$context}: " : '';
-        Assert::assertEqualsWithDelta($expected, $sum, $delta, $prefix . "sum({$key})");
+        Assert::assertEqualsWithDelta($expected, $sum, $delta, $prefix."sum({$key})");
     }
 
     /**

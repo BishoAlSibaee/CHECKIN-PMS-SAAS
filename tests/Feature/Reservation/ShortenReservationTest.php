@@ -7,6 +7,7 @@ use App\Models\RefundPolicy;
 use App\Models\Reservation;
 use App\Models\ReservationDailyCharge;
 use App\Models\ReservationPay;
+use App\Models\ReservationRoom;
 use App\Models\Reservation_source;
 use App\Models\Room;
 use App\Models\Stay_reason;
@@ -110,6 +111,131 @@ class ShortenReservationTest extends TestCase
         $reservation->refresh();
         $this->assertEquals($newExpire, $reservation->expire_date);
         $this->assertNotEquals(Reservation::STATUS_CANCELLED, (int) $reservation->reservation_status);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_partial_refund_preview_counts_cancelled_nights_by_day_not_charge_lines(): void
+    {
+        Carbon::setTestNow('2026-06-01');
+
+        $user = $this->userWithApiPermissions(['manage refunds']);
+        $reservation = $this->createPaidReservation('2026-06-15', '2026-06-23', $user);
+        $this->assertNotNull($reservation);
+
+        $newExpire = '2026-06-19';
+        $secondRoom = $this->createIsolatedTestRoom();
+        $this->assertNotNull($secondRoom);
+        $secondReservationRoom = ReservationRoom::query()->create([
+            'reservation_id' => $reservation->id,
+            'room_id' => $secondRoom->id,
+            'suite_id' => null,
+            'price' => 280,
+        ]);
+
+        $linesToMirror = ReservationDailyCharge::query()
+            ->where('reservation_id', $reservation->id)
+            ->where('charge_date', '>=', $newExpire)
+            ->where('charge_date', '<', '2026-06-23')
+            ->get();
+        foreach ($linesToMirror as $line) {
+            ReservationDailyCharge::query()->create([
+                'reservation_id' => $reservation->id,
+                'reservation_room_id' => $secondReservationRoom->id,
+                'room_id' => $secondRoom->id,
+                'charge_date' => $line->charge_date,
+                'base_amount' => $line->base_amount,
+                'is_peak_day' => $line->is_peak_day,
+                'is_in_plan' => $line->is_in_plan,
+                'price_source' => $line->price_source,
+                'rent_type' => $line->rent_type,
+            ]);
+        }
+
+        $preview = $this->actingAs($user, 'api')->getJson(
+            '/api/users/refund-policies/preview?reservation_id='.$reservation->id
+            .'&new_expire_date='.$newExpire
+        );
+        $preview->assertStatus(200);
+        $preview->assertJsonPath('success', true);
+        $preview->assertJsonPath('data.breakdown.partial_cancel', true);
+        $this->assertEquals(4, (int) $preview->json('data.breakdown.cancelled_nights_count'));
+
+        Carbon::setTestNow();
+    }
+
+    public function test_updating_dates_after_full_payment_refunds_full_overpayment(): void
+    {
+        Carbon::setTestNow('2026-06-01');
+
+        $user = $this->userWithApiPermissions(['update reservations', 'manage refunds']);
+        $reservation = $this->createPaidReservation('2026-06-15', '2026-06-23', $user);
+        $this->assertNotNull($reservation);
+
+        $oldTotal = (float) $reservation->total;
+        $oldPaid = (float) $reservation->paidNetAmount();
+        $this->assertGreaterThan(0, $oldTotal);
+        $this->assertEqualsWithDelta($oldTotal, $oldPaid, 0.01);
+
+        $update = $this->actingAs($user, 'api')->patchJson(
+            "/api/users/reservations/{$reservation->id}",
+            [
+                'start_date' => '2026-06-17',
+                'expire_date' => '2026-06-23',
+            ]
+        );
+        $update->assertStatus(200);
+        $update->assertJsonPath('success', true);
+
+        $reservation->refresh()->load('payments');
+        $newTotal = (float) $reservation->total;
+        $this->assertLessThan($oldTotal, $newTotal);
+
+        $dateChangeRefund = $reservation->payments
+            ->where('type', ReservationPay::TYPE_REFUND)
+            ->sortByDesc('id')
+            ->first();
+        $this->assertNotNull($dateChangeRefund);
+
+        $expectedRefund = round($oldPaid - $newTotal, 2);
+        $this->assertGreaterThan(0, $expectedRefund);
+        $this->assertEqualsWithDelta($expectedRefund, (float) $dateChangeRefund->pay, 0.01);
+        $this->assertSame('استرداد — تقليص مدة الحجز', $dateChangeRefund->note);
+        $this->assertEqualsWithDelta($newTotal, $reservation->paidNetAmount(), 0.01);
+        $this->assertEqualsWithDelta(0, $reservation->balanceDue(), 0.01);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_updating_expire_date_after_full_payment_refunds_full_overpayment(): void
+    {
+        Carbon::setTestNow('2026-06-01');
+
+        $user = $this->userWithApiPermissions(['update reservations', 'manage refunds']);
+        $reservation = $this->createPaidReservation('2026-06-15', '2026-06-23', $user);
+        $this->assertNotNull($reservation);
+
+        $oldPaid = (float) $reservation->paidNetAmount();
+        $oldTotal = (float) $reservation->total;
+
+        $update = $this->actingAs($user, 'api')->patchJson(
+            "/api/users/reservations/{$reservation->id}",
+            ['expire_date' => '2026-06-19']
+        );
+        $update->assertStatus(200);
+        $update->assertJsonPath('success', true);
+
+        $reservation->refresh()->load('payments');
+        $newTotal = (float) $reservation->total;
+        $this->assertLessThan($oldTotal, $newTotal);
+
+        $refund = $reservation->payments
+            ->where('type', ReservationPay::TYPE_REFUND)
+            ->sortByDesc('id')
+            ->first();
+        $this->assertNotNull($refund);
+        $this->assertEqualsWithDelta($oldPaid - $newTotal, (float) $refund->pay, 0.01);
+        $this->assertEqualsWithDelta($newTotal, $reservation->paidNetAmount(), 0.01);
 
         Carbon::setTestNow();
     }

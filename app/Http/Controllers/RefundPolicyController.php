@@ -10,21 +10,30 @@ use App\Http\Requests\RefundPolicy\UpdateRefundPolicyRequest;
 use App\Http\Resources\RefundPolicy\RefundPolicyResource;
 use App\Models\RefundPolicy;
 use App\Models\Reservation;
+use App\Services\Cache\CacheInvalidator;
+use App\Services\Cache\ReferenceDataCache;
 use App\Services\RefundPolicyService;
 
 class RefundPolicyController extends Controller
 {
-    public function __construct(private RefundPolicyService $refundPolicyService)
-    {
-    }
+    public function __construct(private RefundPolicyService $refundPolicyService) {}
 
     public function index()
     {
         try {
             $perPage = \returnPerPage();
-            $policies = RefundPolicy::query()->orderBy('rent_type')->orderBy('days_threshold')->paginate($perPage);
+            $page = max(1, (int) request()->input('page', 1));
+            $paginator = ReferenceDataCache::remember(
+                'refund_policies',
+                "page:{$page}:per:{$perPage}",
+                fn () => RefundPolicy::query()->orderBy('rent_type')->orderBy('days_threshold')->paginate($perPage)
+            );
 
-            return \Pagination($policies);
+            $paginator->getCollection()->transform(
+                fn (RefundPolicy $policy) => (new RefundPolicyResource($policy))->resolve()
+            );
+
+            return \Pagination($paginator);
         } catch (\Exception $e) {
             return \Failed($e->getMessage());
         }
@@ -34,6 +43,7 @@ class RefundPolicyController extends Controller
     {
         try {
             $policy = RefundPolicy::create($request->validated());
+            CacheInvalidator::refundPoliciesChanged();
 
             return \SuccessData('Refund policy created', (new RefundPolicyResource($policy))->resolve());
         } catch (\Exception $e) {
@@ -51,6 +61,7 @@ class RefundPolicyController extends Controller
         try {
             $refund_policy->update($request->validated());
             $refund_policy->refresh();
+            CacheInvalidator::refundPoliciesChanged();
 
             return \SuccessData(
                 'Refund policy updated',
@@ -65,6 +76,7 @@ class RefundPolicyController extends Controller
     {
         $policy = RefundPolicy::findOrFail($request->id);
         $policy->delete();
+        CacheInvalidator::refundPoliciesChanged();
 
         return \Success('Refund policy deleted');
     }
@@ -118,13 +130,13 @@ class RefundPolicyController extends Controller
             $payLabel = $pay === 2 ? 'full payment' : ($pay === 1 ? 'partial payment' : 'no payment');
 
             return "Guest is in-house (day {$days} of stay), {$payLabel}. "
-                . 'Add a policy with timing "During stay", days threshold ≤ ' . $days
-                . ', and payment status "Full payment" or "Any".';
+                .'Add a policy with timing "During stay", days threshold ≤ '.$days
+                .', and payment status "Full payment" or "Any".';
         }
 
         $days = (int) ($context['days_until_start'] ?? 0);
 
         return "Before check-in ({$days} days until arrival). "
-            . 'Add a policy with timing "Before check-in" and days threshold ≤ ' . $days . '.';
+            .'Add a policy with timing "Before check-in" and days threshold ≤ '.$days.'.';
     }
 }

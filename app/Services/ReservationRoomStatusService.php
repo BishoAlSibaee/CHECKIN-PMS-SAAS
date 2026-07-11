@@ -91,6 +91,41 @@ class ReservationRoomStatusService
         return $row ? (int) $row->reservation_id : null;
     }
 
+    public function roomHasActiveInHouseStayOverlapping(
+        int $roomId,
+        string $startDate,
+        string $endDate,
+        ?int $excludeReservationId = null
+    ): bool {
+        return $this->findActiveInHouseReservationIdOverlapping(
+            $roomId,
+            $startDate,
+            $endDate,
+            $excludeReservationId
+        ) !== null;
+    }
+
+    public function findActiveInHouseReservationIdOverlapping(
+        int $roomId,
+        string $startDate,
+        string $endDate,
+        ?int $excludeReservationId = null
+    ): ?int {
+        $row = ReservationRoom::where('room_id', $roomId)
+            ->whereHas('reservation', function ($query) use ($startDate, $endDate, $excludeReservationId) {
+                $query->where('reservation_status', Reservation::STATUS_CONFIRMED)
+                    ->where('logedin', Reservation::LOGEDIN_IN_HOUSE)
+                    ->where('start_date', '<', $endDate)
+                    ->where('expire_date', '>=', $startDate);
+                if ($excludeReservationId) {
+                    $query->where('id', '!=', $excludeReservationId);
+                }
+            })
+            ->first();
+
+        return $row ? (int) $row->reservation_id : null;
+    }
+
     /**
      * @throws \RuntimeException when the room is not ready for check-in
      */

@@ -98,6 +98,7 @@ class RevenueAccrualService
             ->select([
                 'reservation_daily_charges.*',
                 'reservations.discount',
+                'reservations.classification_discount',
                 'reservations.extras',
                 'reservations.penalties',
                 'reservations.base_price as reservation_base_price',
@@ -177,7 +178,7 @@ class RevenueAccrualService
             ->whereIn('id', $clientIds)
             ->get()
             ->mapWithKeys(fn (Client $client) => [
-                $client->id => trim(($client->first_name ?? '') . ' ' . ($client->last_name ?? '')) ?: '—',
+                $client->id => trim(($client->first_name ?? '').' '.($client->last_name ?? '')) ?: '—',
             ])
             ->all();
     }
@@ -206,7 +207,7 @@ class RevenueAccrualService
                 ? (float) $charge->base_amount / $reservationTotalBase
                 : 0;
 
-            $discountAlloc = (float) $charge->discount * $weight;
+            $discountAlloc = ((float) $charge->classification_discount + (float) $charge->discount) * $weight;
             $extrasAlloc = (float) $charge->extras * $weight;
             $penaltiesAlloc = (float) $charge->penalties * $weight;
 

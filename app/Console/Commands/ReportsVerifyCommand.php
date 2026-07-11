@@ -15,7 +15,7 @@ class ReportsVerifyCommand extends Command
                             {--end=2026-08-31 : Period end date}
                             {--dump-golden : Write golden metrics JSON to tests/Fixtures}';
 
-    protected $description = 'Verify all 24 report slugs against canonical financial services';
+    protected $description = 'Verify all 23 report slugs against canonical financial services';
 
     public function handle(ReportVerificationService $verification): int
     {
@@ -27,7 +27,7 @@ class ReportsVerifyCommand extends Command
             $golden = $verification->dumpGolden($start, $end);
             $path = base_path('tests/Fixtures/august_2026_golden.json');
             File::ensureDirectoryExists(dirname($path));
-            File::put($path, json_encode($golden, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) . PHP_EOL);
+            File::put($path, json_encode($golden, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE).PHP_EOL);
             $this->info('Golden metrics written to tests/Fixtures/august_2026_golden.json');
 
             return self::SUCCESS;
@@ -45,13 +45,13 @@ class ReportsVerifyCommand extends Command
                 $result['pass'] ? 'PASS' : 'FAIL',
                 $result['message'],
             ];
-            if (!$result['pass']) {
+            if (! $result['pass']) {
                 $failures++;
             }
         }
 
         $this->table(['Slug', 'Result', 'Message'], $rows);
-        $this->info("Summary: " . (count($results) - $failures) . ' PASS, ' . $failures . ' FAIL');
+        $this->info('Summary: '.(count($results) - $failures).' PASS, '.$failures.' FAIL');
 
         return $failures > 0 ? self::FAILURE : self::SUCCESS;
     }

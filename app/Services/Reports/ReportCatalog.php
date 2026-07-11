@@ -31,7 +31,6 @@ class ReportCatalog
             ['slug' => 'journal-entries', 'category' => 'accounting', 'canonical_source' => 'JournalEntry model'],
             ['slug' => 'general-ledger', 'category' => 'accounting', 'canonical_source' => 'FinancialStatementService::generalLedger'],
             ['slug' => 'trial-balance', 'category' => 'accounting', 'canonical_source' => 'FinancialStatementService::trialBalance'],
-            ['slug' => 'balance-sheet', 'category' => 'accounting', 'canonical_source' => 'FinancialStatementService::balanceSheet'],
             ['slug' => 'cash-flow', 'category' => 'accounting', 'canonical_source' => 'FinancialStatementService::cashFlow'],
             ['slug' => 'financial-audit-log', 'category' => 'accounting', 'canonical_source' => 'FinancialAuditService'],
         ];
@@ -52,7 +51,6 @@ class ReportCatalog
             'journal-entries',
             'general-ledger',
             'trial-balance',
-            'balance-sheet',
             'cash-flow',
             'financial-audit-log',
         ], true);

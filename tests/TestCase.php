@@ -12,6 +12,28 @@ abstract class TestCase extends BaseTestCase
     use InteractsWithApi;
     use InteractsWithReservationFixtures;
 
+    private static bool $isolatedTestSchemaReady = false;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        if (! app()->environment('testing') || ! \App\Support\ReservationTestDataGuard::isIsolatedDatabase()) {
+            return;
+        }
+
+        if (self::$isolatedTestSchemaReady) {
+            return;
+        }
+
+        $needsSchema = ! \Illuminate\Support\Facades\Schema::hasTable('reservations');
+
+        if ($needsSchema) {
+            $this->artisan('migrate', ['--force' => true, '--no-interaction' => true]);
+        }
+        self::$isolatedTestSchemaReady = true;
+    }
+
     private static ?\App\Models\User $cachedPermissionUser = null;
 
     private static string $cachedPermissionKey = '';

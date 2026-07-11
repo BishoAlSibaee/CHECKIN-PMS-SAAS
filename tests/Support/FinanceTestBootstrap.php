@@ -27,12 +27,12 @@ trait FinanceTestBootstrap
             Carbon::setTestNow('2026-08-15 12:00:00');
         }
 
-        if (!self::$financeBootstrapped) {
+        if (! self::$financeBootstrapped) {
             $hasAugustCharges = ReservationDailyCharge::query()
                 ->whereBetween('charge_date', [self::FINANCE_PERIOD_START, self::FINANCE_PERIOD_END])
                 ->exists();
 
-            if (!$hasAugustCharges) {
+            if (! $hasAugustCharges) {
                 $this->artisan('db:seed', [
                     '--class' => ReservationTestDataSeeder::class,
                     '--force' => true,
@@ -75,9 +75,17 @@ trait FinanceTestBootstrap
         $params = array_merge([
             'start_date' => $start ?? self::FINANCE_PERIOD_START,
             'end_date' => $end ?? self::FINANCE_PERIOD_END,
-        ], $extra);
+        ], $this->defaultReportQueryExtras($slug), $extra);
 
-        return '/api/users/reports/' . $slug . '?' . http_build_query($params);
+        return '/api/users/reports/'.$slug.'?'.http_build_query($params);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    protected function defaultReportQueryExtras(string $slug): array
+    {
+        return $slug === 'general-ledger' ? ['account_type' => 'asset'] : [];
     }
 
     /**
@@ -114,10 +122,10 @@ trait FinanceTestBootstrap
                 'start_date' => $start ?? self::FINANCE_PERIOD_START,
                 'end_date' => $end ?? self::FINANCE_PERIOD_END,
                 'page' => $page,
-            ], $extra);
+            ], $this->defaultReportQueryExtras($slug), $extra);
 
             $response = $this->actingAs($user, 'api')->getJson(
-                '/api/users/reports/' . $slug . '?' . http_build_query($query)
+                '/api/users/reports/'.$slug.'?'.http_build_query($query)
             );
             $response->assertOk();
             $response->assertJsonPath('success', true);

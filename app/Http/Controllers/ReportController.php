@@ -3,18 +3,17 @@
 namespace App\Http\Controllers;
 
 use App\Services\Reports\ReportCatalog;
+use App\Services\Reports\ReportCatalogCache;
 use App\Services\Reports\ReportQueryService;
 use Illuminate\Http\Request;
 
 class ReportController extends Controller
 {
-    public function __construct(private ReportQueryService $reportQueryService)
-    {
-    }
+    public function __construct(private ReportQueryService $reportQueryService) {}
 
     public function catalog()
     {
-        $items = ReportCatalog::all();
+        $items = ReportCatalogCache::remember(fn () => ReportCatalog::all());
 
         return SuccessData('Report catalog', ['reports' => $items]);
     }
