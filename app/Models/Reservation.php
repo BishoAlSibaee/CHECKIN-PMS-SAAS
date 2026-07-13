@@ -101,6 +101,14 @@ class Reservation extends Model
         );
     }
 
+    /** Outstanding guest balances for AR aging / collections (not cancelled). */
+    public function scopeOutstandingForAging($query)
+    {
+        return $query->excludingCancelled()
+            ->whereIn('reservation_status', self::cashReportStatuses())
+            ->withPositiveBalance();
+    }
+
     /**
      * Confirmed stays, plus pending-payment stays that are fully paid (data safety net).
      */
@@ -226,6 +234,36 @@ class Reservation extends Model
     public function extensions(): HasMany
     {
         return $this->hasMany(ReservationExtend::class);
+    }
+
+    public function paidNetAmountAsOf(\Carbon\Carbon $asOf): float
+    {
+        if (! $this->relationLoaded('payments')) {
+            $this->load('payments');
+        }
+
+        $cutoff = $asOf->copy()->endOfDay();
+
+        $paid = (float) $this->payments
+            ->where('type', ReservationPay::TYPE_PAYMENT)
+            ->filter(fn (ReservationPay $pay) => $pay->created_at !== null && $pay->created_at->lte($cutoff))
+            ->sum('pay');
+        $refunded = (float) $this->payments
+            ->where('type', ReservationPay::TYPE_REFUND)
+            ->filter(fn (ReservationPay $pay) => $pay->created_at !== null && $pay->created_at->lte($cutoff))
+            ->sum('pay');
+
+        return round($paid - $refunded, 2);
+    }
+
+    public function balanceDueAsOf(\Carbon\Carbon $asOf, ?float $total = null): float
+    {
+        $totalAmount = $total ?? (float) $this->total;
+        if ($totalAmount <= 0 && (float) $this->subtotal > 0) {
+            $totalAmount = round((float) $this->subtotal * 1.15, 2);
+        }
+
+        return round(max(0, $totalAmount - $this->paidNetAmountAsOf($asOf)), 2);
     }
 
     public function paidNetAmount(): float

@@ -341,7 +341,7 @@ class FinancialDashboardService
         $total = 0.0;
 
         Reservation::with('payments')
-            ->where('reservation_status', 1)
+            ->outstandingForAging()
             ->get()
             ->each(function (Reservation $reservation) use (&$total) {
                 $total += $this->reservationBalanceDue($reservation);

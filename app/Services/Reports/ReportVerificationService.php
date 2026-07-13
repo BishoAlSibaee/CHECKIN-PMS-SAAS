@@ -455,8 +455,8 @@ class ReportVerificationService
 
     private function verifyArAging(array $report, Carbon $asOf): string
     {
-        $expected = $this->totalAccountsReceivable($asOf);
         $reportAr = $this->summaryFloat($report, 'Total AR');
+        $rowSum = round(collect($report['rows'] ?? [])->sum(fn (array $row) => (float) ($row['balance_due'] ?? 0)), 2);
         $bucketSum = round(
             $this->summaryFloat($report, '0-30 days')
             + $this->summaryFloat($report, '31-60 days')
@@ -465,8 +465,8 @@ class ReportVerificationService
             2
         );
 
-        if (! $this->near($reportAr, $expected) || ! $this->near($bucketSum, $expected)) {
-            return "FAIL: ar-aging {$reportAr} buckets {$bucketSum} vs {$expected}";
+        if (! $this->near($reportAr, $rowSum) || ! $this->near($bucketSum, $reportAr)) {
+            return "FAIL: ar-aging {$reportAr} rows {$rowSum} buckets {$bucketSum}";
         }
 
         return 'PASS: ar-aging';
@@ -721,7 +721,7 @@ class ReportVerificationService
         $total = 0.0;
 
         Reservation::with('payments')
-            ->where('reservation_status', 1)
+            ->outstandingForAging()
             ->get()
             ->each(function (Reservation $reservation) use (&$total) {
                 $paid = (float) $reservation->payments

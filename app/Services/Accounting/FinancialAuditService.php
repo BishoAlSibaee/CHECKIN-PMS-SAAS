@@ -85,15 +85,26 @@ class FinancialAuditService
             $query->whereBetween('created_at', [$start.' 00:00:00', $end.' 23:59:59']);
         }
 
-        return $query->get()->map(fn (FinancialAuditLog $row) => [
-            'id' => $row->id,
-            'user_id' => $row->user_id,
-            'action' => $row->action,
-            'entity_type' => $row->entity_type,
-            'entity_id' => $row->entity_id,
-            'details' => $row->details,
-            'created_at' => $row->created_at?->toDateTimeString(),
-        ])->all();
+        return $query->get()->map(function (FinancialAuditLog $row) {
+            $reservationId = $row->entity_type === 'reservation' && $row->entity_id
+                ? (int) $row->entity_id
+                : null;
+            $journalEntryId = $row->entity_type === 'journal_entry' && $row->entity_id
+                ? (int) $row->entity_id
+                : null;
+
+            return [
+                'id' => $row->id,
+                'user_id' => $row->user_id,
+                'action' => $row->action,
+                'entity_type' => $row->entity_type,
+                'entity_id' => $row->entity_id,
+                'journal_entry_id' => $journalEntryId,
+                'reservation_id' => $reservationId,
+                'details' => $row->details,
+                'created_at' => $row->created_at?->toDateTimeString(),
+            ];
+        })->all();
     }
 
     /**
@@ -110,13 +121,20 @@ class FinancialAuditService
             $query->whereBetween('entry_date', [$start, $end]);
         }
 
-        return $query->get()->map(function (JournalEntry $entry) {
+        return $query->with('lines')->get()->map(function (JournalEntry $entry) {
+            $reservationId = $entry->lines
+                ->pluck('reservation_id')
+                ->map(fn ($id) => (int) $id)
+                ->first(fn (int $id) => $id > 0);
+
             return [
                 'id' => 'JE-'.$entry->id,
                 'user_id' => $entry->user_id,
                 'action' => $this->actionForJournalEntry($entry),
                 'entity_type' => $entry->source_type ?? 'journal_entry',
                 'entity_id' => $entry->source_id ?? $entry->id,
+                'journal_entry_id' => (int) $entry->id,
+                'reservation_id' => $reservationId ?: null,
                 'details' => [
                     'reference' => $entry->reference,
                     'description' => $entry->description,
@@ -147,13 +165,42 @@ class FinancialAuditService
             $eventDate = substr((string) ($row['created_at'] ?? ''), 0, 10) ?: '—';
         }
 
+        $reservationId = isset($row['reservation_id']) && (int) $row['reservation_id'] > 0
+            ? (int) $row['reservation_id']
+            : $this->extractReservationId($details['description'] ?? '');
+        $journalEntryId = isset($row['journal_entry_id']) && (int) $row['journal_entry_id'] > 0
+            ? (int) $row['journal_entry_id']
+            : null;
+        $referenceLabel = $humanReference !== '' && $humanReference !== '—' ? $humanReference : '—';
+        $detailSlug = $this->resolveDetailSlug($reservationId, $journalEntryId, $referenceLabel);
+
         return [
             'event_date' => $eventDate,
             'operation' => (string) ($row['action'] ?? 'journal_posted'),
             'description' => $this->describeEvent($row, $details),
-            'reference' => $humanReference !== '' && $humanReference !== '—' ? $humanReference : '—',
+            'reference' => $referenceLabel,
             'performed_by' => $this->performerLabel($row['user_id'] ?? null, $users),
+            'reservation_id' => ($reservationId ?? 0) > 0 ? (int) $reservationId : null,
+            'journal_entry_id' => $journalEntryId,
+            'detail_slug' => $detailSlug,
         ];
+    }
+
+    private function resolveDetailSlug(?int $reservationId, ?int $journalEntryId, string $reference): ?string
+    {
+        if ($reservationId !== null && $reservationId > 0) {
+            return null;
+        }
+
+        if ($journalEntryId !== null && $journalEntryId > 0) {
+            return 'journal-entries';
+        }
+
+        if ($reference !== '' && $reference !== '—') {
+            return 'journal-entries';
+        }
+
+        return null;
     }
 
     /**

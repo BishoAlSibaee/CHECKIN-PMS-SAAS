@@ -22,9 +22,10 @@ class RevenueAccrualService
         ?int $entityId,
         Carbon $startDate,
         Carbon $endDate,
-        bool $includeDetails = false
+        bool $includeDetails = false,
+        bool $capRecognizedAtToday = true
     ): array {
-        $charges = $this->queryCharges($scope, $entityId, $startDate, $endDate)->get();
+        $charges = $this->queryCharges($scope, $entityId, $startDate, $endDate, $capRecognizedAtToday)->get();
 
         $clientNames = $this->loadClientNamesById($charges);
         $allocated = $this->allocateCharges($charges, $clientNames);
@@ -84,13 +85,20 @@ class RevenueAccrualService
         ];
     }
 
-    private function queryCharges(string $scope, ?int $entityId, Carbon $startDate, Carbon $endDate)
-    {
+    private function queryCharges(
+        string $scope,
+        ?int $entityId,
+        Carbon $startDate,
+        Carbon $endDate,
+        bool $capRecognizedAtToday = true
+    ) {
         $rangeStart = $startDate->toDateString();
         $recognizedEnd = $endDate->copy()->startOfDay();
-        $today = Carbon::today()->startOfDay();
-        if ($recognizedEnd->gt($today)) {
-            $recognizedEnd = $today;
+        if ($capRecognizedAtToday) {
+            $today = Carbon::today()->startOfDay();
+            if ($recognizedEnd->gt($today)) {
+                $recognizedEnd = $today;
+            }
         }
         $rangeEnd = $recognizedEnd->toDateString();
 

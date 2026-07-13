@@ -151,6 +151,11 @@ class ReportApiTest extends TestCase
         $totalEvents = (int) ($summary->firstWhere('label', 'Total events')['value'] ?? 0);
         $this->assertGreaterThan(0, $totalEvents, 'Audit log should include posted journal activity for the finance fixture period');
         $this->assertNotEmpty($response->json('data.rows'));
+
+        $linkedRow = collect($response->json('data.rows'))->first(
+            fn (array $row) => ! empty($row['reservation_id']) || ! empty($row['detail_slug'])
+        );
+        $this->assertNotNull($linkedRow, 'Audit log rows should expose reservation_id or detail_slug for navigation');
     }
 
     public function test_occupancy_available_rooms_follow_booked_room_nights(): void

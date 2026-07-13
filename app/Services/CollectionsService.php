@@ -125,9 +125,7 @@ class CollectionsService
     {
         return Reservation::query()
             ->with(['client', 'payments', 'reservationRooms.room'])
-            ->excludingCancelled()
-            ->whereIn('reservation_status', Reservation::cashReportStatuses())
-            ->withPositiveBalance();
+            ->outstandingForAging();
     }
 
     /**

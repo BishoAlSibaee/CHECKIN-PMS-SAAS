@@ -15,6 +15,7 @@ use App\Services\Accounting\FinancialAuditService;
 use App\Services\Accounting\FinancialStatementService;
 use App\Services\OccupancyBoardCache;
 use App\Services\OccupancyReportCache;
+use App\Services\PricingEngine;
 use App\Services\RevenueAccrualService;
 use App\Services\RoomOccupancyService;
 use Carbon\Carbon;
@@ -35,6 +36,7 @@ class ReportQueryService
         private RoomOccupancyService $occupancyService,
         private FinancialStatementService $financialStatementService,
         private FinancialAuditService $financialAuditService,
+        private PricingEngine $pricingEngine,
     ) {}
 
     public function run(string $slug, array $params): array
@@ -118,6 +120,37 @@ class ReportQueryService
         return $lines;
     }
 
+    private const EARNED_ACCRUAL_META_LINE = 'Accrual revenue counts only stay nights through today (earned revenue). Future nights in the selected period are excluded.';
+
+    private const PEAK_ANALYSIS_PERIOD_META_LINE = 'Peak day classification uses current peak-day settings applied to each charge date in the selected period (includes all booked nights in the range, not only nights through today).';
+
+    /**
+     * @return array<int, string>
+     */
+    private function earnedAccrualMetaLines(): array
+    {
+        return [self::EARNED_ACCRUAL_META_LINE];
+    }
+
+    /**
+     * @param  array<int, array<int, string>>  $groups
+     * @return array<int, string>
+     */
+    private function mergeMeta(array ...$groups): array
+    {
+        $lines = [];
+
+        foreach ($groups as $group) {
+            foreach ($group as $line) {
+                if (! in_array($line, $lines, true)) {
+                    $lines[] = $line;
+                }
+            }
+        }
+
+        return $lines;
+    }
+
     /**
      * @return array<int, string>
      */
@@ -180,9 +213,9 @@ class ReportQueryService
             array_merge(
                 $this->periodMeta($start, $end, $compareStart, $compareEnd),
                 ['Financial overview for the selected period.'],
+                $this->earnedAccrualMetaLines(),
                 $end->copy()->startOfDay()->gt(Carbon::today()->startOfDay())
                     ? [
-                        'Accrual revenue counts only stay nights through today (earned revenue). Future nights in the selected period are excluded.',
                         'Cash in/out includes only payments and refunds recorded through today within the selected period.',
                     ]
                     : []
@@ -299,11 +332,11 @@ class ReportQueryService
             $summary[] = ['label' => 'Compare revenue', 'value' => round((float) ($compare['current']['total'] ?? 0), 2)];
         }
 
-        $meta = array_merge(
+        $meta = $this->mergeMeta(
             $this->periodMeta($start, $end, $compareStart, $compareEnd),
+            $this->earnedAccrualMetaLines(),
             [
                 'One row per calendar day in the period. Guest lists every non-cancelled stay overlapping that day.',
-                'Accrual revenue counts only confirmed (or fully paid) stays through today (earned revenue). Future nights in the selected period are excluded.',
                 'Only confirmed reservations (status 1), or pending stays paid in full, contribute to revenue columns.',
                 'Pending partial-payment stays appear in active bookings and guest names but not in revenue until confirmed or fully paid.',
             ]
@@ -913,8 +946,9 @@ class ReportQueryService
             ],
             $rows,
             $summary,
-            array_merge(
+            $this->mergeMeta(
                 $this->periodMeta($start, $end, $compareStart, $compareEnd),
+                $this->earnedAccrualMetaLines(),
                 [
                     'Active bookings: count of non-cancelled reservations overlapping that day (same rule as the reservations list/calendar when filtering by date).',
                     'Room nights (booked): confirmed stays (status 1) with a nightly charge on that date — includes future dates in the selected period.',
@@ -1043,8 +1077,9 @@ class ReportQueryService
             $summary[] = ['label' => 'Compare cash net', 'value' => round($compareCash['net_earnings'], 2)];
         }
 
-        $metaLines = array_merge(
+        $metaLines = $this->mergeMeta(
             $this->periodMeta($start, $end, $compareStart, $compareEnd),
+            $this->earnedAccrualMetaLines(),
             [
                 'Accrual: reservation_status = 1, revenue by charge_date (stay night).',
                 'Cash: reservation_status in (1, 2), payments/refunds by reservation_pay.created_at.',
@@ -1070,8 +1105,14 @@ class ReportQueryService
 
     private function arAging(Carbon $asOf): array
     {
+        $monthStart = $asOf->copy()->startOfMonth();
+        $monthEnd = $asOf->copy()->endOfMonth();
+
         $reservations = Reservation::with(['client', 'payments', 'reservationRooms.room'])
-            ->where('reservation_status', 1)
+            ->excludingCancelled()
+            ->whereIn('reservation_status', Reservation::cashReportStatuses())
+            ->where('start_date', '<=', $monthEnd->toDateString())
+            ->where('expire_date', '>=', $monthStart->toDateString())
             ->get();
 
         $buckets = [
@@ -1084,7 +1125,7 @@ class ReportQueryService
         $rows = [];
 
         foreach ($reservations as $reservation) {
-            $balanceDue = $this->reservationBalanceDue($reservation);
+            $balanceDue = $reservation->balanceDueAsOf($asOf);
 
             if ($balanceDue <= 0.005) {
                 continue;
@@ -1102,7 +1143,7 @@ class ReportQueryService
                 'days_overdue' => $daysOverdue,
                 'bucket' => $bucket,
                 'total' => round((float) $reservation->total, 2),
-                'paid_net' => round($this->reservationPaidNet($reservation), 2),
+                'paid_net' => round($reservation->paidNetAmountAsOf($asOf), 2),
                 'balance_due' => round($balanceDue, 2),
             ];
         }
@@ -1133,8 +1174,10 @@ class ReportQueryService
             ],
             [
                 "As of: {$asOf->toDateString()}",
-                'Confirmed reservations (status 1) with balance_due > 0.',
-                'Balance = reservation.total − (payments − refunds); total includes tax at '.(self::TAX_RATE * 100).'%.',
+                "Month scope: stays overlapping {$monthStart->toDateString()} → {$monthEnd->toDateString()}.",
+                'Balance uses payments/refunds recorded on or before the as-of date.',
+                'Confirmed and pending-payment reservations (not cancelled) with balance_due > 0.',
+                'Balance = reservation.total − (payments − refunds) as of the selected date; total includes tax at '.(self::TAX_RATE * 100).'%.',
                 'Days overdue measured from check-out date for past stays; current/future stays in 0-30 bucket.',
             ]
         );
@@ -1236,8 +1279,9 @@ class ReportQueryService
             ],
             $byDate,
             $summary,
-            array_merge(
+            $this->mergeMeta(
                 $this->periodMeta($start, $end, $compareStart, $compareEnd),
+                $this->earnedAccrualMetaLines(),
                 ['Tax allocated proportionally across daily charges at '.(self::TAX_RATE * 100).'%.']
             )
         );
@@ -1303,7 +1347,10 @@ class ReportQueryService
             ],
             $rows,
             $summary,
-            $this->periodMeta($start, $end, $compareStart, $compareEnd)
+            $this->mergeMeta(
+                $this->periodMeta($start, $end, $compareStart, $compareEnd),
+                $this->earnedAccrualMetaLines()
+            )
         );
     }
 
@@ -1331,8 +1378,12 @@ class ReportQueryService
                 return [
                     'reservation_source_id' => $first?->reservation_source_id,
                     'source_name' => $source?->name_en ?? $source?->name_ar ?? '—',
+                    'source_name_ar' => $source?->name_ar ?? $source?->name_en ?? '—',
+                    'source_name_en' => $source?->name_en ?? $source?->name_ar ?? '—',
                     'stay_reason_id' => $first?->stay_reason_id,
                     'stay_reason_name' => $reason?->name_en ?? $reason?->name_ar ?? '—',
+                    'stay_reason_name_ar' => $reason?->name_ar ?? $reason?->name_en ?? '—',
+                    'stay_reason_name_en' => $reason?->name_en ?? $reason?->name_ar ?? '—',
                     'room_nights' => $items->count(),
                     'base_amount' => round($items->sum('base_amount'), 2),
                     'revenue' => round($items->sum('revenue'), 2),
@@ -1357,14 +1408,26 @@ class ReportQueryService
                 ['label' => 'Total revenue', 'value' => round(collect($grouped)->sum('revenue'), 2)],
                 ['label' => 'Dimensions', 'value' => count($grouped)],
             ],
-            $this->periodMeta($start, $end)
+            $this->mergeMeta(
+                $this->periodMeta($start, $end),
+                $this->earnedAccrualMetaLines(),
+                [
+                    'Revenue grouped by reservation source and stay reason (accrual).',
+                    'Reservation count includes only stays with earned room-night charges through today within the selected period (not every booking overlapping the period).',
+                ]
+            )
         );
     }
 
     private function peakAnalysis(Carbon $start, Carbon $end): array
     {
-        $accrual = $this->revenueAccrualService->calculate('total', null, $start, $end, true);
-        $details = collect($accrual['details'] ?? []);
+        $accrual = $this->revenueAccrualService->calculate('total', null, $start, $end, true, false);
+        $details = collect($accrual['details'] ?? [])->map(function (array $detail) {
+            $dayName = Carbon::parse($detail['charge_date'])->format('l');
+            $detail['is_peak_day'] = $this->pricingEngine->isPeakDay($dayName);
+
+            return $detail;
+        });
 
         $peak = $details->where('is_peak_day', true);
         $nonPeak = $details->where('is_peak_day', false);
@@ -1404,9 +1467,9 @@ class ReportQueryService
                 ['label' => 'Non-peak revenue', 'value' => $rows[1]['revenue']],
                 ['label' => 'Total revenue', 'value' => round($details->sum('revenue'), 2)],
             ],
-            array_merge(
+            $this->mergeMeta(
                 $this->periodMeta($start, $end),
-                ['Peak classification from reservation_daily_charges.is_peak_day.']
+                [self::PEAK_ANALYSIS_PERIOD_META_LINE]
             )
         );
     }
@@ -1528,8 +1591,9 @@ class ReportQueryService
                 ['label' => 'AR outstanding', 'value' => $arTotal],
                 ['label' => 'Tax', 'value' => $taxTotal],
             ],
-            array_merge(
+            $this->mergeMeta(
                 $this->periodMeta($start, $end),
+                $this->earnedAccrualMetaLines(),
                 ['Closing package combines accrual, cash, AR, and tax for period-end review.']
             )
         );
@@ -1750,7 +1814,7 @@ class ReportQueryService
         $total = 0.0;
 
         Reservation::with('payments')
-            ->where('reservation_status', 1)
+            ->outstandingForAging()
             ->get()
             ->each(function (Reservation $reservation) use (&$total) {
                 $total += $this->reservationBalanceDue($reservation);
@@ -1848,7 +1912,8 @@ class ReportQueryService
             ),
             array_merge(
                 $this->periodMeta($start, $end),
-                ['Each row is one accounting event: guest payment, room-night accrual, manual journal, or period close.']
+                ['Each row is one accounting event: guest payment, room-night accrual, manual journal, or period close.'],
+                ['Click a row to open the reservation or journal entry details when available.']
             )
         );
     }
