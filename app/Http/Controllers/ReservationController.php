@@ -1573,11 +1573,17 @@ class ReservationController extends Controller
             $days = $this->pricingEngine->linesToDaysMap($lines);
             $totalPrice = $this->pricingEngine->sumBaseAmount($lines);
             $segments = $this->pricingEngine->buildPriceSegments($lines, $rentType);
+            $dailyLines = array_map(static fn (array $line) => [
+                'date' => $line['date'],
+                'amount' => $line['base_amount'],
+                'price_source' => $line['price_source'],
+            ], $lines);
             $appliedPlan = $this->formatAppliedPlanMeta($stayPlan, $priceMode);
 
             if ($rentType === 0) {
                 return \SuccessData('Daily pricing calculated', [
                     'days' => $days,
+                    'daily_lines' => $dailyLines,
                     'segments' => $segments,
                     'totalPrice' => $totalPrice,
                     'nightCount' => count($lines),
@@ -1591,6 +1597,7 @@ class ReservationController extends Controller
                 'endDate' => $endDate->toDateString(),
                 'numberOfMonths' => $request->numberOfMonths,
                 'days' => $days,
+                'daily_lines' => $dailyLines,
                 'segments' => $segments,
                 'totalPrice' => $totalPrice,
                 'rent_type' => $rentType,

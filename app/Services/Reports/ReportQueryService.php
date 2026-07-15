@@ -1685,6 +1685,7 @@ class ReportQueryService
         $data = $this->financialStatementService->trialBalance($start, $end);
 
         $rows = collect($data['accounts'])->map(fn (array $a) => [
+            'account_id' => $a['account_id'],
             'code' => $a['code'],
             'name' => $a['name'],
             'type' => $a['type'],
