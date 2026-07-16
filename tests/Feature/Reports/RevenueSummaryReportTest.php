@@ -34,6 +34,78 @@ class RevenueSummaryReportTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_hide_zero_removes_idle_days_without_changing_period_totals(): void
+    {
+        Carbon::setTestNow('2026-06-30');
+
+        $this->artisan('db:seed', ['--class' => ReservationTestDataSeeder::class, '--force' => true, '--no-interaction' => true]);
+
+        // January is outside the seeded demo stay window, so most/all days are idle zeros.
+        $full = app(ReportQueryService::class)->run('revenue-summary', [
+            'start_date' => '2026-01-01',
+            'end_date' => '2026-01-15',
+        ]);
+
+        $filtered = app(ReportQueryService::class)->run('revenue-summary', [
+            'start_date' => '2026-01-01',
+            'end_date' => '2026-01-15',
+            'hide_zero' => true,
+        ]);
+
+        $this->assertCount(15, $full['rows']);
+        $this->assertLessThan(count($full['rows']), count($filtered['rows']));
+        $this->assertSame(
+            collect($full['summary'])->firstWhere('label', 'Total revenue')['value'],
+            collect($filtered['summary'])->firstWhere('label', 'Total revenue')['value']
+        );
+        $this->assertSame(15, (int) collect($filtered['summary'])->firstWhere('label', 'Days in period')['value']);
+        $this->assertSame(count($filtered['rows']), (int) collect($filtered['summary'])->firstWhere('label', 'Days shown')['value']);
+
+        foreach ($filtered['rows'] as $row) {
+            $hasActivity = (int) $row['active_bookings'] > 0
+                || (int) $row['room_nights'] > 0
+                || (int) $row['earned_room_nights'] > 0
+                || abs((float) $row['revenue']) >= 0.005
+                || abs((float) $row['base_amount']) >= 0.005
+                || abs((float) $row['subtotal']) >= 0.005
+                || abs((float) $row['tax']) >= 0.005;
+
+            $this->assertTrue($hasActivity, 'Filtered row should not be an idle zero day: '.$row['charge_date']);
+        }
+
+        Carbon::setTestNow();
+    }
+
+    public function test_hide_zero_does_not_keep_days_with_only_in_house_snapshot(): void
+    {
+        Carbon::setTestNow('2026-06-30');
+
+        $this->artisan('db:seed', ['--class' => ReservationTestDataSeeder::class, '--force' => true, '--no-interaction' => true]);
+
+        $filtered = app(ReportQueryService::class)->run('revenue-summary', [
+            'start_date' => '2026-01-01',
+            'end_date' => '2026-12-31',
+            'hide_zero' => true,
+        ]);
+
+        foreach ($filtered['rows'] as $row) {
+            $moneyAndStay = (int) $row['active_bookings'] > 0
+                || (int) $row['room_nights'] > 0
+                || (int) $row['earned_room_nights'] > 0
+                || abs((float) $row['revenue']) >= 0.005
+                || abs((float) $row['base_amount']) >= 0.005
+                || abs((float) $row['subtotal']) >= 0.005
+                || abs((float) $row['tax']) >= 0.005;
+
+            $this->assertTrue(
+                $moneyAndStay,
+                'hide_zero must not keep an in_house-only day: '.$row['charge_date']
+            );
+        }
+
+        Carbon::setTestNow();
+    }
+
     public function test_pending_payment_days_show_active_bookings_without_booked_nights(): void
     {
         Carbon::setTestNow('2026-06-30');

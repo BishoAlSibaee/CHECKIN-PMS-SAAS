@@ -53,7 +53,7 @@ class ReportQueryService
             'arrivals-departures' => $this->arrivalsDepartures($start, $end),
             'reservations-list' => $this->reservationsList($start, $end),
             'occupancy' => $this->occupancy($start, $end, $compareStart, $compareEnd),
-            'revenue-summary' => $this->revenueSummary($start, $end, $compareStart, $compareEnd),
+            'revenue-summary' => $this->revenueSummary($start, $end, $compareStart, $compareEnd, $params),
             'accrual-cash-reconciliation' => $this->accrualCashReconciliation($start, $end, $compareStart, $compareEnd),
             'ar-aging' => $this->arAging($end),
             'adjustments' => $this->adjustments($start, $end),
@@ -849,8 +849,10 @@ class ReportQueryService
         );
     }
 
-    private function revenueSummary(Carbon $start, Carbon $end, ?Carbon $compareStart, ?Carbon $compareEnd): array
+    private function revenueSummary(Carbon $start, Carbon $end, ?Carbon $compareStart, ?Carbon $compareEnd, array $params = []): array
     {
+        $hideZero = filter_var($params['hide_zero'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
         $accrual = $this->revenueAccrualService->calculate('total', null, $start, $end, true);
         $detailsByDate = collect($accrual['details'] ?? [])->groupBy('charge_date');
 
@@ -914,6 +916,23 @@ class ReportQueryService
         $bookedNightTotal = (int) collect($rows)->sum('room_nights');
         $earnedNightTotal = (int) ($accrual['current']['count'] ?? 0);
         $activeBookingsTotal = (int) collect($rows)->sum('active_bookings');
+        $daysInPeriod = count($rows);
+
+        // Totals stay period-wide; the filter only trims which day rows are displayed.
+        // Do not keep days solely for occupancy snapshot (in_house) — that can stay > 0
+        // with no bookings, room nights, or revenue and looks like an all-zero revenue row.
+        if ($hideZero) {
+            $rows = array_values(array_filter(
+                $rows,
+                static fn (array $row) => (int) $row['active_bookings'] > 0
+                    || (int) $row['room_nights'] > 0
+                    || (int) $row['earned_room_nights'] > 0
+                    || abs((float) $row['revenue']) >= 0.005
+                    || abs((float) $row['base_amount']) >= 0.005
+                    || abs((float) $row['subtotal']) >= 0.005
+                    || abs((float) $row['tax']) >= 0.005
+            ));
+        }
 
         $summary = [
             ['label' => 'Total base', 'value' => $accrual['current']['total_base'] ?? 0],
@@ -923,6 +942,11 @@ class ReportQueryService
             ['label' => 'Room nights (booked)', 'value' => $bookedNightTotal],
             ['label' => 'Room nights (earned)', 'value' => $earnedNightTotal],
         ];
+
+        if ($hideZero) {
+            $summary[] = ['label' => 'Days in period', 'value' => $daysInPeriod];
+            $summary[] = ['label' => 'Days shown', 'value' => count($rows)];
+        }
 
         if ($compareStart && $compareEnd) {
             $compare = $this->revenueAccrualService->calculate('total', null, $compareStart, $compareEnd, false);
@@ -1569,14 +1593,14 @@ class ReportQueryService
         $cashNet = round($cash['net_earnings'], 2);
 
         $rows = [
-            ['metric' => 'Accrual revenue (incl. tax)', 'amount' => $accrualTotal],
-            ['metric' => 'Accrual subtotal (pre-tax)', 'amount' => round((float) ($accrual['current']['subtotal'] ?? 0), 2)],
-            ['metric' => 'Tax (accrual)', 'amount' => $taxTotal],
-            ['metric' => 'Cash in', 'amount' => round($cash['total_in'], 2)],
-            ['metric' => 'Cash out (refunds)', 'amount' => round($cash['total_out'], 2)],
-            ['metric' => 'Cash net', 'amount' => $cashNet],
-            ['metric' => 'Accounts receivable (open balances)', 'amount' => $arTotal],
-            ['metric' => 'Accrual − cash net', 'amount' => round($accrualTotal - $cashNet, 2)],
+            ['metric' => 'Accrual revenue (incl. tax)', 'amount' => $accrualTotal, 'detail_slug' => 'accrual-revenue'],
+            ['metric' => 'Accrual subtotal (pre-tax)', 'amount' => round((float) ($accrual['current']['subtotal'] ?? 0), 2), 'detail_slug' => 'accrual-revenue'],
+            ['metric' => 'Tax (accrual)', 'amount' => $taxTotal, 'detail_slug' => 'tax'],
+            ['metric' => 'Cash in', 'amount' => round($cash['total_in'], 2), 'detail_slug' => 'cash-box'],
+            ['metric' => 'Cash out (refunds)', 'amount' => round($cash['total_out'], 2), 'detail_slug' => 'payments-refunds'],
+            ['metric' => 'Cash net', 'amount' => $cashNet, 'detail_slug' => 'cash-box'],
+            ['metric' => 'Accounts receivable (open balances)', 'amount' => $arTotal, 'detail_slug' => 'ar-aging'],
+            ['metric' => 'Accrual − cash net', 'amount' => round($accrualTotal - $cashNet, 2), 'detail_slug' => 'accrual-cash-reconciliation'],
         ];
 
         return $this->format(

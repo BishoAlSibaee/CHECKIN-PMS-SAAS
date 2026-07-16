@@ -132,6 +132,39 @@ class ReportApiTest extends TestCase
         $response->assertJsonPath('success', true);
     }
 
+    public function test_closing_package_rows_expose_detail_slug_for_navigation(): void
+    {
+        $user = $this->userWithApiPermissions(['view reports', 'view financial reports']);
+        $response = $this->actingAs($user, 'api')->getJson(
+            '/api/users/reports/closing-package?start_date=2026-08-01&end_date=2026-08-31'
+        );
+
+        $response->assertOk();
+        $response->assertJsonPath('success', true);
+
+        $rows = $response->json('data.rows') ?? [];
+        $this->assertNotEmpty($rows);
+
+        $expected = [
+            'Accrual revenue (incl. tax)' => 'accrual-revenue',
+            'Accrual subtotal (pre-tax)' => 'accrual-revenue',
+            'Tax (accrual)' => 'tax',
+            'Cash in' => 'cash-box',
+            'Cash out (refunds)' => 'payments-refunds',
+            'Cash net' => 'cash-box',
+            'Accounts receivable (open balances)' => 'ar-aging',
+            'Accrual − cash net' => 'accrual-cash-reconciliation',
+        ];
+
+        $byMetric = collect($rows)->keyBy('metric');
+        foreach ($expected as $metric => $slug) {
+            $this->assertSame($slug, $byMetric->get($metric)['detail_slug'] ?? null, $metric);
+        }
+
+        $columns = collect($response->json('data.columns'))->pluck('key')->all();
+        $this->assertSame(['metric', 'amount'], $columns);
+    }
+
     public function test_financial_audit_log_report(): void
     {
         $this->bootstrapFinanceData();
