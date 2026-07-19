@@ -788,6 +788,7 @@ class ReservationController extends Controller
                 'stay_reason_id' => $request->stay_reason_id,
                 'reservation_source_id' => $request->reservation_source_id,
                 'rent_type' => $request->rent_type,
+                'price_calculation_mode' => (int) ($request->price_calculation_mode ?? 0),
                 'base_price' => $totalBasePrice,
                 'discount' => $discount,
                 'classification_discount' => $classificationDiscount,

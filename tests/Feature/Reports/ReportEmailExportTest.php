@@ -192,7 +192,11 @@ class ReportEmailExportTest extends TestCase
 
     public function test_for_export_returns_up_to_preview_limit_rows(): void
     {
-        config(['reports.page_size' => 50, 'reports.preview_limit' => 500]);
+        config([
+            'reports.page_size' => 50,
+            'reports.preview_limit' => 500,
+            'reports.max_direct_download_rows' => 40,
+        ]);
 
         $user = $this->userWithApiPermissions(['view reports', 'view financial reports']);
 
@@ -207,6 +211,54 @@ class ReportEmailExportTest extends TestCase
         $this->assertArrayHasKey('export_limit', $response->json('data'));
         $totalRows = (int) $response->json('data.total_rows');
         $rowCount = count($response->json('data.rows') ?? []);
-        $this->assertSame(min($totalRows, 500), $rowCount);
+        $this->assertSame(min($totalRows, 40), $rowCount);
+    }
+
+    public function test_run_report_includes_direct_download_policy_flags(): void
+    {
+        config(['reports.max_direct_download_rows' => 40]);
+
+        $user = $this->userWithApiPermissions(['view reports', 'view financial reports']);
+
+        $response = $this->actingAs($user, 'api')->getJson(
+            '/api/users/reports/reservations-list?start_date=2026-08-01&end_date=2026-08-31&page=1'
+        );
+
+        $response->assertOk();
+        $response->assertJsonPath('data.max_direct_download_rows', 40);
+        $this->assertArrayHasKey('direct_download_allowed', $response->json('data'));
+        $this->assertArrayHasKey('requires_email_or_filters', $response->json('data'));
+    }
+
+    public function test_direct_download_rejects_when_over_row_limit(): void
+    {
+        config(['reports.max_direct_download_rows' => 2]);
+
+        $this->mock(\App\Services\Reports\ReportQueryService::class, function ($mock) {
+            $mock->shouldReceive('run')->once()->andReturn([
+                'columns' => [['key' => 'id', 'label' => 'ID']],
+                'rows' => [
+                    ['id' => 1],
+                    ['id' => 2],
+                    ['id' => 3],
+                ],
+                'summary' => [],
+            ]);
+        });
+
+        $user = $this->userWithApiPermissions(['view reports', 'view financial reports']);
+
+        $response = $this->actingAs($user, 'api')->get(
+            '/api/users/reports/reservations-list/download?'
+            .http_build_query([
+                'format' => 'excel',
+                'start_date' => '2026-07-01',
+                'end_date' => '2026-07-31',
+            ])
+        );
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('success', false);
+        $this->assertStringContainsString('direct download limit', (string) $response->json('message'));
     }
 }

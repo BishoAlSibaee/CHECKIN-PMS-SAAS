@@ -339,10 +339,12 @@ SESSION_DRIVER=redis    # optional — shared sessions across PHP-FPM workers
 | **No live updates** (second browser stale) | Start `php artisan reverb:start`; check `BROADCAST_DRIVER=reverb`; match `reverb` keys in Angular `environment.ts` |
 | Reverb connection refused | Confirm port **8080** free; `REVERB_HOST=127.0.0.1` locally (not `localhost` in Angular if mixed with `127.0.0.1`) |
 | **Report export stuck** | Start `php artisan queue:work redis`; confirm Redis running |
+| **Direct PDF/Excel/CSV disabled** | Result set exceeds `REPORT_MAX_DIRECT_DOWNLOAD_ROWS` (default 40). Narrow filters or use **Email export** |
 | `Connection refused` to Redis | Start Redis (`docker start hotel-redis` or native service); or temporarily `CACHE_DRIVER=file` + `QUEUE_CONNECTION=sync` |
 | `Class "Redis" not found` with `REDIS_CLIENT=phpredis` | Use `REDIS_CLIENT=predis` (no PHP extension) or install `phpredis` |
 | Empty GL / P&L reports | `php artisan accounting:backfill-journal` |
 | Finance audit FAIL | `php artisan demo:setup --fresh` then `php artisan demo:verify` |
+| `Table ... doesn't exist in engine` (MySQL **1932**) | `php artisan db:repair-orphaned-tables` (also runs via `php artisan migrate`). Then optionally `php artisan demo:reset-reservations` for demo bookings |
 | PDO extension missing | Enable `pdo` and `pdo_mysql` in PHP (XAMPP: `php.ini`) |
 | PHPUnit wiped dev reservations | Never point tests at `checkinbooking`; use default `phpunit.xml` (`checkinbooking_test`) |
 

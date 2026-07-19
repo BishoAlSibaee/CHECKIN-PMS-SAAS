@@ -23,6 +23,10 @@ class DemoSetupCommand extends Command
             $this->info('Running migrate:fresh...');
             Artisan::call('migrate:fresh', ['--force' => true]);
             $this->line(Artisan::output());
+        } else {
+            $this->info('Ensuring schema (repair MySQL 1932 orphans if any)...');
+            Artisan::call('db:repair-orphaned-tables');
+            $this->line(trim(Artisan::output()));
         }
 
         $this->info('Seeding essential data (permissions, admin, reference lookups)...');

@@ -64,6 +64,8 @@ class ReportExportController extends Controller
 
         try {
             $file = $this->exportProcessor->buildDownload($slug, $format, $params);
+        } catch (\InvalidArgumentException $e) {
+            return Failed($e->getMessage(), 422);
         } catch (\Throwable $e) {
             return Failed($e->getMessage());
         }

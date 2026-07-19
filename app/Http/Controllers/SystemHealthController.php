@@ -4,9 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Reservation;
 use App\Models\ReservationDailyCharge;
-use Illuminate\Support\Facades\Artisan;
+use App\Support\SchemaTableHealth;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 
 class SystemHealthController extends Controller
 {
@@ -22,19 +21,21 @@ class SystemHealthController extends Controller
             });
 
             $checks[] = $this->check('reservations_table', function () {
-                if (!Schema::hasTable('reservations')) {
-                    throw new \RuntimeException('Missing reservations table');
+                if (! SchemaTableHealth::isUsable('reservations')) {
+                    throw new \RuntimeException(
+                        'Reservations table missing or MySQL 1932 orphan — run: php artisan db:repair-orphaned-tables'
+                    );
                 }
 
-                return Reservation::count() . ' rows';
+                return Reservation::count().' rows';
             });
 
             $checks[] = $this->check('daily_charges_table', function () {
-                if (!Schema::hasTable('reservation_daily_charges')) {
+                if (! SchemaTableHealth::isUsable('reservation_daily_charges')) {
                     throw new \RuntimeException('Missing reservation_daily_charges table');
                 }
 
-                return ReservationDailyCharge::count() . ' rows';
+                return ReservationDailyCharge::count().' rows';
             });
 
             $failed = collect($checks)->where('status', 'fail')->count();
