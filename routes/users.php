@@ -344,7 +344,8 @@ Route::group(['middleware' => ['auth:api']], function () {
         Route::delete('refund-policies', [RefundPolicyController::class, 'destroy']);
     });
 
-    Route::middleware(['permission:view users,api'])->get('system/health', [SystemHealthController::class, 'index']);
+    // Report runners need mail_configured without requiring "view users".
+    Route::middleware(['permission:view users|view reports,api'])->get('system/health', [SystemHealthController::class, 'index']);
 
     Route::middleware(['permission:manage client notes,api'])->group(function () {
         Route::get('client-notes', [ClientNoteController::class, 'index']);

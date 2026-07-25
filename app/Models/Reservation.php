@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\ReservationRelatedCleanup;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -10,6 +11,13 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Reservation extends Model
 {
     use HasFactory;
+
+    protected static function booted(): void
+    {
+        static::deleting(function (Reservation $reservation): void {
+            ReservationRelatedCleanup::purgeRelated([(int) $reservation->id]);
+        });
+    }
 
     /** Guest physically in room (used by RoomOccupancyService and UI). */
     public const LOGEDIN_IN_HOUSE = 1;

@@ -495,6 +495,8 @@ class ReportQueryService
             }
         }
 
+        $rows = $this->nullStaleReservationIds($rows);
+
         $rows = $filters->applyToRows($rows, [
             'search_keys' => ['reference', 'description', 'account_code', 'account_name', 'source_type'],
             'amount_keys' => ['debit', 'credit'],
@@ -1663,6 +1665,8 @@ class ReportQueryService
             'reservation_id' => $line['reservation_id'],
         ])->all();
 
+        $rows = $this->nullStaleReservationIds($rows);
+
         $summary = array_merge(
             $filters->activeSummary(),
             [
@@ -1999,5 +2003,47 @@ class ReportQueryService
             ->get()
             ->mapWithKeys(fn (ReservationRoom $row) => [$row->id => $row->room?->number !== null ? (string) $row->room->number : null])
             ->all();
+    }
+
+    /**
+     * Keep accounting history visible, but drop clickable reservation links when the booking was deleted.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private function nullStaleReservationIds(array $rows): array
+    {
+        $candidateIds = collect($rows)
+            ->pluck('reservation_id')
+            ->filter(fn ($id) => $id !== null && $id !== '' && $id !== '—' && (int) $id > 0)
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($candidateIds === []) {
+            return $rows;
+        }
+
+        $existing = Reservation::query()
+            ->whereIn('id', $candidateIds)
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+        $existingLookup = array_fill_keys($existing, true);
+
+        return array_map(function (array $row) use ($existingLookup) {
+            $reservationId = $row['reservation_id'] ?? null;
+            if ($reservationId === null || $reservationId === '' || $reservationId === '—') {
+                return $row;
+            }
+
+            $normalized = (int) $reservationId;
+            if ($normalized <= 0 || ! isset($existingLookup[$normalized])) {
+                $row['reservation_id'] = null;
+            }
+
+            return $row;
+        }, $rows);
     }
 }

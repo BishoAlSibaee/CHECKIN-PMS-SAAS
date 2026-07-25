@@ -157,12 +157,10 @@ class ReservationTestDataSeeder extends Seeder
             return;
         }
 
-        $accountingRows = ReservationRelatedCleanup::purgeAccounting($ids);
-        ReservationDailyCharge::whereIn('reservation_id', $ids)->delete();
-        ReservationPay::whereIn('reservation_id', $ids)->delete();
-        ReservationRoom::whereIn('reservation_id', $ids)->delete();
+        $purged = ReservationRelatedCleanup::purgeRelated($ids);
         Reservation::whereIn('id', $ids)->delete();
 
+        $accountingRows = (int) ($purged['accounting_rows'] ?? 0);
         $this->command?->info('Removed '.$ids->count().' test reservation(s) from '.$this->demoYear()." ({$accountingRows} accounting row(s) purged).");
     }
 

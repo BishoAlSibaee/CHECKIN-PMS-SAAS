@@ -45,6 +45,16 @@ class UsersAndRolesTest extends TestCase
         $this->assertNotEmpty($response->json('data'));
     }
 
+    public function test_system_health_available_with_view_reports(): void
+    {
+        $user = $this->userWithOnlyPermissions(['view reports']);
+
+        $response = $this->actingAs($user, 'api')->getJson('/api/users/system/health');
+
+        $this->assertApiSuccess($response);
+        $this->assertArrayHasKey('mail_configured', $response->json('data'));
+    }
+
     public function test_assign_role_to_user(): void
     {
         $admin = $this->userWithOnlyPermissions(['manage roles', 'manage users']);

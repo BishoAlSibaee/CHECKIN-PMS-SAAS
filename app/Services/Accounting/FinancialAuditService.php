@@ -4,6 +4,8 @@ namespace App\Services\Accounting;
 
 use App\Models\FinancialAuditLog;
 use App\Models\JournalEntry;
+use App\Models\Reservation;
+use App\Models\ReservationPay;
 use App\Models\ReservationRoom;
 use App\Models\User;
 
@@ -54,8 +56,26 @@ class FinancialAuditService
             ->all();
         $roomNumberByReservationRoomId = $this->roomNumbersForAccrualReferences($references);
 
+        $candidateReservationIds = collect($raw)
+            ->map(fn (array $row) => $this->candidateReservationIds($row))
+            ->flatten()
+            ->filter(fn ($id) => (int) $id > 0)
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        $existingReservationIds = $candidateReservationIds === []
+            ? []
+            : Reservation::query()
+                ->whereIn('id', $candidateReservationIds)
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+        $existingReservationLookup = array_fill_keys($existingReservationIds, true);
+
         $rows = array_map(
-            fn (array $row) => $this->formatReportRow($row, $users, $roomNumberByReservationRoomId),
+            fn (array $row) => $this->formatReportRow($row, $users, $roomNumberByReservationRoomId, $existingReservationLookup),
             $raw
         );
 
@@ -127,6 +147,14 @@ class FinancialAuditService
                 ->map(fn ($id) => (int) $id)
                 ->first(fn (int $id) => $id > 0);
 
+            if (! $reservationId && $entry->source_type === 'reservation_pay' && (int) $entry->source_id > 0) {
+                $reservationId = (int) (ReservationPay::query()->whereKey($entry->source_id)->value('reservation_id') ?: 0);
+            }
+
+            if (! $reservationId && is_string($entry->reference) && preg_match('/^PAY-(\d+)/', $entry->reference, $matches) === 1) {
+                $reservationId = (int) (ReservationPay::query()->whereKey((int) $matches[1])->value('reservation_id') ?: 0);
+            }
+
             return [
                 'id' => 'JE-'.$entry->id,
                 'user_id' => $entry->user_id,
@@ -150,10 +178,15 @@ class FinancialAuditService
 
     /**
      * @param  array<int|string, string|null>  $roomNumberByReservationRoomId
+     * @param  array<int, true>  $existingReservationLookup
      * @return array<string, mixed>
      */
-    private function formatReportRow(array $row, $users, array $roomNumberByReservationRoomId): array
-    {
+    private function formatReportRow(
+        array $row,
+        $users,
+        array $roomNumberByReservationRoomId,
+        array $existingReservationLookup = []
+    ): array {
         $details = is_array($row['details']) ? $row['details'] : [];
         $reference = (string) ($details['reference'] ?? '');
         $humanReference = AccountingPostingService::humanizeAccrualReference($reference, $roomNumberByReservationRoomId);
@@ -165,9 +198,7 @@ class FinancialAuditService
             $eventDate = substr((string) ($row['created_at'] ?? ''), 0, 10) ?: '—';
         }
 
-        $reservationId = isset($row['reservation_id']) && (int) $row['reservation_id'] > 0
-            ? (int) $row['reservation_id']
-            : $this->extractReservationId($details['description'] ?? '');
+        $reservationId = $this->resolveExistingReservationId($row, $existingReservationLookup);
         $journalEntryId = isset($row['journal_entry_id']) && (int) $row['journal_entry_id'] > 0
             ? (int) $row['journal_entry_id']
             : null;
@@ -177,13 +208,64 @@ class FinancialAuditService
         return [
             'event_date' => $eventDate,
             'operation' => (string) ($row['action'] ?? 'journal_posted'),
-            'description' => $this->describeEvent($row, $details),
+            'description' => $this->describeEvent($row, $details, $reservationId),
             'reference' => $referenceLabel,
             'performed_by' => $this->performerLabel($row['user_id'] ?? null, $users),
-            'reservation_id' => ($reservationId ?? 0) > 0 ? (int) $reservationId : null,
+            'reservation_id' => $reservationId,
             'journal_entry_id' => $journalEntryId,
             'detail_slug' => $detailSlug,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @return array<int, int>
+     */
+    private function candidateReservationIds(array $row): array
+    {
+        $details = is_array($row['details'] ?? null) ? $row['details'] : [];
+        $ids = [];
+
+        if (isset($row['reservation_id']) && (int) $row['reservation_id'] > 0) {
+            $ids[] = (int) $row['reservation_id'];
+        }
+
+        $fromDescription = $this->extractReservationId($details['description'] ?? '');
+        if ($fromDescription) {
+            $ids[] = $fromDescription;
+        }
+
+        $reference = (string) ($details['reference'] ?? '');
+        if (preg_match('/^PAY-(\d+)/', $reference, $matches) === 1) {
+            $fromPay = (int) (ReservationPay::query()->whereKey((int) $matches[1])->value('reservation_id') ?: 0);
+            if ($fromPay > 0) {
+                $ids[] = $fromPay;
+            }
+        }
+
+        if (($row['entity_type'] ?? null) === 'reservation_pay' && (int) ($row['entity_id'] ?? 0) > 0) {
+            $fromSource = (int) (ReservationPay::query()->whereKey((int) $row['entity_id'])->value('reservation_id') ?: 0);
+            if ($fromSource > 0) {
+                $ids[] = $fromSource;
+            }
+        }
+
+        return array_values(array_unique($ids));
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @param  array<int, true>  $existingReservationLookup
+     */
+    private function resolveExistingReservationId(array $row, array $existingReservationLookup): ?int
+    {
+        foreach ($this->candidateReservationIds($row) as $candidateId) {
+            if (isset($existingReservationLookup[$candidateId])) {
+                return $candidateId;
+            }
+        }
+
+        return null;
     }
 
     private function resolveDetailSlug(?int $reservationId, ?int $journalEntryId, string $reference): ?string
@@ -207,9 +289,11 @@ class FinancialAuditService
      * @param  array<string, mixed>  $row
      * @param  array<string, mixed>  $details
      */
-    private function describeEvent(array $row, array $details): string
+    private function describeEvent(array $row, array $details, ?int $reservationId = null): string
     {
-        $reservationId = $this->extractReservationId($details['description'] ?? '');
+        $reservationId ??= isset($row['reservation_id']) && (int) $row['reservation_id'] > 0
+            ? (int) $row['reservation_id']
+            : $this->extractReservationId($details['description'] ?? '');
 
         return match ($row['action'] ?? '') {
             'payment_posted' => $reservationId
