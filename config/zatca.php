@@ -14,6 +14,12 @@ return [
 
     'environment' => env('ZATCA_ENVIRONMENT', 'sandbox'),
 
+    /** Master switch — when false, checkout will not queue ZATCA reporting. */
+    'enabled' => (bool) env('ZATCA_ENABLED', true),
+
+    /** Queue a simplified invoice report after successful guest check-out. */
+    'auto_report_on_checkout' => (bool) env('ZATCA_AUTO_REPORT_ON_CHECKOUT', true),
+
     'base_urls' => [
         'sandbox' => 'https://gw-fatoora.zatca.gov.sa/e-invoicing/developer-portal',
         'simulation' => 'https://gw-fatoora.zatca.gov.sa/e-invoicing/simulation',

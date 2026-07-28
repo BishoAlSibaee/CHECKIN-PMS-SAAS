@@ -55,5 +55,7 @@
         <env name="SESSION_DRIVER" value="array"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="RESERVATION_DEMO_YEAR" value="2026"/>
+        <env name="ZATCA_ENABLED" value="false"/>
+        <env name="ZATCA_AUTO_REPORT_ON_CHECKOUT" value="false"/>
     </php>
 </phpunit>

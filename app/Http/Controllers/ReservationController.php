@@ -30,6 +30,7 @@ use App\Models\RoomType;
 use App\Models\RoomtypePricingplan;
 use App\Models\Suite;
 use App\Services\Accounting\AccountingPostingService;
+use App\Jobs\ReportZatcaCheckoutInvoiceJob;
 use App\Services\GuestClassificationDiscountService;
 use App\Services\HotelLivePublisher;
 use App\Services\PricingEngine;
@@ -40,6 +41,7 @@ use App\Services\ReservationFinancialService;
 use App\Services\ReservationRoomStatusService;
 use App\Services\ReservationShortenService;
 use App\Services\RevenueAccrualService;
+use App\Services\Zatca\ZatcaCheckoutReportingService;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -61,6 +63,7 @@ class ReservationController extends Controller
         private ReservationChangeLogService $changeLogService,
         private GuestClassificationDiscountService $guestClassificationDiscountService,
         private ReservationDateChangePreviewService $dateChangePreviewService,
+        private ZatcaCheckoutReportingService $zatcaCheckoutReportingService,
     ) {}
 
     private function notifyReservationLive(int $reservationId, string $action, bool $affectsInventory = false): void
@@ -411,6 +414,16 @@ class ReservationController extends Controller
                 || $request->filled('start_date')
                 || $request->filled('expire_date');
             $this->notifyReservationLive($id, $action, $affectsInventory);
+
+            // Report synchronously so reservation show / invoice print include the tax QR.
+            if ($isCheckingOut && $this->zatcaCheckoutReportingService->shouldReportOnCheckout()) {
+                try {
+                    $this->zatcaCheckoutReportingService->reportReservationCheckout($id);
+                } catch (\Throwable $e) {
+                    report($e);
+                    ReportZatcaCheckoutInvoiceJob::dispatchAfterResponse($id);
+                }
+            }
 
             return $this->show($id);
         } catch (\Exception $e) {
@@ -1816,6 +1829,7 @@ class ReservationController extends Controller
             'room_numbers' => $roomNumbers,
             'room_numbers_label' => $roomNumbers !== [] ? implode(', ', array_map('strval', $roomNumbers)) : null,
             'change_logs' => $this->changeLogService->listForReservation((int) $reservation->id),
+            'zatca_invoice' => $this->zatcaCheckoutReportingService->invoiceSummaryForReservation((int) $reservation->id),
         ];
     }
 }

@@ -26,7 +26,10 @@ abstract class TestCase extends BaseTestCase
             return;
         }
 
-        $needsSchema = ! \Illuminate\Support\Facades\Schema::hasTable('reservations');
+        $needsSchema = ! \Illuminate\Support\Facades\Schema::hasTable('reservations')
+            || ! \Illuminate\Support\Facades\Schema::hasTable('zatca_invoices')
+            || (\Illuminate\Support\Facades\Schema::hasTable('zatca_invoices')
+                && ! \Illuminate\Support\Facades\Schema::hasColumn('zatca_invoices', 'qr_code'));
 
         if ($needsSchema) {
             $this->artisan('migrate', ['--force' => true, '--no-interaction' => true]);
