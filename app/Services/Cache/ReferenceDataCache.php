@@ -5,7 +5,7 @@ namespace App\Services\Cache;
 use Illuminate\Support\Facades\Cache;
 
 /**
- * Short-lived cache for static reference data (buildings, floors, room types).
+ * Short-lived cache for static reference data (buildings, floors, room types, RBAC catalog).
  */
 class ReferenceDataCache
 {
@@ -18,7 +18,7 @@ class ReferenceDataCache
         $version = self::version($domain);
         $key = sprintf('ref:%s:v%d:%s', $domain, $version, $suffix);
 
-        return Cache::remember($key, self::TTL_SECONDS, $resolver);
+        return VersionedCache::rememberKey($key, self::TTL_SECONDS, $resolver);
     }
 
     public static function bumpDomain(string $domain): void

@@ -4,6 +4,7 @@ namespace Tests\Feature\Cache;
 
 use App\Jobs\ProcessReportExportJob;
 use App\Models\ReportExport;
+use App\Services\Cache\CacheMetrics;
 use App\Services\Cache\DashboardSummaryCache;
 use App\Services\Cache\VersionedCache;
 use App\Services\OccupancyBoardCache;
@@ -33,6 +34,39 @@ class VersionedCacheTest extends TestCase
         VersionedCache::remember('demo', 2, 'suffix', 60, $resolver);
 
         $this->assertSame(2, $calls);
+    }
+
+    public function test_versioned_cache_records_hit_and_miss_metrics(): void
+    {
+        Cache::flush();
+
+        VersionedCache::remember('metrics', 1, 'a', 60, fn () => ['ok' => true]);
+        VersionedCache::remember('metrics', 1, 'a', 60, fn () => ['ok' => false]);
+
+        $snapshot = CacheMetrics::snapshot();
+
+        $this->assertGreaterThanOrEqual(1, $snapshot['misses']);
+        $this->assertGreaterThanOrEqual(1, $snapshot['hits']);
+    }
+
+    public function test_stampede_lock_rebuilds_resolver_once_per_key(): void
+    {
+        Cache::flush();
+
+        $calls = 0;
+        $resolver = function () use (&$calls) {
+            $calls++;
+            usleep(20_000);
+
+            return ['n' => $calls];
+        };
+
+        $first = VersionedCache::rememberKey('stampede:test:key', 60, $resolver);
+        $second = VersionedCache::rememberKey('stampede:test:key', 60, $resolver);
+
+        $this->assertSame(['n' => 1], $first);
+        $this->assertSame(['n' => 1], $second);
+        $this->assertSame(1, $calls);
     }
 
     public function test_dashboard_summary_cache_uses_board_version(): void

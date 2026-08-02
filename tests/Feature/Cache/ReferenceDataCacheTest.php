@@ -52,4 +52,17 @@ class ReferenceDataCacheTest extends TestCase
             $this->assertGreaterThan($firstVersion, ReferenceDataCache::version($domain));
         }
     }
+
+    public function test_rbac_invalidator_bumps_roles_and_permissions_domains(): void
+    {
+        Cache::flush();
+
+        $rolesBefore = ReferenceDataCache::version('roles');
+        $permissionsBefore = ReferenceDataCache::version('permissions');
+
+        \App\Services\Cache\CacheInvalidator::rbacChanged();
+
+        $this->assertGreaterThan($rolesBefore, ReferenceDataCache::version('roles'));
+        $this->assertGreaterThan($permissionsBefore, ReferenceDataCache::version('permissions'));
+    }
 }

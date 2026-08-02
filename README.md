@@ -71,7 +71,14 @@ Pick **one** option.
 #### Option A — Docker (recommended on Windows)
 
 ```bash
-docker run -d --name hotel-redis -p 6379:6379 redis:7-alpine
+# With maxmemory + allkeys-lru (recommended — see docker/redis.conf)
+docker run -d --name hotel-redis -p 6379:6379 \
+  -v "%cd%/docker/redis.conf:/usr/local/etc/redis/redis.conf" \
+  redis:7-alpine redis-server /usr/local/etc/redis/redis.conf
+
+# Or quick start without a config file:
+# docker run -d --name hotel-redis -p 6379:6379 redis:7-alpine \
+#   redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
 ```
 
 Verify:
@@ -79,6 +86,7 @@ Verify:
 ```bash
 docker exec hotel-redis redis-cli ping
 # PONG
+php artisan redis:health
 ```
 
 #### Option B — Redis installed natively (Linux / macOS / Memurai on Windows)
@@ -124,6 +132,7 @@ DB2_USERNAME=root
 DB2_PASSWORD=
 
 # Redis — cache + queues (predis works without the phpredis extension)
+CACHE_STORE=redis
 CACHE_DRIVER=redis
 QUEUE_CONNECTION=redis
 REDIS_CLIENT=predis
@@ -320,12 +329,27 @@ php artisan hotel:ensure-admin --password='YourSecurePassword'
 Production `.env` highlights:
 
 ```env
+CACHE_STORE=redis
 CACHE_DRIVER=redis
 QUEUE_CONNECTION=redis
 BROADCAST_DRIVER=reverb
 REDIS_CLIENT=phpredis   # preferred on Linux VPS if ext-redis is installed
 SESSION_DRIVER=redis    # optional — shared sessions across PHP-FPM workers
+REDIS_PREFIX=hotel_prod_
 ```
+
+Health check: `php artisan redis:health` (connectivity, `INFO memory`, app-level cache hit/miss).
+
+### Laravel Horizon (optional — VPS only)
+
+Horizon is **not** installed by default. On a dedicated VPS you may add it for Redis queue dashboards:
+
+```bash
+composer require laravel/horizon
+php artisan horizon:install
+```
+
+Prefer `REDIS_CLIENT=phpredis` when `ext-redis` is available. Keep using Supervisor `queue:work` on shared hosting. See `docs/SAVEO_DEPLOY_RUNBOOK.md`.
 
 ---
 
@@ -340,7 +364,7 @@ SESSION_DRIVER=redis    # optional — shared sessions across PHP-FPM workers
 | Reverb connection refused | Confirm port **8080** free; `REVERB_HOST=127.0.0.1` locally (not `localhost` in Angular if mixed with `127.0.0.1`) |
 | **Report export stuck** | Start `php artisan queue:work redis`; confirm Redis running |
 | **Direct PDF/Excel/CSV disabled** | Result set exceeds `REPORT_MAX_DIRECT_DOWNLOAD_ROWS` (default 40). Narrow filters or use **Email export** |
-| `Connection refused` to Redis | Start Redis (`docker start hotel-redis` or native service); or temporarily `CACHE_DRIVER=file` + `QUEUE_CONNECTION=sync` |
+| `Connection refused` to Redis | Start Redis (`docker start hotel-redis` or native service); or temporarily `CACHE_STORE=file` / `CACHE_DRIVER=file` + `QUEUE_CONNECTION=sync` |
 | `Class "Redis" not found` with `REDIS_CLIENT=phpredis` | Use `REDIS_CLIENT=predis` (no PHP extension) or install `phpredis` |
 | Empty GL / P&L reports | `php artisan accounting:backfill-journal` |
 | Finance audit FAIL | `php artisan demo:setup --fresh` then `php artisan demo:verify` |

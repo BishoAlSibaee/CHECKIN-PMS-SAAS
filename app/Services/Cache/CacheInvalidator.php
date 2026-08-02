@@ -38,6 +38,12 @@ class CacheInvalidator
         ReferenceDataCache::bumpDomain('job_titles');
     }
 
+    public static function rbacChanged(): void
+    {
+        ReferenceDataCache::bumpDomain('roles');
+        ReferenceDataCache::bumpDomain('permissions');
+    }
+
     public static function financeChanged(): void
     {
         HotelCacheVersion::bumpFinance();

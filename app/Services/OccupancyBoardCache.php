@@ -7,7 +7,7 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 
 /**
- * Versioned cache for occupancy board (file or redis via CACHE_DRIVER).
+ * Versioned cache for occupancy board (file or redis via CACHE_STORE/CACHE_DRIVER).
  * bump() increments version and publishes HotelLiveUpdated via Reverb.
  */
 class OccupancyBoardCache
