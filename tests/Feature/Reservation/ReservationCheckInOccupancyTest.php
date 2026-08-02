@@ -74,6 +74,7 @@ class ReservationCheckInOccupancyTest extends TestCase
         $checkIn->assertJsonPath('success', false);
         $message = (string) $checkIn->json('message');
         $this->assertStringContainsString('occupied', strtolower($message));
+        $this->assertStringContainsString('checked out', strtolower($message));
         $this->assertStringContainsString((string) $blockingId, $message);
         $this->assertDatabaseHas('reservations', ['id' => $targetId, 'logedin' => 0]);
     }
@@ -108,15 +109,15 @@ class ReservationCheckInOccupancyTest extends TestCase
         $row = $rows->firstWhere('id', $room->id);
         $this->assertNotNull($row);
         $this->assertFalse($row['available_for_period']);
-        $this->assertSame('occupied', $row['unavailable_reason']);
+        $this->assertSame('still_checked_in', $row['unavailable_reason']);
         $this->assertSame($blockingId, $row['conflict']['reservation_id'] ?? null);
     }
 
-    public function test_booking_availability_ignores_in_house_stay_that_ended_before_selected_period(): void
+    public function test_booking_availability_blocks_room_while_previous_guest_has_not_checked_out(): void
     {
         $this->seedReservationFixtures();
 
-        $user = $this->userWithApiPermissions(['view reservations', 'update reservations']);
+        $user = $this->userWithApiPermissions(['view reservations', 'update reservations', 'create reservations']);
         $room = Room::where('active', 1)->whereHas('roomType')->first();
         $this->assertNotNull($room);
 
@@ -140,8 +141,35 @@ class ReservationCheckInOccupancyTest extends TestCase
         $response->assertOk();
         $row = collect($response->json('data.rooms') ?? [])->firstWhere('id', $room->id);
         $this->assertNotNull($row);
-        $this->assertTrue($row['available_for_period'], 'Past in-house stay must not block a later period.');
-        $this->assertNull($row['unavailable_reason']);
+        $this->assertFalse($row['available_for_period'], 'Still-checked-in guest must block later booking.');
+        $this->assertSame('still_checked_in', $row['unavailable_reason']);
+        $this->assertSame($pastId, $row['conflict']['reservation_id'] ?? null);
+
+        $blockedCreate = $this->actingAs($user, 'api')->postJson('/api/users/makeReservation', [
+            'client_id' => Client::first()->id,
+            'rooms' => [['room_id' => $room->id]],
+            'start_date' => '2026-06-20',
+            'expire_date' => '2026-06-25',
+            'reservation_type' => 0,
+            'reservation_status' => 1,
+            'stay_reason_id' => Stay_reason::first()->id,
+            'reservation_source_id' => Reservation_source::first()->id,
+            'rent_type' => 0,
+            'price_calculation_mode' => 0,
+            'discount' => 0,
+            'extras' => 0,
+            'penalties' => 0,
+            'pay_amount' => 0,
+            'logedin' => 0,
+        ]);
+
+        $blockedCreate->assertJsonPath('success', false);
+        $message = (string) $blockedCreate->json('message');
+        $this->assertStringContainsString((string) $pastId, $message);
+        $this->assertTrue(
+            str_contains($message, 'لم يسجّل المغادرة') || str_contains(strtolower($message), 'check out'),
+            $message
+        );
     }
 
     public function test_booking_availability_ignores_confirmed_reservation_that_ended_before_selected_period(): void

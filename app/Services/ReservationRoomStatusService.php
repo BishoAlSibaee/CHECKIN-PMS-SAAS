@@ -146,7 +146,7 @@ class ReservationRoomStatusService
         if ($blockingReservationId !== null) {
             $label = $room->number ?: (string) $roomId;
             throw new \RuntimeException(
-                "Cannot check in — room {$label} is occupied by reservation #{$blockingReservationId}."
+                "Cannot check in — room {$label} is still occupied because reservation #{$blockingReservationId} has not checked out yet."
             );
         }
 

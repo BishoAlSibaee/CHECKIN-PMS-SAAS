@@ -733,6 +733,14 @@ class ReservationController extends Controller
                     }
 
                     foreach ($roomsToProcess as $room) {
+                        $blockingInHouseId = $this->roomStatusService->findActiveInHouseReservationId((int) $room->id);
+                        if ($blockingInHouseId !== null) {
+                            throw new \Exception(
+                                'لا يمكن حجز الغرفة رقم '.($room->number ?? $room->id)
+                                .' لأن النزيل في الحجز #'.$blockingInHouseId.' لم يسجّل المغادرة بعد.'
+                            );
+                        }
+
                         if (! $this->isRoomAvailable($room->id, $startDate->toDateString(), $endDate->toDateString())) {
                             throw new \Exception('الغرفة رقم '.($room->number ?? $room->id).' غير متاحة في هذه الفترة.');
                         }
@@ -1074,12 +1082,8 @@ class ReservationController extends Controller
             return false;
         }
 
-        if ($this->roomStatusService->roomHasActiveInHouseStayOverlapping(
-            (int) $roomId,
-            $startDate,
-            $endDate,
-            $excludeReservationId
-        )) {
+        // Any guest still checked in blocks booking until checkout, even after scheduled departure.
+        if ($this->roomStatusService->roomHasActiveInHouseStay((int) $roomId, $excludeReservationId)) {
             return false;
         }
 
@@ -1457,12 +1461,11 @@ class ReservationController extends Controller
                     ->groupBy('room_id')
                     ->map(fn ($rows) => $rows->first());
 
+                // Still-checked-in guests block the room for any new booking until checkout.
                 $inHouseByRoom = ReservationRoom::whereIn('room_id', $roomIds)
-                    ->whereHas('reservation', function ($q) use ($startDate, $endDate) {
+                    ->whereHas('reservation', function ($q) {
                         $q->where('reservation_status', Reservation::STATUS_CONFIRMED)
-                            ->where('logedin', Reservation::LOGEDIN_IN_HOUSE)
-                            ->where('start_date', '<', $endDate)
-                            ->where('expire_date', '>=', $startDate);
+                            ->where('logedin', Reservation::LOGEDIN_IN_HOUSE);
                     })
                     ->with(['reservation.client'])
                     ->get()
@@ -1481,7 +1484,7 @@ class ReservationController extends Controller
 
                 if ($inHouseRow) {
                     $availableForPeriod = false;
-                    $unavailableReason = 'occupied';
+                    $unavailableReason = 'still_checked_in';
                 } elseif ((int) $room->roomStatus === 2) {
                     $this->roomStatusService->setAvailableIfNoActiveStay((int) $room->id);
                     $room->refresh();
