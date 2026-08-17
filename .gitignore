@@ -20,6 +20,10 @@ yarn-error.log
 
 # Cursor / AI tooling (local only — do not publish)
 .cursor/
+.cursorrules
+.cursorignore
 AGENTS.md
 boost.json
 .claude/
+.github/copilot-instructions.md
+**/*.canvas.tsx
