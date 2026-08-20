@@ -150,77 +150,88 @@ class ZatcaCheckoutReportingService
             $invoice->save();
         }
 
-        $unsignedXml = $this->buildXml(
-            uuid: (string) $invoice->uuid,
-            invoiceId: (string) $invoice->invoice_number,
-            vat: $seller['vat'],
-            orgName: $seller['name'],
-            customerName: $guestName,
-            lineName: $lineName,
-            quantity: $nights,
-            lineExtension: $subtotal,
-            taxAmount: $tax,
-            taxInclusive: $total,
-            icv: $icv,
-            previousInvoiceHash: $previousHash,
-            note: 'Checkout invoice for reservation #'.$reservationId,
-        );
-
-        $directory = (string) config('zatca.storage_path');
-        if (! is_dir($directory) && ! mkdir($directory, 0700, true) && ! is_dir($directory)) {
-            throw new RuntimeException('Unable to create ZATCA storage directory.');
-        }
-
-        $privateKeyPem = (string) file_get_contents($privateKeyPath);
-        $cleanPrivateKey = trim(str_replace(
-            ['-----BEGIN EC PRIVATE KEY-----', '-----END EC PRIVATE KEY-----', '-----BEGIN PRIVATE KEY-----', '-----END PRIVATE KEY-----', "\r", "\n", ' '],
-            '',
-            $privateKeyPem
-        ));
-
-        $certificate = new Certificate($decodedCertificate, $cleanPrivateKey, $secret);
-        $signed = InvoiceSigner::signInvoice($unsignedXml, $certificate);
-        $signedXml = $signed->getXML();
-        $invoiceHash = $signed->getHash();
-        $qrCode = trim((string) $signed->getQRCode());
-
-        $signedPath = $directory.DIRECTORY_SEPARATOR.'reservation_'.$reservationId.'_signed.xml';
-        file_put_contents($signedPath, $signedXml);
-
-        $env = (string) config('zatca.environment', 'sandbox');
-        $api = new ZatcaAPI($env === 'production' ? 'production' : ($env === 'simulation' ? 'simulation' : 'sandbox'));
-
         try {
-            $response = $api->submitReportingInvoice($decodedCertificate, $secret, $signedXml, $invoiceHash, (string) $invoice->uuid);
-            $invoice->fill([
-                'invoice_hash' => $invoiceHash,
-                'qr_code' => $qrCode !== '' ? $qrCode : null,
-                'icv' => $icv,
-                'signed_xml_path' => $signedPath,
-                'http_status' => $response->getStatusCode(),
-                'reporting_status' => $response->getReportingStatus(),
-                'response_payload' => $response->toArray(),
-                'status' => $response->isReported() || $response->getStatusCode() === 200
-                    ? ZatcaInvoice::STATUS_REPORTED
-                    : ZatcaInvoice::STATUS_FAILED,
-                'error_message' => $response->isReported() || $response->getStatusCode() === 200
-                    ? null
-                    : 'Reporting status: '.($response->getReportingStatus() ?? 'unknown'),
-                'reported_at' => now(),
-            ]);
+            $unsignedXml = $this->buildXml(
+                uuid: (string) $invoice->uuid,
+                invoiceId: (string) $invoice->invoice_number,
+                vat: $seller['vat'],
+                orgName: $seller['name'],
+                customerName: $guestName,
+                lineName: $lineName,
+                quantity: $nights,
+                lineExtension: $subtotal,
+                taxAmount: $tax,
+                taxInclusive: $total,
+                icv: $icv,
+                previousInvoiceHash: $previousHash,
+                note: 'Checkout invoice for reservation #'.$reservationId,
+            );
+
+            $directory = (string) config('zatca.storage_path');
+            if (! is_dir($directory) && ! mkdir($directory, 0700, true) && ! is_dir($directory)) {
+                throw new RuntimeException('Unable to create ZATCA storage directory.');
+            }
+
+            $privateKeyPem = (string) file_get_contents($privateKeyPath);
+            $cleanPrivateKey = trim(str_replace(
+                ['-----BEGIN EC PRIVATE KEY-----', '-----END EC PRIVATE KEY-----', '-----BEGIN PRIVATE KEY-----', '-----END PRIVATE KEY-----', "\r", "\n", ' '],
+                '',
+                $privateKeyPem
+            ));
+
+            $certificate = new Certificate($decodedCertificate, $cleanPrivateKey, $secret);
+            $signed = InvoiceSigner::signInvoice($unsignedXml, $certificate);
+            $signedXml = $signed->getXML();
+            $invoiceHash = $signed->getHash();
+            $qrCode = trim((string) $signed->getQRCode());
+
+            $signedPath = $directory.DIRECTORY_SEPARATOR.'reservation_'.$reservationId.'_signed.xml';
+            file_put_contents($signedPath, $signedXml);
+
+            $env = (string) config('zatca.environment', 'sandbox');
+            $api = new ZatcaAPI($env === 'production' ? 'production' : ($env === 'simulation' ? 'simulation' : 'sandbox'));
+
+            try {
+                $response = $api->submitReportingInvoice($decodedCertificate, $secret, $signedXml, $invoiceHash, (string) $invoice->uuid);
+                $invoice->fill([
+                    'invoice_hash' => $invoiceHash,
+                    'qr_code' => $qrCode !== '' ? $qrCode : null,
+                    'icv' => $icv,
+                    'signed_xml_path' => $signedPath,
+                    'http_status' => $response->getStatusCode(),
+                    'reporting_status' => $response->getReportingStatus(),
+                    'response_payload' => $response->toArray(),
+                    'status' => $response->isReported() || $response->getStatusCode() === 200
+                        ? ZatcaInvoice::STATUS_REPORTED
+                        : ZatcaInvoice::STATUS_FAILED,
+                    'error_message' => $response->isReported() || $response->getStatusCode() === 200
+                        ? null
+                        : 'Reporting status: '.($response->getReportingStatus() ?? 'unknown'),
+                    'reported_at' => now(),
+                ]);
+            } catch (\Throwable $e) {
+                $context = method_exists($e, 'getContext') ? $e->getContext() : [];
+                $invoice->fill([
+                    'invoice_hash' => $invoiceHash,
+                    'qr_code' => $qrCode !== '' ? $qrCode : null,
+                    'icv' => $icv,
+                    'signed_xml_path' => $signedPath,
+                    'http_status' => isset($context['statusCode']) ? (int) $context['statusCode'] : null,
+                    'response_payload' => is_array($context['response'] ?? null) ? $context['response'] : $context,
+                    'status' => ZatcaInvoice::STATUS_FAILED,
+                    'error_message' => $e->getMessage(),
+                ]);
+                Log::warning('ZATCA checkout report failed', [
+                    'reservation_id' => $reservationId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         } catch (\Throwable $e) {
-            $context = method_exists($e, 'getContext') ? $e->getContext() : [];
             $invoice->fill([
-                'invoice_hash' => $invoiceHash,
-                'qr_code' => $qrCode !== '' ? $qrCode : null,
-                'icv' => $icv,
-                'signed_xml_path' => $signedPath,
-                'http_status' => isset($context['statusCode']) ? (int) $context['statusCode'] : null,
-                'response_payload' => is_array($context['response'] ?? null) ? $context['response'] : $context,
                 'status' => ZatcaInvoice::STATUS_FAILED,
                 'error_message' => $e->getMessage(),
             ]);
-            Log::warning('ZATCA checkout report failed', [
+            Log::warning('ZATCA checkout invoice build/sign failed', [
                 'reservation_id' => $reservationId,
                 'error' => $e->getMessage(),
             ]);
@@ -246,6 +257,18 @@ class ZatcaCheckoutReportingService
             $invoice = ZatcaInvoice::query()->where('reservation_id', $reservationId)->first();
             if ($invoice === null) {
                 return null;
+            }
+
+            if ($invoice->status === ZatcaInvoice::STATUS_PENDING && $this->shouldReportOnCheckout()) {
+                try {
+                    $invoice = $this->reportReservationCheckout($reservationId);
+                } catch (\Throwable $e) {
+                    Log::warning('ZATCA pending invoice retry failed', [
+                        'reservation_id' => $reservationId,
+                        'error' => $e->getMessage(),
+                    ]);
+                    $invoice->refresh();
+                }
             }
 
             $qr = trim((string) ($invoice->qr_code ?? ''));

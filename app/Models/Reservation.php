@@ -299,8 +299,22 @@ class Reservation extends Model
 
     public function guestHasCheckedOut(): bool
     {
-        return (int) $this->logedin === self::LOGEDIN_NOT_IN_HOUSE
-            && ! empty($this->login_time);
+        if ((int) $this->logedin !== self::LOGEDIN_NOT_IN_HOUSE || empty($this->login_time)) {
+            return false;
+        }
+
+        if (ReservationChangeLog::query()
+            ->where('reservation_id', $this->id)
+            ->where('action', 'checked_in')
+            ->exists()) {
+            return true;
+        }
+
+        if ($this->expire_date === null) {
+            return false;
+        }
+
+        return \Carbon\Carbon::parse($this->expire_date)->startOfDay()->lt(\Carbon\Carbon::today()->startOfDay());
     }
 
     public function totalDiscountAmount(): float

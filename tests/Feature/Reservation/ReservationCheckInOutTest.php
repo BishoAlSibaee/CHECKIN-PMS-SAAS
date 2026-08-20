@@ -64,6 +64,12 @@ class ReservationCheckInOutTest extends TestCase
         $reservationId = $create->json('data.reservation.id') ?? $create->json('data.id');
         $this->assertNotNull($reservationId);
 
+        $this->assertDatabaseHas('reservations', [
+            'id' => $reservationId,
+            'logedin' => 0,
+            'login_time' => null,
+        ]);
+
         Event::fake([HotelLiveUpdated::class]);
 
         Room::where('id', $room->id)->update(['roomStatus' => ReservationRoomStatusService::ROOM_PREPARATION]);

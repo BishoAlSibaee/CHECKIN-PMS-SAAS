@@ -816,7 +816,7 @@ class ReservationController extends Controller
                 'guest_classification_id' => $reservationDraft->guest_classification_id,
                 'classification_discount_id' => $reservationDraft->classification_discount_id,
                 'logedin' => $request->logedin ?? Reservation::LOGEDIN_NOT_IN_HOUSE,
-                'login_time' => $request->login_time ?? $request->start_date,
+                'login_time' => $this->resolveLoginTimeForCreate($request),
                 'extras' => $extras,
                 'penalties' => $penalties,
                 'subtotal' => $subtotal,
@@ -1834,5 +1834,15 @@ class ReservationController extends Controller
             'change_logs' => $this->changeLogService->listForReservation((int) $reservation->id),
             'zatca_invoice' => $this->zatcaCheckoutReportingService->invoiceSummaryForReservation((int) $reservation->id),
         ];
+    }
+
+    private function resolveLoginTimeForCreate(MakeReservationRequest $request): ?string
+    {
+        $logedin = (int) ($request->logedin ?? Reservation::LOGEDIN_NOT_IN_HOUSE);
+        if ($logedin !== Reservation::LOGEDIN_IN_HOUSE) {
+            return null;
+        }
+
+        return $request->login_time ?? $request->start_date ?? Carbon::today()->toDateString();
     }
 }
