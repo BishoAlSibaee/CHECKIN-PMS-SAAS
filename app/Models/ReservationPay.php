@@ -16,6 +16,9 @@ protected $fillable = [
         'pay',
         'type',
         'user_id',
+        'terminal_reference',
+        'payment_source',
+        'card_last4',
     ];
 
     const TYPE_PAYMENT = 0;

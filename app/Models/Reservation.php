@@ -141,6 +141,7 @@ class Reservation extends Model
     }
 
     protected $fillable = [
+        'confirmation_code',
         'client_id',
         'start_date',
         'nights',

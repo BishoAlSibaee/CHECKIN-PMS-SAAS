@@ -44,6 +44,11 @@ class RouteServiceProvider extends ServiceProvider
                 ->by($request->ip());
         });
 
+        RateLimiter::for('kiosk', function (Request $request) {
+            return Limit::perMinute((int) env('API_RATE_LIMIT_KIOSK', 120))
+                ->by($request->ip());
+        });
+
         $this->routes(function () {
             Route::middleware('api')
                 ->prefix('api')
@@ -60,6 +65,15 @@ class RouteServiceProvider extends ServiceProvider
             Route::middleware('api')
                 ->prefix('api/reservations')
                 ->group(base_path('routes/reservations.php'));
+
+            // Deliberately NOT using the 'api' middleware group here — it carries
+            // Laravel's built-in throttle:api, whose limiter closure calls
+            // $request->user(), which resolves through Passport's TokenGuard. That
+            // blows up on a kiosk device token (not a Passport token) since it runs
+            // before our own kiosk.auth middleware gets a chance to authenticate it.
+            Route::middleware(['throttle:kiosk', \Illuminate\Routing\Middleware\SubstituteBindings::class])
+                ->prefix('api/kiosk')
+                ->group(base_path('routes/kiosk.php'));
 
             Route::middleware('web')
                 ->group(base_path('routes/web.php'));

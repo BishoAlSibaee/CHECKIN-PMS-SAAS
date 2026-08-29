@@ -151,5 +151,14 @@ class PermissionSeeder extends Seeder
             'manage chart of accounts', 'manage journal entries', 'close accounting period',
             'view clients',
         ]);
+
+        $kioskRole = Role::updateOrCreate(
+            ['name' => 'kiosk', 'guard_name' => 'api'],
+            ['name_ar' => 'جهاز الخدمة الذاتية', 'is_system' => true, 'description' => 'Self-service kiosk device access']
+        );
+        $kioskRole->syncPermissions([
+            'view reservations', 'create reservations', 'update reservations',
+            'view clients', 'manage clients',
+        ]);
     }
 }
