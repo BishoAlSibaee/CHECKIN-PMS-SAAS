@@ -194,11 +194,93 @@ class ReservationController extends Controller
                 'reservationRooms.room.roomType',
                 'reservationRooms.room.building',
                 'reservationRooms.room.floor',
-                'payments',
+                'payments.voucher',
                 'user',
             ])->findOrFail($id);
 
             return \SuccessData('Reservation retrieved', $this->reservationDetailPayload($reservation));
+        } catch (ModelNotFoundException) {
+            return \Failed('Reservation not found', 404);
+        } catch (\Exception $e) {
+            return \Failed($e->getMessage());
+        }
+    }
+
+    /**
+     * Guest folio — the full itemized statement of a stay (daily charges, every
+     * payment/refund with its voucher number, and any invoices/credit notes),
+     * distinct from the summarized tax invoice returned by show()/printInvoice.
+     */
+    public function folio(int $id)
+    {
+        try {
+            $reservation = Reservation::with([
+                'client',
+                'reservationRooms.room.roomType',
+                'payments.voucher',
+                'payments.user',
+            ])->findOrFail($id);
+
+            $dailyCharges = ReservationDailyCharge::where('reservation_id', $id)
+                ->orderBy('charge_date')
+                ->get(['charge_date', 'base_amount']);
+
+            $transactions = $reservation->payments
+                ->sortBy('created_at')
+                ->values()
+                ->map(fn ($payment) => [
+                    'date' => optional($payment->created_at)->toIso8601String(),
+                    'type' => (int) $payment->type === \App\Models\ReservationPay::TYPE_REFUND ? 'refund' : 'payment',
+                    'amount' => (float) $payment->pay,
+                    'voucher_number' => $payment->voucher?->voucher_number,
+                    'method' => $payment->payment_source,
+                    'note' => $payment->note,
+                    'recorded_by' => $payment->user?->name,
+                ]);
+
+            $taxInvoice = \App\Models\Invoice::query()
+                ->where('reservation_id', $id)
+                ->where('type', \App\Models\Invoice::TYPE_TAX_INVOICE)
+                ->first();
+            $creditNotes = $taxInvoice
+                ? \App\Models\Invoice::query()->where('related_invoice_id', $taxInvoice->id)->orderBy('id')->get()
+                : collect();
+
+            $invoices = $taxInvoice
+                ? collect([$taxInvoice])->concat($creditNotes)->map(fn ($inv) => [
+                    'invoice_number' => $inv->invoice_number,
+                    'type' => $inv->type,
+                    'total' => (float) $inv->total,
+                    'issued_at' => optional($inv->issued_at)->toIso8601String(),
+                ])
+                : collect();
+
+            $roomNumbers = $reservation->reservationRooms
+                ->map(fn ($row) => $row->room?->number)
+                ->filter(fn ($n) => $n !== null && $n !== '')
+                ->values()
+                ->all();
+
+            return \SuccessData('Reservation folio', [
+                'reservation_id' => $reservation->id,
+                'confirmation_code' => $reservation->confirmation_code,
+                'guest_name' => $reservation->guestDisplayName(),
+                'guest_phone' => $reservation->client?->mobile,
+                'guest_email' => $reservation->client?->email,
+                'rooms' => $roomNumbers,
+                'check_in' => $reservation->start_date,
+                'check_out' => $reservation->expire_date,
+                'nights' => $reservation->nights,
+                'daily_charges' => $dailyCharges,
+                'transactions' => $transactions,
+                'invoices' => $invoices,
+                'subtotal' => (float) $reservation->subtotal,
+                'tax' => (float) $reservation->taxes,
+                'discount' => (float) $reservation->discount,
+                'total' => (float) $reservation->total,
+                'paid' => $reservation->paidNetAmount(),
+                'balance_due' => $reservation->balanceDue(),
+            ]);
         } catch (ModelNotFoundException) {
             return \Failed('Reservation not found', 404);
         } catch (\Exception $e) {

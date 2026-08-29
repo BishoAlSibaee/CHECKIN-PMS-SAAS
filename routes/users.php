@@ -213,6 +213,7 @@ Route::group(['middleware' => ['auth:api']], function () {
         Route::get('/getClient/{id}', [ClientsController::class, 'show']);
         Route::get('/getClientById/{id}', [ClientsController::class, 'getClientById']);
         Route::get('/getClientBy', [ClientsController::class, 'getBy']);
+        Route::get('/clients/{id}/statement', [ClientsController::class, 'statement']);
     });
     Route::middleware(['permission:manage clients,api'])->group(function () {
         Route::post('/addClient', [ClientsController::class, 'store']);
@@ -269,6 +270,7 @@ Route::group(['middleware' => ['auth:api']], function () {
         Route::get('reservations/by-date', [ReservationController::class, 'getReservationByDate']);
         Route::get('reservations/client', [ReservationController::class, 'getByClientId']);
         Route::get('reservations/{id}', [ReservationController::class, 'show']);
+        Route::get('reservations/{id}/folio', [ReservationController::class, 'folio']);
         Route::get('checkReservation', [ReservationController::class, 'checkReservation']);
         Route::get('booking-room-availability', [ReservationController::class, 'bookingRoomAvailability']);
         Route::post('getRoomPrice', [ReservationController::class, 'getRoomPrice']);

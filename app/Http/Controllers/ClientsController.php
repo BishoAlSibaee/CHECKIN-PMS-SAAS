@@ -117,6 +117,65 @@ class ClientsController extends Controller
         }
     }
 
+    /**
+     * Running statement of account across every reservation for this client —
+     * for corporate/travel-agency clients who need one consolidated view instead
+     * of checking each reservation's folio individually.
+     */
+    public function statement($id)
+    {
+        try {
+            $client = Client::find($id);
+            if (! $client) {
+                return \Failed('Client not found');
+            }
+
+            $reservations = Reservation::where('client_id', $id)
+                ->with('payments')
+                ->orderByDesc('start_date')
+                ->get();
+
+            $reservationIds = $reservations->pluck('id');
+            $invoicesByReservation = \App\Models\Invoice::query()
+                ->whereIn('reservation_id', $reservationIds)
+                ->get()
+                ->groupBy('reservation_id');
+
+            $rows = $reservations->map(function (Reservation $reservation) use ($invoicesByReservation) {
+                $invoices = $invoicesByReservation->get($reservation->id, collect());
+                $taxInvoice = $invoices->firstWhere('type', \App\Models\Invoice::TYPE_TAX_INVOICE);
+                $creditNotesTotal = $invoices->where('type', \App\Models\Invoice::TYPE_CREDIT_NOTE)->sum('total');
+
+                return [
+                    'reservation_id' => $reservation->id,
+                    'confirmation_code' => $reservation->confirmation_code,
+                    'start_date' => $reservation->start_date,
+                    'expire_date' => $reservation->expire_date,
+                    'total' => (float) $reservation->total,
+                    'paid' => $reservation->paidNetAmount(),
+                    'balance_due' => $reservation->balanceDue(),
+                    'invoice_number' => $taxInvoice?->invoice_number,
+                    'credit_notes_total' => (float) $creditNotesTotal,
+                ];
+            });
+
+            return \SuccessData('Client statement of account', [
+                'client' => [
+                    'id' => $client->id,
+                    'name' => trim(($client->first_name ?? '').' '.($client->last_name ?? '')),
+                    'mobile' => $client->mobile,
+                    'email' => $client->email,
+                ],
+                'reservations' => $rows,
+                'total_billed' => (float) $rows->sum('total'),
+                'total_paid' => (float) $rows->sum('paid'),
+                'total_outstanding' => (float) $rows->sum('balance_due'),
+            ]);
+        } catch (\Exception $e) {
+            return \Failed($e->getMessage());
+        }
+    }
+
     public function getBy(GetClientByRequest $request)
     {
         try {

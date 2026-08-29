@@ -34,4 +34,9 @@ protected $fillable = [
     {
         return $this->belongsTo(User::class);
     }
+
+    public function voucher(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(PaymentVoucher::class);
+    }
 }
