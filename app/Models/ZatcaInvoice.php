@@ -17,6 +17,7 @@ class ZatcaInvoice extends Model
 
     protected $fillable = [
         'reservation_id',
+        'invoice_id',
         'invoice_number',
         'uuid',
         'invoice_hash',
@@ -41,5 +42,10 @@ class ZatcaInvoice extends Model
     public function reservation(): BelongsTo
     {
         return $this->belongsTo(Reservation::class);
+    }
+
+    public function invoice(): BelongsTo
+    {
+        return $this->belongsTo(Invoice::class);
     }
 }

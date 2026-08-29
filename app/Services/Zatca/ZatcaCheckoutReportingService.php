@@ -2,6 +2,7 @@
 
 namespace App\Services\Zatca;
 
+use App\Models\Invoice as InvoiceRecord;
 use App\Models\Reservation;
 use App\Models\ZatcaInvoice;
 use DateTime;
@@ -12,6 +13,7 @@ use Saleh7\Zatca\AdditionalDocumentReference;
 use Saleh7\Zatca\Address;
 use Saleh7\Zatca\AllowanceCharge;
 use Saleh7\Zatca\Attachment;
+use Saleh7\Zatca\BillingReference;
 use Saleh7\Zatca\ClassifiedTaxCategory;
 use Saleh7\Zatca\ExtensionContent;
 use Saleh7\Zatca\GeneratorInvoice;
@@ -57,30 +59,24 @@ class ZatcaCheckoutReportingService
             ->with(['client', 'reservationRooms.room'])
             ->findOrFail($reservationId);
 
-        $existing = ZatcaInvoice::query()->where('reservation_id', $reservationId)->first();
-        if ($existing && $existing->status === ZatcaInvoice::STATUS_REPORTED) {
-            return $existing;
-        }
-
-        $invoice = $existing ?? new ZatcaInvoice([
-            'reservation_id' => $reservationId,
-            'invoice_number' => 'HOT-R'.$reservationId.'-'.now()->format('YmdHis'),
-            'uuid' => (string) Str::uuid(),
-            'status' => ZatcaInvoice::STATUS_PENDING,
-        ]);
-
         $subtotal = round((float) $reservation->subtotal, 2);
         $tax = round((float) $reservation->taxes, 2);
         $total = round((float) $reservation->total, 2);
 
         if ($total <= 0.005) {
-            $invoice->fill([
+            $skip = ZatcaInvoice::query()->where('reservation_id', $reservationId)->whereNull('invoice_id')->first()
+                ?? new ZatcaInvoice([
+                    'reservation_id' => $reservationId,
+                    'invoice_number' => 'HOT-R'.$reservationId.'-'.now()->format('YmdHis'),
+                    'uuid' => (string) Str::uuid(),
+                ]);
+            $skip->fill([
                 'status' => ZatcaInvoice::STATUS_SKIPPED,
                 'error_message' => 'Reservation total is zero; ZATCA report skipped.',
             ]);
-            $invoice->save();
+            $skip->save();
 
-            return $invoice;
+            return $skip;
         }
 
         if ($subtotal <= 0.005 && $tax > 0) {
@@ -90,6 +86,48 @@ class ZatcaCheckoutReportingService
             $subtotal = round($total / 1.15, 2);
             $tax = round($total - $subtotal, 2);
         }
+
+        // The business invoice record exists independently of ZATCA reporting
+        // success — a guest's printed invoice/receipt must not depend on the
+        // sandbox/production reporting call succeeding. Snapshot amounts now so
+        // later reservation edits (refunds, date changes) can't retroactively
+        // change an already-issued invoice's recorded totals.
+        $invoiceRecord = InvoiceRecord::query()->firstOrCreate(
+            ['reservation_id' => $reservationId, 'type' => InvoiceRecord::TYPE_TAX_INVOICE],
+            [
+                'status' => InvoiceRecord::STATUS_ISSUED,
+                'subtotal' => $subtotal,
+                'tax_amount' => $tax,
+                'total' => $total,
+                'currency' => 'SAR',
+                'line_items' => [[
+                    'name' => 'Hotel stay #'.$reservationId,
+                    'quantity' => max(1, (int) ($reservation->nights ?: 1)),
+                    'unit_price' => round($subtotal / max(1, (int) ($reservation->nights ?: 1)), 2),
+                    'line_total' => $subtotal,
+                    'tax_amount' => $tax,
+                ]],
+                'issued_at' => now(),
+            ]
+        );
+        if ($invoiceRecord->wasRecentlyCreated) {
+            $invoiceRecord->invoice_number = 'INV-'.str_pad((string) $invoiceRecord->id, 6, '0', STR_PAD_LEFT);
+            $invoiceRecord->save();
+        }
+
+        $existing = ZatcaInvoice::query()->where('invoice_id', $invoiceRecord->id)->first();
+        if ($existing && $existing->status === ZatcaInvoice::STATUS_REPORTED) {
+            return $existing;
+        }
+
+        $invoice = $existing ?? new ZatcaInvoice([
+            'reservation_id' => $reservationId,
+            'invoice_id' => $invoiceRecord->id,
+            'invoice_number' => 'HOT-R'.$reservationId.'-'.now()->format('YmdHis'),
+            'uuid' => (string) Str::uuid(),
+            'status' => ZatcaInvoice::STATUS_PENDING,
+        ]);
+        $invoice->invoice_id = $invoiceRecord->id;
 
         $credentials = $this->store->load();
         if ($credentials === null) {
@@ -122,14 +160,7 @@ class ZatcaCheckoutReportingService
 
         $seller = $this->sellerFromCertificate($decodedCertificate);
         $icv = (int) ZatcaInvoice::query()->where('status', ZatcaInvoice::STATUS_REPORTED)->count() + 1;
-        $previousHash = (string) (
-            ZatcaInvoice::query()
-                ->where('status', ZatcaInvoice::STATUS_REPORTED)
-                ->whereNotNull('invoice_hash')
-                ->latest('id')
-                ->value('invoice_hash')
-            ?: self::FIRST_PIH
-        );
+        $previousHash = $this->latestInvoiceHash();
 
         $guestName = $reservation->guestDisplayName();
         if ($guestName === '—') {
@@ -149,6 +180,7 @@ class ZatcaCheckoutReportingService
         if (! $invoice->exists) {
             $invoice->save();
         }
+        $invoice->icv = $icv;
 
         try {
             $unsignedXml = $this->buildXml(
@@ -166,7 +198,164 @@ class ZatcaCheckoutReportingService
                 previousInvoiceHash: $previousHash,
                 note: 'Checkout invoice for reservation #'.$reservationId,
             );
+        } catch (\Throwable $e) {
+            $invoice->fill([
+                'status' => ZatcaInvoice::STATUS_FAILED,
+                'error_message' => $e->getMessage(),
+            ]);
+            $invoice->save();
+            Log::warning('ZATCA checkout invoice build/sign failed', [
+                'reservation_id' => $reservationId,
+                'error' => $e->getMessage(),
+            ]);
 
+            return $invoice->fresh();
+        }
+
+        return $this->signAndSubmitInvoice($invoice, $unsignedXml, $privateKeyPath, $decodedCertificate, $secret, 'reservation_'.$reservationId);
+    }
+
+    /**
+     * Reports a credit note against a reservation's already-reported tax invoice —
+     * required whenever a refund is issued after checkout, since ZATCA has no
+     * concept of silently amending a previously reported simplified invoice.
+     * Returns null when there's nothing valid to report against yet (no prior
+     * invoice, or that invoice was never actually accepted by ZATCA) rather than
+     * throwing, since a failed/missing original isn't the caller's fault.
+     */
+    public function reportCreditNote(int $reservationId, float $refundAmount): ?ZatcaInvoice
+    {
+        if ($refundAmount <= 0.005) {
+            return null;
+        }
+
+        $taxInvoice = InvoiceRecord::query()
+            ->where('reservation_id', $reservationId)
+            ->where('type', InvoiceRecord::TYPE_TAX_INVOICE)
+            ->first();
+        if ($taxInvoice === null) {
+            return null;
+        }
+
+        $originalZatcaInvoice = ZatcaInvoice::query()->where('invoice_id', $taxInvoice->id)->first();
+        if ($originalZatcaInvoice === null || $originalZatcaInvoice->status !== ZatcaInvoice::STATUS_REPORTED) {
+            return null;
+        }
+
+        $total = round($refundAmount, 2);
+        $tax = round($total - $total / 1.15, 2);
+        $subtotal = round($total - $tax, 2);
+
+        $creditNoteRecord = InvoiceRecord::create([
+            'reservation_id' => $reservationId,
+            'related_invoice_id' => $taxInvoice->id,
+            'type' => InvoiceRecord::TYPE_CREDIT_NOTE,
+            'status' => InvoiceRecord::STATUS_ISSUED,
+            'subtotal' => $subtotal,
+            'tax_amount' => $tax,
+            'total' => $total,
+            'currency' => 'SAR',
+            'line_items' => [[
+                'name' => 'Refund for hotel stay #'.$reservationId,
+                'quantity' => 1,
+                'unit_price' => $subtotal,
+                'line_total' => $subtotal,
+                'tax_amount' => $tax,
+            ]],
+            'issued_at' => now(),
+        ]);
+        $creditNoteRecord->invoice_number = 'CN-'.str_pad((string) $creditNoteRecord->id, 6, '0', STR_PAD_LEFT);
+        $creditNoteRecord->save();
+
+        $credentials = $this->store->load();
+        $token = (string) data_get($credentials, 'production.binary_security_token', '');
+        $secret = (string) data_get($credentials, 'production.secret', '');
+        $privateKeyPath = (string) data_get($credentials, 'paths.private_key', '');
+        $decodedCertificate = $token !== '' ? base64_decode($token, true) : false;
+
+        $zatcaCreditNote = new ZatcaInvoice([
+            'reservation_id' => $reservationId,
+            'invoice_id' => $creditNoteRecord->id,
+            'invoice_number' => 'HOT-CN'.$reservationId.'-'.now()->format('YmdHis'),
+            'uuid' => (string) Str::uuid(),
+            'status' => ZatcaInvoice::STATUS_PENDING,
+        ]);
+
+        if ($credentials === null || $secret === '' || ! is_file($privateKeyPath) || $decodedCertificate === false || $decodedCertificate === '') {
+            $zatcaCreditNote->status = ZatcaInvoice::STATUS_SKIPPED;
+            $zatcaCreditNote->error_message = 'ZATCA credentials missing. Run php artisan zatca:sandbox-onboard.';
+            $zatcaCreditNote->save();
+
+            return $zatcaCreditNote;
+        }
+
+        $reservation = Reservation::query()->findOrFail($reservationId);
+        $seller = $this->sellerFromCertificate($decodedCertificate);
+        $icv = (int) ZatcaInvoice::query()->where('status', ZatcaInvoice::STATUS_REPORTED)->count() + 1;
+        $previousHash = $this->latestInvoiceHash();
+        $guestName = $reservation->guestDisplayName();
+        if ($guestName === '—') {
+            $guestName = 'Hotel Guest';
+        }
+
+        $zatcaCreditNote->icv = $icv;
+        $zatcaCreditNote->save();
+
+        try {
+            $unsignedXml = $this->buildXml(
+                uuid: (string) $zatcaCreditNote->uuid,
+                invoiceId: (string) $zatcaCreditNote->invoice_number,
+                vat: $seller['vat'],
+                orgName: $seller['name'],
+                customerName: $guestName,
+                lineName: 'Refund for hotel stay #'.$reservationId,
+                quantity: 1,
+                lineExtension: $subtotal,
+                taxAmount: $tax,
+                taxInclusive: $total,
+                icv: $icv,
+                previousInvoiceHash: $previousHash,
+                note: 'Credit note for reservation #'.$reservationId,
+                invoiceTypeKind: 'credit',
+                billingReferenceId: $originalZatcaInvoice->invoice_number,
+                paymentMeansCode: '42',
+                paymentMeansReason: 'Refund for reservation #'.$reservationId,
+            );
+        } catch (\Throwable $e) {
+            $zatcaCreditNote->fill(['status' => ZatcaInvoice::STATUS_FAILED, 'error_message' => $e->getMessage()]);
+            $zatcaCreditNote->save();
+            Log::warning('ZATCA credit note build/sign failed', [
+                'reservation_id' => $reservationId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return $zatcaCreditNote->fresh();
+        }
+
+        return $this->signAndSubmitInvoice($zatcaCreditNote, $unsignedXml, $privateKeyPath, $decodedCertificate, $secret, 'reservation_'.$reservationId.'_creditnote_'.$creditNoteRecord->id);
+    }
+
+    private function latestInvoiceHash(): string
+    {
+        return (string) (
+            ZatcaInvoice::query()
+                ->where('status', ZatcaInvoice::STATUS_REPORTED)
+                ->whereNotNull('invoice_hash')
+                ->latest('id')
+                ->value('invoice_hash')
+            ?: self::FIRST_PIH
+        );
+    }
+
+    private function signAndSubmitInvoice(
+        ZatcaInvoice $zatcaInvoice,
+        string $unsignedXml,
+        string $privateKeyPath,
+        string $decodedCertificate,
+        string $secret,
+        string $storageFileSuffix,
+    ): ZatcaInvoice {
+        try {
             $directory = (string) config('zatca.storage_path');
             if (! is_dir($directory) && ! mkdir($directory, 0700, true) && ! is_dir($directory)) {
                 throw new RuntimeException('Unable to create ZATCA storage directory.');
@@ -185,18 +374,17 @@ class ZatcaCheckoutReportingService
             $invoiceHash = $signed->getHash();
             $qrCode = trim((string) $signed->getQRCode());
 
-            $signedPath = $directory.DIRECTORY_SEPARATOR.'reservation_'.$reservationId.'_signed.xml';
+            $signedPath = $directory.DIRECTORY_SEPARATOR.$storageFileSuffix.'_signed.xml';
             file_put_contents($signedPath, $signedXml);
 
             $env = (string) config('zatca.environment', 'sandbox');
             $api = new ZatcaAPI($env === 'production' ? 'production' : ($env === 'simulation' ? 'simulation' : 'sandbox'));
 
             try {
-                $response = $api->submitReportingInvoice($decodedCertificate, $secret, $signedXml, $invoiceHash, (string) $invoice->uuid);
-                $invoice->fill([
+                $response = $api->submitReportingInvoice($decodedCertificate, $secret, $signedXml, $invoiceHash, (string) $zatcaInvoice->uuid);
+                $zatcaInvoice->fill([
                     'invoice_hash' => $invoiceHash,
                     'qr_code' => $qrCode !== '' ? $qrCode : null,
-                    'icv' => $icv,
                     'signed_xml_path' => $signedPath,
                     'http_status' => $response->getStatusCode(),
                     'reporting_status' => $response->getReportingStatus(),
@@ -211,35 +399,28 @@ class ZatcaCheckoutReportingService
                 ]);
             } catch (\Throwable $e) {
                 $context = method_exists($e, 'getContext') ? $e->getContext() : [];
-                $invoice->fill([
+                $zatcaInvoice->fill([
                     'invoice_hash' => $invoiceHash,
                     'qr_code' => $qrCode !== '' ? $qrCode : null,
-                    'icv' => $icv,
                     'signed_xml_path' => $signedPath,
                     'http_status' => isset($context['statusCode']) ? (int) $context['statusCode'] : null,
                     'response_payload' => is_array($context['response'] ?? null) ? $context['response'] : $context,
                     'status' => ZatcaInvoice::STATUS_FAILED,
                     'error_message' => $e->getMessage(),
                 ]);
-                Log::warning('ZATCA checkout report failed', [
-                    'reservation_id' => $reservationId,
-                    'error' => $e->getMessage(),
-                ]);
+                Log::warning('ZATCA report failed', ['error' => $e->getMessage()]);
             }
         } catch (\Throwable $e) {
-            $invoice->fill([
+            $zatcaInvoice->fill([
                 'status' => ZatcaInvoice::STATUS_FAILED,
                 'error_message' => $e->getMessage(),
             ]);
-            Log::warning('ZATCA checkout invoice build/sign failed', [
-                'reservation_id' => $reservationId,
-                'error' => $e->getMessage(),
-            ]);
+            Log::warning('ZATCA invoice build/sign failed', ['error' => $e->getMessage()]);
         }
 
-        $invoice->save();
+        $zatcaInvoice->save();
 
-        return $invoice->fresh();
+        return $zatcaInvoice->fresh();
     }
 
     /**
@@ -254,7 +435,14 @@ class ZatcaCheckoutReportingService
                 return null;
             }
 
-            $invoice = ZatcaInvoice::query()->where('reservation_id', $reservationId)->first();
+            $taxInvoiceId = InvoiceRecord::query()
+                ->where('reservation_id', $reservationId)
+                ->where('type', InvoiceRecord::TYPE_TAX_INVOICE)
+                ->value('id');
+
+            $invoice = $taxInvoiceId
+                ? ZatcaInvoice::query()->where('invoice_id', $taxInvoiceId)->first()
+                : ZatcaInvoice::query()->where('reservation_id', $reservationId)->whereNull('invoice_id')->first();
             if ($invoice === null) {
                 return null;
             }
@@ -280,12 +468,36 @@ class ZatcaCheckoutReportingService
                 }
             }
 
+            $businessInvoice = $invoice->invoice_id
+                ? InvoiceRecord::query()->find($invoice->invoice_id)
+                : InvoiceRecord::query()->where('reservation_id', $reservationId)->where('type', InvoiceRecord::TYPE_TAX_INVOICE)->first();
+
+            $creditNotes = $businessInvoice
+                ? InvoiceRecord::query()->where('related_invoice_id', $businessInvoice->id)->orderBy('id')->get()
+                    ->map(fn (InvoiceRecord $cn) => [
+                        'invoice_number' => $cn->invoice_number,
+                        'total' => $cn->total,
+                        'issued_at' => optional($cn->issued_at)->toIso8601String(),
+                    ])
+                : collect();
+
             return [
+                // Kept for backward compatibility — this is the technical ZATCA XML ID,
+                // not the guest-facing invoice number (see 'invoice' below for that).
                 'invoice_number' => $invoice->invoice_number,
                 'uuid' => $invoice->uuid,
                 'status' => $invoice->status,
                 'reporting_status' => $invoice->reporting_status,
                 'qr_code' => $qr !== '' ? $qr : null,
+                'invoice' => $businessInvoice ? [
+                    'invoice_number' => $businessInvoice->invoice_number,
+                    'subtotal' => $businessInvoice->subtotal,
+                    'tax_amount' => $businessInvoice->tax_amount,
+                    'total' => $businessInvoice->total,
+                    'currency' => $businessInvoice->currency,
+                    'issued_at' => optional($businessInvoice->issued_at)->toIso8601String(),
+                ] : null,
+                'credit_notes' => $creditNotes,
             ];
         } catch (\Throwable $e) {
             Log::warning('ZATCA invoice summary unavailable', [
@@ -357,6 +569,10 @@ class ZatcaCheckoutReportingService
         int $icv,
         string $previousInvoiceHash,
         string $note,
+        string $invoiceTypeKind = 'invoice',
+        ?string $billingReferenceId = null,
+        string $paymentMeansCode = '10',
+        ?string $paymentMeansReason = null,
     ): string {
         $now = new DateTime('now');
         $unitPrice = round($lineExtension / max(1, $quantity), 2);
@@ -381,7 +597,7 @@ class ZatcaCheckoutReportingService
 
         $invoiceType = (new InvoiceType)
             ->setInvoice('simplified')
-            ->setInvoiceType('invoice')
+            ->setInvoiceType($invoiceTypeKind)
             ->setIsThirdParty(false)
             ->setIsNominal(false)
             ->setIsExportInvoice(false)
@@ -490,12 +706,16 @@ class ZatcaCheckoutReportingService
             ->setAdditionalDocumentReferences($additionalDocs)
             ->setAccountingSupplierParty($supplier)
             ->setAccountingCustomerParty($customer)
-            ->setPaymentMeans((new PaymentMeans)->setPaymentMeansCode('10'))
+            ->setPaymentMeans((new PaymentMeans)->setPaymentMeansCode($paymentMeansCode)->setInstructionNote($paymentMeansReason))
             ->setAllowanceCharges($allowanceCharges)
             ->setTaxTotal($taxTotal)
             ->setLegalMonetaryTotal($legalMonetaryTotal)
             ->setInvoiceLines([$invoiceLine])
             ->setSignature($signature);
+
+        if ($billingReferenceId !== null) {
+            $invoice->setBillingReferences([(new BillingReference)->setId($billingReferenceId)]);
+        }
 
         return GeneratorInvoice::invoice($invoice)->getXML();
     }
