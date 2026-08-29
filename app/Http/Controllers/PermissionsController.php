@@ -7,13 +7,20 @@ use App\Models\User;
 use App\Http\Requests\Permission\UpdatePermissionRequest;
 use App\Http\Requests\Permission\DeletePermissionRequest;
 use App\Http\Requests\Permission\AddUserPermissionRequest;
+use App\Services\Cache\CacheInvalidator;
+use App\Services\Cache\ReferenceDataCache;
 
 class PermissionsController extends Controller
 {
     public function index()
     {
         try {
-            $permissions = Permission::with('category')->get();
+            $permissions = ReferenceDataCache::remember(
+                'permissions',
+                'with_category',
+                fn () => Permission::with('category')->get()
+            );
+
             return \SuccessData('Permissions retrieved successfully', $permissions);
         } catch (\Exception $e) {
             return \Failed($e->getMessage());
@@ -31,6 +38,8 @@ class PermissionsController extends Controller
                 'description_ar' => $request->description_ar ?? $permission->description_ar,
                 'category_id' => $request->category_id ?? $permission->category_id,
             ]);
+            app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+            CacheInvalidator::rbacChanged();
 
             return \SuccessData('Permission updated successfully', $permission->load('category'));
         } catch (\Exception $e) {
@@ -43,6 +52,9 @@ class PermissionsController extends Controller
         try {
             $permission = Permission::findOrFail($request->id);
             $permission->delete();
+            app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+            CacheInvalidator::rbacChanged();
+
             return \Success('Permission deleted successfully');
         } catch (\Exception $e) {
             return \Failed($e->getMessage());

@@ -4,7 +4,6 @@
  * Comprehensive remote QA against live/staging API + SPA.
  * Usage: php scripts/server-remote-qa.php [api_base] [spa_base]
  */
-
 $apiBase = rtrim($argv[1] ?? 'https://hotelsystemback.osus.network/api', '/');
 $spaBase = rtrim($argv[2] ?? 'https://hotelsystem.osus.network', '/');
 
@@ -16,7 +15,7 @@ $loadResults = [];
 
 function section(string $title): void
 {
-    echo "\n" . str_repeat('=', 60) . "\n  $title\n" . str_repeat('=', 60) . "\n";
+    echo "\n".str_repeat('=', 60)."\n  $title\n".str_repeat('=', 60)."\n";
 }
 
 function check(string $label, bool $ok, string $detail = ''): void
@@ -24,10 +23,10 @@ function check(string $label, bool $ok, string $detail = ''): void
     global $passed, $failed;
     if ($ok) {
         $passed++;
-        echo "  PASS  $label" . ($detail ? " ($detail)" : '') . "\n";
+        echo "  PASS  $label".($detail ? " ($detail)" : '')."\n";
     } else {
         $failed++;
-        echo "  FAIL  $label" . ($detail ? " — $detail" : '') . "\n";
+        echo "  FAIL  $label".($detail ? " — $detail" : '')."\n";
     }
 }
 
@@ -35,7 +34,7 @@ function warn(string $label, string $detail = ''): void
 {
     global $warned;
     $warned++;
-    echo "  WARN  $label" . ($detail ? " — $detail" : '') . "\n";
+    echo "  WARN  $label".($detail ? " — $detail" : '')."\n";
 }
 
 function api(string $method, string $url, ?array $body = null, ?string $token = null, int $timeout = 45, ?string $origin = null): array
@@ -45,10 +44,10 @@ function api(string $method, string $url, ?array $body = null, ?string $token = 
     $ch = curl_init($url);
     $headers = ['Accept: application/json', 'Content-Type: application/json'];
     if ($token) {
-        $headers[] = 'Authorization: Bearer ' . $token;
+        $headers[] = 'Authorization: Bearer '.$token;
     }
     if ($origin) {
-        $headers[] = 'Origin: ' . $origin;
+        $headers[] = 'Origin: '.$origin;
     }
 
     $start = microtime(true);
@@ -88,7 +87,7 @@ function api(string $method, string $url, ?array $body = null, ?string $token = 
 function spaGet(string $path): array
 {
     global $timings;
-    $url = rtrim($GLOBALS['spaBase'], '/') . '/' . ltrim($path, '/');
+    $url = rtrim($GLOBALS['spaBase'], '/').'/'.ltrim($path, '/');
     $ch = curl_init($url);
     $start = microtime(true);
     curl_setopt_array($ch, [
@@ -107,12 +106,12 @@ function spaGet(string $path): array
     return ['code' => $code, 'body' => $raw === false ? '' : $raw, 'ms' => $elapsed];
 }
 
-echo "SERVER REMOTE QA\nAPI: $apiBase\nSPA: $spaBase\nDate: " . date('c') . "\n";
+echo "SERVER REMOTE QA\nAPI: $apiBase\nSPA: $spaBase\nDate: ".date('c')."\n";
 
 // ── 1. Infrastructure ───────────────────────────────────────────────
 section('1. Infrastructure & Security');
 
-$spaOrigin = parse_url($spaBase, PHP_URL_SCHEME) . '://' . parse_url($spaBase, PHP_URL_HOST);
+$spaOrigin = parse_url($spaBase, PHP_URL_SCHEME).'://'.parse_url($spaBase, PHP_URL_HOST);
 
 $setup = api('GET', "$apiBase/users/setup-check", null, null, 45, $spaOrigin);
 check('setup-check HTTP 200', $setup['code'] === 200, "{$setup['ms']}ms");
@@ -158,34 +157,34 @@ $monthEnd = date('Y-m-t');
 $today = date('Y-m-d');
 
 $smokeEndpoints = [
-    'buildings' => "/users/buildings",
-    'floors' => "/users/floors?building_id=1",
-    'rooms' => "/users/rooms?building_id=1",
-    'room types' => "/users/getRoomType",
-    'stay reasons' => "/users/getStayReasons",
-    'clients' => "/users/getClient",
-    'reservations' => "/users/reservations",
-    'calendar' => "/users/reservations/calendar",
-    'dashboard' => "/users/dashboard/summary",
+    'buildings' => '/users/buildings',
+    'floors' => '/users/floors?building_id=1',
+    'rooms' => '/users/rooms?building_id=1',
+    'room types' => '/users/getRoomType',
+    'stay reasons' => '/users/getStayReasons',
+    'clients' => '/users/getClient',
+    'reservations' => '/users/reservations',
+    'calendar' => '/users/reservations/calendar',
+    'dashboard' => '/users/dashboard/summary',
     'occupancy board' => "/users/rooms/occupancy-board?date=$today",
-    'booking availability' => "/users/booking-room-availability?building_id=1&start_date=$today&expire_date=" . date('Y-m-d', strtotime('+2 days')),
+    'booking availability' => "/users/booking-room-availability?building_id=1&start_date=$today&expire_date=".date('Y-m-d', strtotime('+2 days')),
     'earnings' => "/users/earnings-summary?start_date=$monthStart&end_date=$monthEnd",
     'payments' => "/users/payments?start_date=$monthStart&end_date=$monthEnd",
     'refunds' => "/users/refunds?start_date=$monthStart&end_date=$monthEnd",
     'revenue total' => "/users/revenue/total?start_date=$monthStart&end_date=$monthEnd",
-    'reports catalog' => "/users/reports/catalog",
-    'chart of accounts' => "/users/accounting/chart-of-accounts",
+    'reports catalog' => '/users/reports/catalog',
+    'chart of accounts' => '/users/accounting/chart-of-accounts',
     'journal entries' => "/users/accounting/journal-entries?start_date=$monthStart&end_date=$monthEnd",
-    'refund policies' => "/users/refund-policies",
-    'roles' => "/users/getRoles",
-    'system health' => "/users/system/health",
-    'taxes' => "/users/getTax",
-    'discounts' => "/users/getDiscounts",
-    'peak days' => "/users/getPeakDays",
+    'refund policies' => '/users/refund-policies',
+    'roles' => '/users/getRoles',
+    'system health' => '/users/system/health',
+    'taxes' => '/users/getTax',
+    'discounts' => '/users/getDiscounts',
+    'peak days' => '/users/getPeakDays',
 ];
 
 foreach ($smokeEndpoints as $name => $path) {
-    $r = api('GET', $apiBase . $path, null, $token);
+    $r = api('GET', $apiBase.$path, null, $token);
     $ok = $r['code'] === 200 && ($r['body']['success'] ?? false) === true;
     check("GET $name", $ok, "HTTP {$r['code']} {$r['ms']}ms");
 }
@@ -201,7 +200,7 @@ $boardSum = $board['body']['data']['summary'] ?? $board['body']['data']['data'][
 
 $totalMatch = (int) ($dashOcc['total'] ?? -1) === (int) ($boardSum['total'] ?? -2);
 check('Dashboard total rooms = board total', $totalMatch,
-    'dash=' . ($dashOcc['total'] ?? '?') . ' board=' . ($boardSum['total'] ?? '?'));
+    'dash='.($dashOcc['total'] ?? '?').' board='.($boardSum['total'] ?? '?'));
 
 $rateDash = round((float) ($dashOcc['occupancy_rate'] ?? 0), 1);
 $rateBoard = round((float) ($boardSum['occupancy_rate'] ?? 0), 1);
@@ -209,10 +208,10 @@ check('Occupancy rate match', abs($rateDash - $rateBoard) < 0.2, "dash=$rateDash
 
 $inHouseMatch = (int) ($dashOcc['in_house'] ?? -1) === (int) ($boardSum['in_house'] ?? -2);
 check('In-house count match', $inHouseMatch,
-    'dash=' . ($dashOcc['in_house'] ?? '?') . ' board=' . ($boardSum['in_house'] ?? '?'));
+    'dash='.($dashOcc['in_house'] ?? '?').' board='.($boardSum['in_house'] ?? '?'));
 
 // Sample reports
-$reportSlugs = ['overview', 'occupancy', 'trial-balance', 'balance-sheet', 'revenue-summary'];
+$reportSlugs = ['overview', 'occupancy', 'trial-balance', 'revenue-summary'];
 foreach ($reportSlugs as $slug) {
     $r = api('GET', "$apiBase/users/reports/$slug?start_date=$monthStart&end_date=$monthEnd", null, $token, 90);
     $ok = $r['code'] === 200 && ($r['body']['success'] ?? false) === true;
@@ -257,6 +256,7 @@ for ($i = 0; $i < $concurrency; $i++) {
     $l = api('POST', "$apiBase/users/login", ['job_number' => '001', 'password' => 'admin123']);
     if (($l['body']['success'] ?? false) !== true) {
         $errors++;
+
         continue;
     }
     $loginTimes[] = $l['ms'];
@@ -277,7 +277,7 @@ if ($loginTimes) {
     sort($loginTimes);
     $p95 = $loginTimes[(int) floor(count($loginTimes) * 0.95)] ?? max($loginTimes);
     $avg = round(array_sum($loginTimes) / count($loginTimes), 1);
-    echo "  INFO  Login: avg={$avg}ms p95={$p95}ms max=" . max($loginTimes) . "ms\n";
+    echo "  INFO  Login: avg={$avg}ms p95={$p95}ms max=".max($loginTimes)."ms\n";
     check('Login p95 < 3000ms', $p95 < 3000, "{$p95}ms");
 }
 
@@ -285,7 +285,7 @@ if ($dashTimes) {
     sort($dashTimes);
     $p95 = $dashTimes[(int) floor(count($dashTimes) * 0.95)] ?? max($dashTimes);
     $avg = round(array_sum($dashTimes) / count($dashTimes), 1);
-    echo "  INFO  Dashboard: avg={$avg}ms p95={$p95}ms max=" . max($dashTimes) . "ms\n";
+    echo "  INFO  Dashboard: avg={$avg}ms p95={$p95}ms max=".max($dashTimes)."ms\n";
     check('Dashboard p95 < 5000ms', $p95 < 5000, "{$p95}ms");
 }
 
@@ -304,7 +304,7 @@ for ($i = 0; $i < $burst; $i++) {
 check("Burst occupancy-board x$burst", $burstErrors === 0, "$burstErrors failures");
 if ($burstTimes) {
     $avg = round(array_sum($burstTimes) / count($burstTimes), 1);
-    echo "  INFO  Board burst avg={$avg}ms max=" . max($burstTimes) . "ms\n";
+    echo "  INFO  Board burst avg={$avg}ms max=".max($burstTimes)."ms\n";
 }
 
 // ── 7. Summary stats ────────────────────────────────────────────────
@@ -312,7 +312,7 @@ section('7. Timing Summary');
 
 $slow = array_filter($timings, fn ($t) => $t['ms'] > 2000);
 if ($slow) {
-    warn('Slow endpoints (>2s)', count($slow) . ' requests');
+    warn('Slow endpoints (>2s)', count($slow).' requests');
     foreach (array_slice($slow, 0, 5) as $s) {
         echo "        {$s['url']} — {$s['ms']}ms\n";
     }
@@ -321,7 +321,7 @@ if ($slow) {
 }
 
 $codes = array_count_values(array_column($timings, 'code'));
-echo '  INFO  HTTP codes: ' . json_encode($codes) . "\n";
+echo '  INFO  HTTP codes: '.json_encode($codes)."\n";
 
 section('FINAL RESULT');
 echo "  PASS: $passed\n";

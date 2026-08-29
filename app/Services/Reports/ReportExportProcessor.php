@@ -71,10 +71,12 @@ class ReportExportProcessor
     }
 
     /**
-     * Build a full report file for immediate browser download (no row cap).
+     * Build a report file for immediate browser download (capped by ReportDirectExportPolicy).
      *
      * @param  array<string, string|null>  $params
      * @return array{content: string, filename: string, mime: string}
+     *
+     * @throws \InvalidArgumentException when the result set is too large for direct download
      */
     public function buildDownload(string $slug, string $format, array $params): array
     {
@@ -82,9 +84,10 @@ class ReportExportProcessor
         @ini_set('memory_limit', '512M');
 
         $data = $this->reportQueryService->run($slug, $params);
+        ReportDirectExportPolicy::assertAllowsDirectDownload(count($data['rows'] ?? []));
         $end = $params['end_date'] ?? now()->toDateString();
         $extension = $format === ReportExport::FORMAT_PDF ? 'pdf' : 'xlsx';
-        $filename = $slug . '-' . $end . '.' . $extension;
+        $filename = $slug.'-'.$end.'.'.$extension;
 
         if ($format === ReportExport::FORMAT_PDF) {
             return [

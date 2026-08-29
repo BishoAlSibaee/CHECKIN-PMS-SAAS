@@ -13,8 +13,7 @@ class ReservationShortenService
     public function __construct(
         private ReservationRoomStatusService $roomStatusService,
         private AccountingPostingService $accountingPostingService
-    ) {
-    }
+    ) {}
 
     /**
      * @throws \InvalidArgumentException
@@ -68,17 +67,10 @@ class ReservationShortenService
             $reservation->expire_date = $newExpireStr;
             $reservation->nights = (int) $startDate->diffInDays($newExpire);
             $reservation->base_price = round($totalBase, 2);
-            $reservation->subtotal = round(
-                $reservation->base_price - $reservation->discount + $reservation->extras + $reservation->penalties,
-                2
-            );
-            $reservation->taxes = round($reservation->subtotal * RefundPolicyService::TAX_RATE, 2, PHP_ROUND_HALF_UP);
-            $reservation->total = round($reservation->subtotal + $reservation->taxes, 2);
+            app(GuestClassificationDiscountService::class)->applyFinancialsAfterRecalculation($reservation, $totalBase);
             $reservation->save();
 
-            foreach ($reservation->reservationRooms as $resRoom) {
-                $this->accountingPostingService->syncAccrualForReservationRoom((int) $resRoom->id);
-            }
+            $this->accountingPostingService->syncAccrualForReservation((int) $reservation->id);
 
             $this->roomStatusService->syncForReservation($reservation->fresh(['reservationRooms']));
 

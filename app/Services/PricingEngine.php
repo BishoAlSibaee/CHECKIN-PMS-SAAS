@@ -62,10 +62,12 @@ class PricingEngine
             if ($current !== null
                 && $current['kind'] === $kind
                 && ($current['billing_source'] ?? '') === $source
-                && $this->isNextCalendarDay($current['to'], $date)) {
+                && $this->isNextCalendarDay($current['to'], $date)
+                && abs($amount - round($current['amount'] / max(1, $current['nights']), 2)) < 0.01) {
                 $current['to'] = $date;
                 $current['amount'] = round($current['amount'] + $amount, 2);
                 $current['nights']++;
+
                 continue;
             }
 
@@ -183,6 +185,13 @@ class PricingEngine
         })->first();
     }
 
+    public function resolveNightPricingPlan(int $roomTypeId, Carbon $date): ?RoomtypePricingplan
+    {
+        $dateStr = $date->toDateString();
+
+        return $this->resolveStayPricingPlan($roomTypeId, $dateStr, $dateStr);
+    }
+
     private function priceSingleNight(
         Carbon $date,
         RoomType $roomType,
@@ -198,11 +207,27 @@ class PricingEngine
             return $this->line($date, (float) $roomTypePlan->DailyPrice, $isPeakDay, true, 'plan');
         }
 
-        if ($priceMode === 2 || !$roomTypePlan) {
+        if ($priceMode === 2 || ! $roomTypePlan) {
+            if ($priceMode === 0) {
+                $nightPlan = $this->resolveNightPricingPlan($roomType->id, $date);
+                if ($nightPlan) {
+                    return $this->line($date, (float) $nightPlan->DailyPrice, $isPeakDay, true, 'plan');
+                }
+            }
+
             return $this->lineFromRoomType($date, $roomType, $isPeakDay, false);
         }
 
         // priceMode 0 — mixed
+        if ($priceMode === 0) {
+            $nightPlan = $this->resolveNightPricingPlan($roomType->id, $date);
+            if ($nightPlan) {
+                return $this->line($date, (float) $nightPlan->DailyPrice, $isPeakDay, true, 'plan');
+            }
+
+            return $this->lineFromRoomType($date, $roomType, $isPeakDay, false);
+        }
+
         return $this->priceSingleNightMixed(
             $date,
             $roomType,
@@ -275,159 +300,221 @@ class PricingEngine
         $lines = [];
         $tempDate = $startDate->copy();
         $targetDay = $startDate->day;
-
-        while (true) {
-            $nextMonth = $tempDate->copy()->addMonthNoOverflow();
-            if ($startDate->isLastOfMonth()) {
-                $periodEnd = $nextMonth->copy()->endOfMonth()->startOfDay();
-            } else {
-                $periodEnd = $nextMonth->copy()->day(min($targetDay, $nextMonth->daysInMonth));
-            }
-
-            if (!$periodEnd->lte($endDate)) {
-                break;
-            }
-
-            $chunkDays = $tempDate->diffInDays($periodEnd);
-            if ($chunkDays < 1) {
-                break;
-            }
-
-            if ($priceMode === 0) {
-                array_push($lines, ...$this->buildMixedMonthChunkLines(
-                    $tempDate,
-                    $chunkDays,
-                    $roomType,
-                    $stayPlan
-                ));
-            } else {
-                $chunkTotal = $this->monthChunkBasePrice($tempDate, $periodEnd, $roomType, $stayPlan, $priceMode);
-                $perNight = $chunkTotal / $chunkDays;
-
-                for ($i = 0; $i < $chunkDays; $i++) {
-                    $date = $tempDate->copy()->addDays($i);
-                    $lines[] = $this->line(
-                        $date,
-                        $perNight,
-                        $this->isPeakMonth($date->format('F')),
-                        $stayPlan !== null,
-                        'monthly'
-                    );
-                }
-            }
-
-            $tempDate = $periodEnd;
-            if ($tempDate->gte($endDate)) {
-                break;
-            }
-        }
+        $completedFullMonth = false;
 
         while ($tempDate->lt($endDate)) {
-            $nightPlan = $priceMode === 0 ? $stayPlan : $stayPlan;
+            $naturalPeriodEnd = $this->naturalMonthlyPeriodEnd($tempDate, $targetDay);
 
-            $lines[] = $this->priceSingleNight(
-                $tempDate,
-                $roomType,
-                $nightPlan,
-                $start,
-                $end,
-                $priceMode
-            );
-            $tempDate->addDay();
+            if ($naturalPeriodEnd->lte($endDate)) {
+                $chunkDays = $tempDate->diffInDays($naturalPeriodEnd);
+                if ($chunkDays < 1) {
+                    break;
+                }
+
+                array_push(
+                    $lines,
+                    ...$this->buildMonthlyChunkLines(
+                        $tempDate,
+                        $chunkDays,
+                        $naturalPeriodEnd,
+                        $roomType,
+                        $stayPlan,
+                        $priceMode,
+                        $startDate,
+                        true
+                    )
+                );
+
+                $tempDate = $naturalPeriodEnd;
+                $completedFullMonth = true;
+
+                continue;
+            }
+
+            if (! $completedFullMonth) {
+                $chunkDays = $tempDate->diffInDays($endDate);
+                if ($chunkDays < 1) {
+                    break;
+                }
+
+                $fullPeriodDays = max(1, $tempDate->diffInDays($naturalPeriodEnd));
+
+                array_push(
+                    $lines,
+                    ...$this->buildMonthlyChunkLines(
+                        $tempDate,
+                        $chunkDays,
+                        $naturalPeriodEnd,
+                        $roomType,
+                        $stayPlan,
+                        $priceMode,
+                        $startDate,
+                        false,
+                        $fullPeriodDays
+                    )
+                );
+
+                break;
+            }
+
+            while ($tempDate->lt($endDate)) {
+                $nightPlan = $priceMode === 2 ? null : $stayPlan;
+                $lines[] = $this->priceSingleNight(
+                    $tempDate,
+                    $roomType,
+                    $nightPlan,
+                    $start,
+                    $end,
+                    $priceMode
+                );
+                $tempDate->addDay();
+            }
+
+            break;
         }
 
         return $lines;
     }
 
-    private function monthChunkBasePrice(
+    /**
+     * @return array<int, array{date: string, base_amount: float, is_peak_day: bool, is_in_plan: bool, price_source: string}>
+     */
+    private function buildMonthlyChunkLines(
         Carbon $periodStart,
-        Carbon $periodEnd,
+        int $chunkDays,
+        Carbon $naturalPeriodEnd,
         RoomType $roomType,
-        ?RoomtypePricingplan $roomTypePlan,
-        int $priceMode
-    ): float {
-        if ($priceMode === 1 && $roomTypePlan) {
-            return (float) $roomTypePlan->MonthlyPrice;
-        }
-
-        if ($priceMode === 2 || !$roomTypePlan) {
-            return $this->monthlyRateForPeriod($periodStart, $roomType);
-        }
-
+        ?RoomtypePricingplan $stayPlan,
+        int $priceMode,
+        Carbon $stayStart,
+        bool $isFullPeriod,
+        int $fullPeriodDays = 0
+    ): array {
         if ($priceMode === 0) {
-            $chunkDays = $periodStart->diffInDays($periodEnd);
-            if ($chunkDays < 1) {
-                return 0.0;
-            }
-
-            return $this->sumBaseAmount($this->buildMixedMonthChunkLines(
+            return $this->buildMixedMonthChunkLines(
                 $periodStart,
                 $chunkDays,
                 $roomType,
-                $roomTypePlan
-            ));
+                $stayPlan,
+                $stayStart,
+                $naturalPeriodEnd,
+                $isFullPeriod,
+                $fullPeriodDays
+            );
         }
 
-        $planStart = Carbon::parse($roomTypePlan->pricingplan->StartDate)->startOfDay();
-        $planEnd = Carbon::parse($roomTypePlan->pricingplan->EndDate)->startOfDay();
-        if ($periodStart->gte($planStart) && $periodEnd->lte($planEnd)) {
-            return (float) $roomTypePlan->MonthlyPrice;
-        }
-
-        return $this->monthlyRateForPeriod($periodStart, $roomType);
-    }
-
-    /**
-     * Mixed monthly chunk: per calendar month, (planN/D)*planMonthly + (roomN/D)*roomMonthly.
-     *
-     * @return array<int, array{date: string, base_amount: float, is_peak_day: bool, is_in_plan: bool, price_source: string}>
-     */
-    private function buildMixedMonthChunkLines(
-        Carbon $periodStart,
-        int $chunkDays,
-        RoomType $roomType,
-        ?RoomtypePricingplan $roomTypePlan
-    ): array {
-        if (!$roomTypePlan) {
-            $chunkTotal = $this->monthlyRateForPeriod($periodStart, $roomType);
-            $perNight = $chunkDays > 0 ? $chunkTotal / $chunkDays : 0;
+        if ($priceMode === 1 && $stayPlan && $this->chunkFullyWithinPlan($periodStart, $naturalPeriodEnd, $stayPlan)) {
+            $chunkTotal = (float) $stayPlan->MonthlyPrice;
+            if (! $isFullPeriod) {
+                $denominator = max(1, $fullPeriodDays);
+                $chunkTotal = round($chunkTotal * ($chunkDays / $denominator), 2);
+            }
+            $amounts = $this->distributeAmount($chunkTotal, $chunkDays);
 
             $lines = [];
             for ($i = 0; $i < $chunkDays; $i++) {
                 $date = $periodStart->copy()->addDays($i);
                 $lines[] = $this->line(
                     $date,
-                    $perNight,
+                    $amounts[$i] ?? 0.0,
                     $this->isPeakMonth($date->format('F')),
-                    false,
-                    $this->roomTypeMonthlySource($roomType, $date)
+                    true,
+                    'plan'
                 );
             }
 
             return $lines;
         }
 
-        $planMonthly = (float) $roomTypePlan->MonthlyPrice;
+        if ($priceMode === 1 && $stayPlan) {
+            return $this->buildMixedMonthChunkLines(
+                $periodStart,
+                $chunkDays,
+                $roomType,
+                $stayPlan,
+                $stayStart,
+                $naturalPeriodEnd,
+                $isFullPeriod,
+                $fullPeriodDays
+            );
+        }
 
+        return $this->buildRoomTypeMonthlyChunkByCalendarMonth($periodStart, $chunkDays, $roomType);
+    }
+
+    private function chunkFullyWithinPlan(
+        Carbon $periodStart,
+        Carbon $periodEnd,
+        RoomtypePricingplan $roomTypePlan
+    ): bool {
+        $planStart = Carbon::parse($roomTypePlan->pricingplan->StartDate)->startOfDay();
+        $planEnd = Carbon::parse($roomTypePlan->pricingplan->EndDate)->startOfDay();
+
+        return $periodStart->gte($planStart) && $periodEnd->lte($planEnd);
+    }
+
+    private function naturalMonthlyPeriodEnd(Carbon $periodStart, int $targetDay): Carbon
+    {
+        $nextMonth = $periodStart->copy()->addMonthNoOverflow();
+
+        if ($periodStart->isLastOfMonth()) {
+            return $nextMonth->copy()->endOfMonth()->startOfDay();
+        }
+
+        return $nextMonth->copy()->day(min($targetDay, $nextMonth->daysInMonth));
+    }
+
+    private function buildMixedMonthChunkLines(
+        Carbon $periodStart,
+        int $chunkDays,
+        RoomType $roomType,
+        ?RoomtypePricingplan $roomTypePlan,
+        Carbon $stayStart,
+        Carbon $naturalPeriodEnd,
+        bool $isFullPeriod,
+        int $fullPeriodDays = 0
+    ): array {
         /** @var array<string, array{plan: int, room: int, sample: Carbon}> $byMonth */
         $byMonth = [];
+        /** @var array<int, array{date: Carbon, ym: string, in_plan: bool, night_plan: ?RoomtypePricingplan}> $nightMeta */
         $nightMeta = [];
+        $hasAnyPlanNight = false;
 
         for ($i = 0; $i < $chunkDays; $i++) {
             $date = $periodStart->copy()->addDays($i);
             $ym = $date->format('Y-m');
-            if (!isset($byMonth[$ym])) {
+            if (! isset($byMonth[$ym])) {
                 $byMonth[$ym] = ['plan' => 0, 'room' => 0, 'sample' => $date->copy()];
             }
 
-            $inPlan = $this->nightIsWithinPlanDates($date, $roomTypePlan);
+            $nightPlan = $this->resolveNightPricingPlan($roomType->id, $date);
+            $inPlan = $nightPlan !== null;
+            $hasAnyPlanNight = $hasAnyPlanNight || $inPlan;
             if ($inPlan) {
                 $byMonth[$ym]['plan']++;
             } else {
                 $byMonth[$ym]['room']++;
             }
 
-            $nightMeta[] = ['date' => $date->copy(), 'ym' => $ym, 'in_plan' => $inPlan];
+            $nightMeta[] = [
+                'date' => $date->copy(),
+                'ym' => $ym,
+                'in_plan' => $inPlan,
+                'night_plan' => $nightPlan,
+            ];
+        }
+
+        if (! $hasAnyPlanNight) {
+            return $this->buildRoomTypeMonthlyChunkByCalendarMonth($periodStart, $chunkDays, $roomType);
+        }
+
+        if ($this->chunkMonthsShareSameMonthlyClassification($periodStart, $chunkDays, $roomType)) {
+            return $this->buildUniformMixedMonthChunkLines(
+                $periodStart,
+                $chunkDays,
+                $roomType,
+                $nightMeta
+            );
         }
 
         /** @var array<string, array{plan_amounts: array<int, float>, room_amounts: array<int, float>}> $alloc */
@@ -438,7 +525,13 @@ class PricingEngine
             $roomN = $counts['room'];
             $roomMonthly = $this->monthlyRateForPeriod($counts['sample'], $roomType);
 
-            $planPart = $planN > 0 ? ($planN / $daysInMonth) * $planMonthly : 0.0;
+            $planPart = 0.0;
+            foreach ($nightMeta as $meta) {
+                if ($meta['ym'] !== $ym || ! $meta['in_plan'] || ! $meta['night_plan']) {
+                    continue;
+                }
+                $planPart += (1 / $daysInMonth) * (float) $meta['night_plan']->MonthlyPrice;
+            }
             $roomPart = $roomN > 0 ? ($roomN / $daysInMonth) * $roomMonthly : 0.0;
 
             $alloc[$ym] = [
@@ -474,6 +567,193 @@ class PricingEngine
     }
 
     /**
+     * Prorate monthly rent per calendar month (peak vs non-peak month rates).
+     *
+     * @return array<int, array{date: string, base_amount: float, is_peak_day: bool, is_in_plan: bool, price_source: string}>
+     */
+    private function buildRoomTypeMonthlyChunkByCalendarMonth(
+        Carbon $periodStart,
+        int $chunkDays,
+        RoomType $roomType
+    ): array {
+        if ($this->chunkMonthsShareSameMonthlyClassification($periodStart, $chunkDays, $roomType)) {
+            return $this->buildUniformMonthlyChunkLines($periodStart, $chunkDays, $roomType);
+        }
+
+        /** @var array<string, array{count: int, sample: Carbon}> $byMonth */
+        $byMonth = [];
+        $nightMeta = [];
+
+        for ($i = 0; $i < $chunkDays; $i++) {
+            $date = $periodStart->copy()->addDays($i);
+            $ym = $date->format('Y-m');
+            if (! isset($byMonth[$ym])) {
+                $byMonth[$ym] = ['count' => 0, 'sample' => $date->copy()];
+            }
+            $byMonth[$ym]['count']++;
+            $nightMeta[] = ['date' => $date->copy(), 'ym' => $ym];
+        }
+
+        /** @var array<string, array<int, float>> $alloc */
+        $alloc = [];
+        foreach ($byMonth as $ym => $counts) {
+            $n = $counts['count'];
+            $daysInMonth = $counts['sample']->daysInMonth;
+            $monthly = $this->monthlyRateForPeriod($counts['sample'], $roomType);
+            $part = $n > 0 ? ($n / $daysInMonth) * $monthly : 0.0;
+            $alloc[$ym] = $this->distributeAmount(round($part, 2), $n);
+        }
+
+        $idx = [];
+        foreach (array_keys($byMonth) as $ym) {
+            $idx[$ym] = 0;
+        }
+
+        $lines = [];
+        foreach ($nightMeta as $meta) {
+            $date = $meta['date'];
+            $ym = $meta['ym'];
+            $sample = $byMonth[$ym]['sample'];
+            $amount = $alloc[$ym][$idx[$ym]++] ?? 0.0;
+            $lines[] = $this->line(
+                $date,
+                $amount,
+                $this->isPeakMonth($date->format('F')),
+                false,
+                $this->roomTypeMonthlySource($roomType, $sample)
+            );
+        }
+
+        return $lines;
+    }
+
+    /**
+     * One monthly rent for the whole natural period when every calendar month
+     * in the chunk shares the same peak/normal classification.
+     *
+     * @return array<int, array{date: string, base_amount: float, is_peak_day: bool, is_in_plan: bool, price_source: string}>
+     */
+    private function buildUniformMonthlyChunkLines(
+        Carbon $periodStart,
+        int $chunkDays,
+        RoomType $roomType
+    ): array {
+        $monthly = $this->monthlyRateForPeriod($periodStart, $roomType);
+        $amounts = $this->distributeAmount($monthly, $chunkDays);
+        $source = $this->roomTypeMonthlySource($roomType, $periodStart);
+        $lines = [];
+
+        for ($i = 0; $i < $chunkDays; $i++) {
+            $date = $periodStart->copy()->addDays($i);
+            $lines[] = $this->line(
+                $date,
+                $amounts[$i] ?? 0.0,
+                $this->isPeakMonth($date->format('F')),
+                false,
+                $source
+            );
+        }
+
+        return $lines;
+    }
+
+    /**
+     * @param  array<int, array{date: Carbon, ym: string, in_plan: bool, night_plan: ?RoomtypePricingplan}>  $nightMeta
+     * @return array<int, array{date: string, base_amount: float, is_peak_day: bool, is_in_plan: bool, price_source: string}>
+     */
+    private function buildUniformMixedMonthChunkLines(
+        Carbon $periodStart,
+        int $chunkDays,
+        RoomType $roomType,
+        array $nightMeta
+    ): array {
+        $amounts = array_fill(0, $chunkDays, 0.0);
+
+        /** @var array<int, list<int>> $planIndexesByLinkId */
+        $planIndexesByLinkId = [];
+        /** @var array<int, RoomtypePricingplan> $planByLinkId */
+        $planByLinkId = [];
+        /** @var list<int> $roomIndexes */
+        $roomIndexes = [];
+
+        foreach ($nightMeta as $i => $meta) {
+            if ($meta['in_plan'] && $meta['night_plan']) {
+                $linkId = $meta['night_plan']->id;
+                $planIndexesByLinkId[$linkId][] = $i;
+                $planByLinkId[$linkId] = $meta['night_plan'];
+            } else {
+                $roomIndexes[] = $i;
+            }
+        }
+
+        foreach ($planIndexesByLinkId as $linkId => $indexes) {
+            $count = count($indexes);
+            $planMonthly = (float) $planByLinkId[$linkId]->MonthlyPrice;
+            $planTotal = round($planMonthly * ($count / $chunkDays), 2);
+            $planAmounts = $this->distributeAmount($planTotal, $count);
+            foreach ($indexes as $j => $idx) {
+                $amounts[$idx] = $planAmounts[$j] ?? 0.0;
+            }
+        }
+
+        if ($roomIndexes !== []) {
+            $count = count($roomIndexes);
+            $roomMonthly = $this->monthlyRateForPeriod($nightMeta[0]['date'], $roomType);
+            $roomTotal = round($roomMonthly * ($count / $chunkDays), 2);
+            $roomAmounts = $this->distributeAmount($roomTotal, $count);
+            foreach ($roomIndexes as $j => $idx) {
+                $amounts[$idx] = $roomAmounts[$j] ?? 0.0;
+            }
+        }
+
+        $lines = [];
+
+        for ($i = 0; $i < $chunkDays; $i++) {
+            $meta = $nightMeta[$i];
+            $date = $meta['date'];
+            $isPeakMonth = $this->isPeakMonth($date->format('F'));
+
+            if ($meta['in_plan']) {
+                $lines[] = $this->line($date, $amounts[$i] ?? 0.0, $isPeakMonth, true, 'plan');
+            } else {
+                $lines[] = $this->line(
+                    $date,
+                    $amounts[$i] ?? 0.0,
+                    $isPeakMonth,
+                    false,
+                    $this->roomTypeMonthlySource($roomType, $date)
+                );
+            }
+        }
+
+        return $lines;
+    }
+
+    private function chunkMonthsShareSameMonthlyClassification(
+        Carbon $periodStart,
+        int $chunkDays,
+        RoomType $roomType
+    ): bool {
+        $activeType = (int) $roomType->active_type;
+        if ($activeType === 0 || $activeType === 2) {
+            return true;
+        }
+
+        $firstPeak = null;
+        for ($i = 0; $i < $chunkDays; $i++) {
+            $date = $periodStart->copy()->addDays($i);
+            $isPeak = $this->isPeakMonth($date->format('F'));
+            if ($firstPeak === null) {
+                $firstPeak = $isPeak;
+            } elseif ($firstPeak !== $isPeak) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
      * @return array<int, float>
      */
     private function distributeAmount(float $total, int $nights): array
@@ -486,14 +766,16 @@ class PricingEngine
             return [round($total, 2)];
         }
 
-        $per = round($total / $nights, 2);
-        $amounts = array_fill(0, $nights, $per);
-        $diff = round($total - array_sum($amounts), 2);
-        if (abs($diff) >= 0.01) {
-            $amounts[$nights - 1] = round($amounts[$nights - 1] + $diff, 2);
+        $totalCents = (int) round($total * 100);
+        $baseCents = intdiv($totalCents, $nights);
+        $remainder = $totalCents - ($baseCents * $nights);
+        $amounts = array_fill(0, $nights, $baseCents);
+
+        for ($i = 0; $i < $remainder; $i++) {
+            $amounts[$i]++;
         }
 
-        return $amounts;
+        return array_map(static fn (int $cents): float => round($cents / 100, 2), $amounts);
     }
 
     private function roomTypeMonthlySource(RoomType $roomType, Carbon $date): string

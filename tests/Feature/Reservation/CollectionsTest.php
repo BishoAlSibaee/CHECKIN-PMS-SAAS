@@ -196,14 +196,14 @@ class CollectionsTest extends TestCase
         $client = \App\Models\Client::first();
         $stayReason = \App\Models\Stay_reason::first();
         $source = \App\Models\Reservation_source::first();
-        if (!$client || !$stayReason || !$source) {
+        if (! $client || ! $stayReason || ! $source) {
             return null;
         }
 
         $start = Carbon::today()->addDays(2)->toDateString();
         $end = Carbon::today()->addDays(5)->toDateString();
         $room = $this->findOrCreateAvailableRoom($start, $end);
-        if (!$room) {
+        if (! $room) {
             return null;
         }
 
@@ -223,13 +223,13 @@ class CollectionsTest extends TestCase
             'penalties' => 0,
         ]);
 
-        if ($response->status() !== 200 || !$response->json('success')) {
+        if ($response->status() !== 200 || ! $response->json('success')) {
             return null;
         }
 
         $id = $response->json('data.id') ?? $response->json('data.reservation.id') ?? null;
         $reservation = $id ? Reservation::find($id) : Reservation::latest('id')->first();
-        if (!$reservation) {
+        if (! $reservation) {
             return null;
         }
 

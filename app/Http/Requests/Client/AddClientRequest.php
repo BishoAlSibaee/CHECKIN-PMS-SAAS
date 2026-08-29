@@ -2,9 +2,11 @@
 
 namespace App\Http\Requests\Client;
 
+use App\Models\Client;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Contracts\Validation\Validator;
+use Illuminate\Validation\Rule;
 
 class AddClientRequest extends FormRequest
 {
@@ -16,7 +18,11 @@ class AddClientRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'id' => 'nullable|exists:clients,id',
+            'id' => [
+                'nullable',
+                'integer',
+                Rule::exists(Client::class, 'id'),
+            ],
             'first_name' => 'required|string|max:255',
             'last_name' => 'required|string|max:255',
             'email' => 'nullable|email',

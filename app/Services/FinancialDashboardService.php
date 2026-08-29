@@ -14,8 +14,7 @@ class FinancialDashboardService
 
     public function __construct(
         private RevenueAccrualService $revenueAccrualService
-    ) {
-    }
+    ) {}
 
     /**
      * @return array{earliest_charge_date: ?string, earliest_payment_date: ?string}
@@ -187,6 +186,7 @@ class FinancialDashboardService
             ->select([
                 'reservation_daily_charges.*',
                 'reservations.discount',
+                'reservations.classification_discount',
                 'reservations.extras',
                 'reservations.penalties',
                 'rooms.number as room_number',
@@ -219,7 +219,7 @@ class FinancialDashboardService
                 : 0;
 
             $periodSubtotal = (float) $charge->base_amount
-                - ((float) $charge->discount * $weight)
+                - (((float) $charge->classification_discount + (float) $charge->discount) * $weight)
                 + ((float) $charge->extras * $weight)
                 + ((float) $charge->penalties * $weight);
             $revenue = $periodSubtotal + round($periodSubtotal * self::TAX_RATE, 2);
@@ -341,7 +341,7 @@ class FinancialDashboardService
         $total = 0.0;
 
         Reservation::with('payments')
-            ->where('reservation_status', 1)
+            ->outstandingForAging()
             ->get()
             ->each(function (Reservation $reservation) use (&$total) {
                 $total += $this->reservationBalanceDue($reservation);

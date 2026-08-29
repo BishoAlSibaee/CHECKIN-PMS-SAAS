@@ -2,37 +2,31 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Client_Classifications;
-use App\Models\Guest_classification;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Exception;
 use App\Http\Requests\ClientClassification\AssignClassificationRequest;
 use App\Http\Requests\ClientClassification\GetClientClassificationRequest;
 use App\Http\Requests\ClientClassification\RemoveClassificationRequest;
-use App\Http\Requests\ClientClassification\SearchClientWithClassificationRequest;
+use App\Models\Client;
+use App\Models\Client_Classifications;
+use App\Models\Guest_classification;
+use Exception;
 
 class ClientClassificationsController extends Controller
 {
-
     public function assignClassification(AssignClassificationRequest $request)
     {
         try {
-            $client = DB::table('clients')
-                ->where('id', $request->client_id)
-                ->first();
+            $client = Client::query()->where('id', $request->client_id)->first();
 
-            if (!$client) {
+            if (! $client) {
                 return \Failed('Client not found in database');
             }
 
             $classification = Guest_classification::find($request->classifications_id);
-            if (!$classification) {
+            if (! $classification) {
                 return \Failed('Classification not found');
             }
 
             Client_Classifications::where('client_id', $request->client_id)->delete();
-
 
             $clientClassification = Client_Classifications::create([
                 'client_id' => $request->client_id,
@@ -51,25 +45,27 @@ class ClientClassificationsController extends Controller
         }
     }
 
-
     public function getClientClassification(GetClientClassificationRequest $request)
     {
         try {
-            $client = DB::table('clients')
-                ->where('id', $request->client_id)
-                ->first();
+            $client = Client::query()->where('id', $request->client_id)->first();
 
-            if (!$client) {
+            if (! $client) {
                 return \Failed('Client not found');
             }
 
-            $clientClassification = Client_Classifications::where('client_id', $request->client_id)
-                ->with('guestClassification')
-                ->first();
+            $clientClassification = Client_Classifications::where('client_id', $request->client_id)->first();
+
+            $classification = null;
+            if ($clientClassification) {
+                $classification = Guest_classification::query()
+                    ->with('discount')
+                    ->find($clientClassification->classifications_id);
+            }
 
             $data = [
                 'client' => $client,
-                'classification' => $clientClassification ? $clientClassification->guestClassification : null,
+                'classification' => $classification,
             ];
 
             return \SuccessData('Client classification retrieved successfully', $data);
@@ -77,7 +73,6 @@ class ClientClassificationsController extends Controller
             return \Failed($e->getMessage());
         }
     }
-
 
     public function removeClassification(RemoveClassificationRequest $request)
     {
@@ -104,7 +99,7 @@ class ClientClassificationsController extends Controller
 
             $clientIds = collect($classificationsData->items())->pluck('client_id')->unique()->filter()->toArray();
 
-            $clients = DB::table('clients')
+            $clients = Client::query()
                 ->whereIn('id', $clientIds)
                 ->get()
                 ->keyBy('id');

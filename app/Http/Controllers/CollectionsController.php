@@ -11,8 +11,7 @@ class CollectionsController extends Controller
 {
     public function __construct(
         private CollectionsService $collectionsService
-    ) {
-    }
+    ) {}
 
     /**
      * KPI summary for outstanding guest balances.
@@ -43,13 +42,13 @@ class CollectionsController extends Controller
         try {
             $tab = (string) $request->input('tab', 'all');
             $allowedTabs = ['all', 'checkout_today', 'in_house', 'overdue', 'upcoming'];
-            if (!in_array($tab, $allowedTabs, true)) {
+            if (! in_array($tab, $allowedTabs, true)) {
                 $tab = 'all';
             }
 
             $sort = (string) $request->input('sort', 'balance_due');
             $allowedSort = ['balance_due', 'expire_date', 'guest', 'days_overdue'];
-            if (!in_array($sort, $allowedSort, true)) {
+            if (! in_array($sort, $allowedSort, true)) {
                 $sort = 'balance_due';
             }
 
@@ -84,6 +83,11 @@ class CollectionsController extends Controller
     {
         try {
             $result = app(ReservationFinancialService::class)->collectAllOutstanding((int) auth()->id());
+
+            if (! empty($result['error'])) {
+                return \Failed($result['error'], 429);
+            }
+
             $summary = $this->collectionsService->summarize(Carbon::today());
             $result['remaining_count'] = (int) $summary['count'];
             $result['remaining_total'] = (float) $summary['total_balance'];

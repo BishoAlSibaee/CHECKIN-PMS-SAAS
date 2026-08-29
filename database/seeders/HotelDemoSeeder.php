@@ -13,47 +13,61 @@ use App\Models\PeakMonth;
 use App\Models\Penaltie;
 use App\Models\Pricingplan;
 use App\Models\Reservation;
-use App\Models\ReservationPay;
-use App\Support\ReservationCashQuery;
-use App\Models\ReservationRoom;
 use App\Models\Reservation_source;
 use App\Models\ReservationDailyCharge;
+use App\Models\ReservationPay;
+use App\Models\ReservationRoom;
 use App\Models\Room;
 use App\Models\RoomPrice;
-use App\Models\RoomtypePricingplan;
 use App\Models\RoomType;
+use App\Models\RoomtypePricingplan;
 use App\Models\Stay_reason;
 use App\Models\Tax;
 use App\Models\User;
 use App\Services\PricingEngine;
 use App\Services\RevenueAccrualService;
+use App\Support\ReservationCashQuery;
 use Carbon\Carbon;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Large demo dataset: 2 buildings × 15 floors, ~2 years of reservations.
+ * Large demo dataset: 2 buildings × 15 floors, ~650 reservations.
  *
- * Run: php artisan migrate:fresh --seed
+ * Run: php artisan demo:setup --fresh
+ * Or:  php artisan db:seed --class=HotelDemoSeeder
  */
 class HotelDemoSeeder extends Seeder
 {
     private const DEMO_START = '2024-06-01';
+
     private const DEMO_END = '2026-12-31';
+
     private const BUILDING_COUNT = 2;
+
     private const FLOORS_PER_BUILDING = 15;
+
     private const ROOMS_PER_FLOOR = 6;
+
     private const TARGET_RESERVATIONS = 650;
+
     private const CLIENT_COUNT = 180;
 
     private PricingEngine $pricingEngine;
+
     private RevenueAccrualService $revenueAccrual;
+
     private int $userId;
+
     private array $stayReasonIds = [];
+
     private array $sourceIds = [];
+
     private array $roomTypeIds = [];
+
     private $clients;
+
     private $rooms;
 
     public function run(): void
@@ -185,7 +199,7 @@ class HotelDemoSeeder extends Seeder
                         'Deluxe' => 'Premium room with lounge area, minibar, and enhanced in-room services.',
                         'Family' => 'Large room for families with extra beds and connecting options.',
                         'Suite' => 'Executive suite with separate living area and VIP amenities.',
-                        default => $t['name_en'] . ' room',
+                        default => $t['name_en'].' room',
                     },
                     'Min_daily_price' => $t['min_d'],
                     'Max_daily_price' => $t['max_d'],
@@ -244,9 +258,11 @@ class HotelDemoSeeder extends Seeder
         }
 
         $this->rooms = $roomCollection;
-        $this->command?->info('  Property: ' . self::BUILDING_COUNT . ' buildings, '
-            . (self::BUILDING_COUNT * self::FLOORS_PER_BUILDING) . ' floors, '
-            . $this->rooms->count() . ' rooms.');
+        $this->command?->info('  Property: '.self::BUILDING_COUNT.' buildings, '
+            .(self::BUILDING_COUNT * self::FLOORS_PER_BUILDING).' floors, '
+            .$this->rooms->count().' rooms.');
+
+        $this->call(DemoSuitesSeeder::class);
     }
 
     private function seedPricingPlans(): void
@@ -281,13 +297,13 @@ class HotelDemoSeeder extends Seeder
             $last = $lastNames[intdiv($i, count($firstNames)) % count($lastNames)];
 
             Client::updateOrCreate(
-                ['IdNumber' => 'DEMO' . str_pad((string) ($i + 1), 6, '0', STR_PAD_LEFT)],
+                ['IdNumber' => 'DEMO'.str_pad((string) ($i + 1), 6, '0', STR_PAD_LEFT)],
                 [
                     'first_name' => $first,
                     'last_name' => $last,
-                    'email' => strtolower($first . '.' . $last . $i . '@demo.hotel'),
+                    'email' => strtolower($first.'.'.$last.$i.'@demo.hotel'),
                     'international_code' => '+966',
-                    'mobile' => '05' . str_pad((string) (10000000 + $i), 8, '0', STR_PAD_LEFT),
+                    'mobile' => '05'.str_pad((string) (10000000 + $i), 8, '0', STR_PAD_LEFT),
                     'IdType' => $i % 5 === 0 ? 'PASSPORT' : 'ID',
                     'birth_date' => Carbon::now()->subYears(rand(22, 65))->format('Y-m-d'),
                     'gender' => $i % 2 === 0 ? 'MALE' : 'FEMALE',
@@ -298,7 +314,7 @@ class HotelDemoSeeder extends Seeder
         }
 
         $this->clients = Client::limit(self::CLIENT_COUNT)->get();
-        $this->command?->info('  Clients: ' . $this->clients->count());
+        $this->command?->info('  Clients: '.$this->clients->count());
     }
 
     private function seedReservations(): void
@@ -334,7 +350,7 @@ class HotelDemoSeeder extends Seeder
 
             $isPast = $checkOut->lt($today);
             $isCurrent = $checkIn->lte($today) && $checkOut->gte($today);
-            $status = $payMode === 'none' && !$isPast ? 2 : 1;
+            $status = $payMode === 'none' && ! $isPast ? 2 : 1;
 
             $this->createReservation(
                 $room,
@@ -355,11 +371,11 @@ class HotelDemoSeeder extends Seeder
             $created++;
 
             if ($created % 100 === 0) {
-                $this->command?->info("  Reservations: {$created}/" . self::TARGET_RESERVATIONS);
+                $this->command?->info("  Reservations: {$created}/".self::TARGET_RESERVATIONS);
             }
         }
 
-        $this->command?->info('  Reservations created: ' . $created);
+        $this->command?->info('  Reservations created: '.$created);
     }
 
     private function createReservation(
@@ -468,7 +484,7 @@ class HotelDemoSeeder extends Seeder
     private function createRoomPriceSnapshot(Room $room, int $reservationRoomId, Carbon $start, Carbon $end, int $rentType): void
     {
         $roomType = $room->roomType;
-        if (!$roomType) {
+        if (! $roomType) {
             return;
         }
 
@@ -520,7 +536,7 @@ class HotelDemoSeeder extends Seeder
             ClientNote::create([
                 'client_id' => $client->id,
                 'title' => 'Guest preference',
-                'description' => 'Demo note for ' . $client->first_name . ' — prefers high floor, late checkout once.',
+                'description' => 'Demo note for '.$client->first_name.' — prefers high floor, late checkout once.',
             ]);
         }
     }
@@ -542,6 +558,6 @@ class HotelDemoSeeder extends Seeder
                 ['Refunds', ReservationPay::where('type', ReservationPay::TYPE_REFUND)->count()],
             ]
         );
-        $this->command?->info('Demo period: ' . self::DEMO_START . ' → ' . self::DEMO_END);
+        $this->command?->info('Demo period: '.self::DEMO_START.' → '.self::DEMO_END);
     }
 }

@@ -57,8 +57,9 @@ class ShowUpdateTest extends TestCase
 
         $create->assertStatus(200);
         $create->assertJsonPath('success', true);
+        $this->assertNotNull($create->json('data.reservation.id'));
 
-        $reservationId = $create->json('data.id');
+        $reservationId = $create->json('data.reservation.id') ?? $create->json('data.id');
         $this->assertNotNull($reservationId);
 
         $show = $this->actingAs($user, 'api')->getJson("/api/users/reservations/{$reservationId}");

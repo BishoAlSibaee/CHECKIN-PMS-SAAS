@@ -2,11 +2,13 @@
 
 namespace App\Services;
 
+use App\Services\Cache\VersionedCache;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 
 /**
- * File-based cache for occupancy board with version bump invalidation.
+ * Versioned cache for occupancy board (file or redis via CACHE_STORE/CACHE_DRIVER).
+ * bump() increments version and publishes HotelLiveUpdated via Reverb.
  */
 class OccupancyBoardCache
 {
@@ -23,11 +25,11 @@ class OccupancyBoardCache
     {
         if (! Cache::has(self::VERSION_KEY)) {
             Cache::forever(self::VERSION_KEY, 2);
-
-            return;
+        } else {
+            Cache::increment(self::VERSION_KEY);
         }
 
-        Cache::increment(self::VERSION_KEY);
+        app(HotelLivePublisher::class)->publishBoardChanged();
     }
 
     /**
@@ -35,13 +37,14 @@ class OccupancyBoardCache
      */
     public static function remember(Carbon $date, array $filters, callable $resolver): array
     {
-        $key = sprintf(
-            'occupancy_board:v%d:%s:%s',
-            self::version(),
-            $date->toDateString(),
-            md5(json_encode($filters))
-        );
+        $suffix = sprintf('%s:%s', $date->toDateString(), md5(json_encode($filters)));
 
-        return Cache::remember($key, self::TTL_SECONDS, $resolver);
+        return VersionedCache::remember(
+            'occupancy_board',
+            self::version(),
+            $suffix,
+            self::TTL_SECONDS,
+            $resolver
+        );
     }
 }

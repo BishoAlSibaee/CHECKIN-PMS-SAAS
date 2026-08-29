@@ -3,10 +3,20 @@
 namespace Tests\Feature\Clients;
 
 use App\Models\Client;
+use App\Models\ClientNote;
+use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\TestCase;
 
 class ClientsCrudTest extends TestCase
 {
+    use DatabaseTransactions;
+
+    private ?int $createdNoteId = null;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
     public function test_create_client(): void
     {
         $user = $this->userWithOnlyPermissions(['view clients', 'manage clients']);
@@ -101,6 +111,23 @@ class ClientsCrudTest extends TestCase
         $this->assertDatabaseHas('clients', ['id' => $clientId, 'last_name' => $newLastName]);
     }
 
+    public function test_update_existing_client_by_id_from_mysql2(): void
+    {
+        $user = $this->userWithOnlyPermissions(['view clients', 'manage clients']);
+        $client = Client::first();
+        $this->assertNotNull($client);
+
+        $response = $this->actingAs($user, 'api')->postJson('/api/users/updateClient', [
+            'id' => $client->id,
+            'first_name' => $client->first_name,
+            'last_name' => $client->last_name,
+            'mobile' => $client->mobile,
+            'IdNumber' => $client->IdNumber ?? 'TEST-ID-'.$this->uniqueSuffix(),
+        ]);
+
+        $this->assertApiSuccess($response);
+    }
+
     public function test_client_notes_crud(): void
     {
         $user = $this->userWithOnlyPermissions(['manage client notes']);
@@ -118,8 +145,19 @@ class ClientsCrudTest extends TestCase
         }
 
         $this->assertApiSuccess($create);
+        $this->createdNoteId = (int) ($create->json('data.id') ?? 0);
 
         $list = $this->actingAs($user, 'api')->getJson('/api/users/client-notes?client_id=' . $client->id);
         $this->assertApiSuccess($list);
+    }
+
+    protected function tearDown(): void
+    {
+        if ($this->createdNoteId) {
+            ClientNote::whereKey($this->createdNoteId)->delete();
+            $this->createdNoteId = null;
+        }
+
+        parent::tearDown();
     }
 }

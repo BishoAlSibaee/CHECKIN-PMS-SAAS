@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\Cache\CacheInvalidator;
+use App\Services\Cache\ReferenceDataCache;
 use App\Services\PropertyPermissionBundle;
 use Illuminate\Http\Request;
 use Spatie\Permission\Models\Role;
@@ -12,7 +14,12 @@ class RolesController extends Controller
     public function index()
     {
         try {
-            $roles = Role::with('permissions')->get();
+            $roles = ReferenceDataCache::remember(
+                'roles',
+                'with_permissions',
+                fn () => Role::with('permissions')->get()
+            );
+
             return SuccessData('Roles retrieved successfully', $roles);
         } catch (\Exception $e) {
             return Failed($e->getMessage());
@@ -39,6 +46,7 @@ class RolesController extends Controller
 
             $role->syncPermissions($permissions);
             app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+            CacheInvalidator::rbacChanged();
 
             return SuccessData('Role created successfully', $role->load('permissions'));
         } catch (\Exception $e) {
@@ -67,6 +75,7 @@ class RolesController extends Controller
 
             $role->syncPermissions($permissions);
             app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+            CacheInvalidator::rbacChanged();
 
             return SuccessData('Role updated successfully', $role->load('permissions'));
         } catch (\Exception $e) {
@@ -84,6 +93,9 @@ class RolesController extends Controller
             }
 
             $role->delete();
+            app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+            CacheInvalidator::rbacChanged();
+
             return Success('Role deleted successfully');
         } catch (\Exception $e) {
             return Failed($e->getMessage());

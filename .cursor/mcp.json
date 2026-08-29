@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "laravel-boost": {
-      "command": "C:\\xampp\\php\\php.exe",
-      "args": ["artisan", "boost:mcp"],
-      "cwd": "C:\\xampp\\htdocs\\Hotel System\\checking-Booking"
-    }
-  }
-}

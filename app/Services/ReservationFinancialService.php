@@ -6,7 +6,9 @@ use App\Models\Reservation;
 use App\Models\ReservationDailyCharge;
 use App\Models\ReservationPay;
 use App\Services\Accounting\AccountingPostingService;
+use App\Services\Cache\CacheInvalidator;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class ReservationFinancialService
@@ -14,9 +16,10 @@ class ReservationFinancialService
     private const TAX_RATE = 0.15;
 
     public function __construct(
-        private AccountingPostingService $accountingPostingService
-    ) {
-    }
+        private AccountingPostingService $accountingPostingService,
+        private HotelLivePublisher $livePublisher,
+        private GuestClassificationDiscountService $guestClassificationDiscountService,
+    ) {}
 
     public function requestNeedsPricingRecalculation(Request $request, ?Reservation $reservation = null): bool
     {
@@ -24,12 +27,12 @@ class ReservationFinancialService
             return true;
         }
 
-        if (!$reservation) {
+        if (! $reservation) {
             return false;
         }
 
         foreach (['discount', 'extras', 'penalties'] as $field) {
-            if (!$request->has($field)) {
+            if (! $request->has($field)) {
                 continue;
             }
 
@@ -72,8 +75,14 @@ class ReservationFinancialService
         $oldTotal = (float) $reservation->total;
         $paidNet = $reservation->paidNetAmount();
 
+        $reservation->base_price = round($base, 2);
+        $amounts = $this->guestClassificationDiscountService->recalculateForReservation($reservation);
+        $reservation->classification_discount = $amounts['classification_discount'];
+        $reservation->discount = $amounts['discount'];
+
         $newSubtotal = round(
             $base
+            - (float) $reservation->classification_discount
             - (float) $reservation->discount
             + (float) $reservation->extras
             + (float) $reservation->penalties,
@@ -89,7 +98,6 @@ class ReservationFinancialService
             return;
         }
 
-        $reservation->base_price = round($base, 2);
         $reservation->subtotal = $newSubtotal;
         $reservation->taxes = $newTaxes;
         $reservation->total = $newTotal;
@@ -121,9 +129,9 @@ class ReservationFinancialService
 
         $payment = ReservationPay::create([
             'reservation_id' => $reservation->id,
-            'pay'            => round($amount, 2),
-            'type'           => $type,
-            'user_id'        => $userId,
+            'pay' => round($amount, 2),
+            'type' => $type,
+            'user_id' => $userId,
         ]);
 
         if ($type === ReservationPay::TYPE_PAYMENT) {
@@ -132,6 +140,9 @@ class ReservationFinancialService
         }
 
         $this->accountingPostingService->postPayment($payment);
+
+        CacheInvalidator::financeChanged();
+        $this->livePublisher->publishPaymentChanged((int) $reservation->id);
 
         return $payment;
     }
@@ -171,6 +182,35 @@ class ReservationFinancialService
      */
     public function collectAllOutstanding(int $userId): array
     {
+        $lock = Cache::lock('collections:collect-all', 300);
+
+        if (! $lock->get()) {
+            return [
+                'collected_count' => 0,
+                'collected_total' => 0.0,
+                'skipped_count' => 0,
+                'items' => [],
+                'error' => 'Another collect-all operation is already in progress.',
+            ];
+        }
+
+        try {
+            return $this->runCollectAllOutstanding($userId);
+        } finally {
+            $lock->release();
+        }
+    }
+
+    /**
+     * @return array{
+     *   collected_count: int,
+     *   collected_total: float,
+     *   skipped_count: int,
+     *   items: array<int, array{reservation_id: int, amount: float, payment_id: int}>
+     * }
+     */
+    private function runCollectAllOutstanding(int $userId): array
+    {
         $this->reconcileAllReservationTotals();
 
         $items = [];
@@ -187,7 +227,7 @@ class ReservationFinancialService
                 foreach ($reservations as $reservation) {
                     DB::transaction(function () use ($reservation, $userId, &$items, &$collectedTotal, &$skipped) {
                         $fresh = Reservation::with('payments')->lockForUpdate()->find($reservation->id);
-                        if (!$fresh) {
+                        if (! $fresh) {
                             return;
                         }
 
@@ -203,6 +243,15 @@ class ReservationFinancialService
                     });
                 }
             });
+
+        if ($items !== []) {
+            $this->livePublisher->publish([
+                HotelLivePublisher::SCOPE_COLLECTIONS,
+                HotelLivePublisher::SCOPE_OCCUPANCY_BOARD,
+                HotelLivePublisher::SCOPE_DASHBOARD,
+                HotelLivePublisher::SCOPE_RESERVATIONS,
+            ], 'collect_all_completed');
+        }
 
         return [
             'collected_count' => count($items),

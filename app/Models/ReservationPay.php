@@ -15,6 +15,7 @@ protected $fillable = [
         'reservation_id',
         'pay',
         'type',
+        'note',
         'user_id',
         'terminal_reference',
         'payment_source',

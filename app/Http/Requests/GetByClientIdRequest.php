@@ -2,7 +2,9 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Client;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class GetByClientIdRequest extends FormRequest
 {
@@ -22,7 +24,11 @@ class GetByClientIdRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'client_id' => 'required|exists:clients,id',
+            'client_id' => [
+                'required',
+                'integer',
+                Rule::exists(Client::class, 'id'),
+            ],
         ];
     }
 }

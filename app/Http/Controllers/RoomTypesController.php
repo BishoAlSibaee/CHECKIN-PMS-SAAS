@@ -2,25 +2,25 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\RoomType\AddRoomtypePricingPlanRequest;
+use App\Http\Requests\RoomType\AddRoomtypePricingRequest;
+use App\Http\Requests\RoomType\AddRoomTypeRequest;
+use App\Http\Requests\RoomType\DeleteRoomtypePricingRequest;
+use App\Http\Requests\RoomType\DeleteRoomTypeRequest;
+use App\Http\Requests\RoomType\UpdateRoomtypePricingRequest;
+use App\Http\Requests\RoomType\UpdateRoomTypeRequest;
+use App\Models\Pricingplan;
 use App\Models\RoomType;
 use App\Models\RoomtypePricingplan;
-use App\Models\Pricingplan;
-use App\Http\Requests\RoomType\AddRoomTypeRequest;
-use App\Http\Requests\RoomType\UpdateRoomTypeRequest;
-use App\Http\Requests\RoomType\DeleteRoomTypeRequest;
-use App\Http\Requests\RoomType\AddRoomtypePricingRequest;
-use App\Http\Requests\RoomType\AddRoomtypePricingPlanRequest;
-use App\Http\Requests\RoomType\UpdateRoomtypePricingRequest;
-use App\Http\Requests\RoomType\DeleteRoomtypePricingRequest;
+use App\Services\Cache\CacheInvalidator;
+use App\Services\Cache\ReferenceDataCache;
 use App\Services\PricingPlanOverlapService;
-use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 
 class RoomTypesController extends Controller
 {
-    public function __construct(private PricingPlanOverlapService $pricingPlanOverlap)
-    {
-    }
+    public function __construct(private PricingPlanOverlapService $pricingPlanOverlap) {}
 
     private function isPricingPlanExpired(Pricingplan $plan): bool
     {
@@ -51,15 +51,17 @@ class RoomTypesController extends Controller
     {
         try {
             $roomType = RoomType::create([
-                'name_ar'           => $request->name_ar,
-                'name_en'           => $request->name_en,
-                'description'       => $request->description,
-                'Max_daily_price'   => $request->Max_daily_price ?? 0,
-                'Min_daily_price'   => $request->Min_daily_price,
+                'name_ar' => $request->name_ar,
+                'name_en' => $request->name_en,
+                'description' => $request->description,
+                'Max_daily_price' => $request->Max_daily_price ?? 0,
+                'Min_daily_price' => $request->Min_daily_price,
                 'Max_monthly_price' => $request->Max_monthly_price ?? 0,
                 'Min_monthly_price' => $request->Min_monthly_price,
-                'active_type'       => $request->active_type,
+                'active_type' => $request->active_type,
             ]);
+            CacheInvalidator::roomTypesChanged();
+
             return SuccessData('Room type added successfully', $roomType);
         } catch (\Exception $e) {
             return Failed($e->getMessage());
@@ -69,7 +71,12 @@ class RoomTypesController extends Controller
     public function getRoomType()
     {
         try {
-            $roomTypes = RoomType::query()->orderBy('name_en')->orderBy('id')->get();
+            $roomTypes = ReferenceDataCache::remember(
+                'room_types',
+                'all',
+                fn () => RoomType::query()->orderBy('name_en')->orderBy('id')->get()
+            );
+
             return SuccessData('Room types retrieved successfully', $roomTypes);
         } catch (\Exception $e) {
             return Failed($e->getMessage());
@@ -82,15 +89,16 @@ class RoomTypesController extends Controller
             $roomType = RoomType::findOrFail($request->id);
 
             $roomType->update([
-                'name_ar'           => $request->name_ar,
-                'name_en'           => $request->name_en,
-                'description'       => $request->description,
-                'Max_daily_price'   => $request->Max_daily_price ?? 0,
-                'Min_daily_price'   => $request->Min_daily_price,
+                'name_ar' => $request->name_ar,
+                'name_en' => $request->name_en,
+                'description' => $request->description,
+                'Max_daily_price' => $request->Max_daily_price ?? 0,
+                'Min_daily_price' => $request->Min_daily_price,
                 'Max_monthly_price' => $request->Max_monthly_price ?? 0,
                 'Min_monthly_price' => $request->Min_monthly_price,
-                'active_type'       => $request->active_type,
+                'active_type' => $request->active_type,
             ]);
+            CacheInvalidator::roomTypesChanged();
 
             return Success('Room type updated successfully');
         } catch (\Exception $e) {
@@ -108,13 +116,13 @@ class RoomTypesController extends Controller
             }
 
             $roomType->delete();
+            CacheInvalidator::roomTypesChanged();
 
             return Success('Room type deleted successfully');
         } catch (\Exception $e) {
             return Failed($e->getMessage());
         }
     }
-
 
     public function getRoomtypePricing()
     {
@@ -137,6 +145,7 @@ class RoomTypesController extends Controller
                     'MonthlyPrice' => $item->MonthlyPrice,
                 ];
             });
+
             return SuccessData('Pricing plans retrieved successfully', $formatted);
         } catch (\Exception $e) {
             return Failed($e->getMessage());
@@ -186,9 +195,11 @@ class RoomTypesController extends Controller
                 'DailyPrice' => $roomTypePricing->DailyPrice,
                 'MonthlyPrice' => $roomTypePricing->MonthlyPrice,
             ];
+
             return SuccessData('Pricing plan added successfully', $data);
         } catch (\Exception $e) {
             DB::rollBack();
+
             return Failed($e->getMessage());
         }
     }
@@ -237,9 +248,11 @@ class RoomTypesController extends Controller
                 'DailyPrice' => $roomTypePricing->DailyPrice,
                 'MonthlyPrice' => $roomTypePricing->MonthlyPrice,
             ];
+
             return SuccessData('Roomtype pricing plan added successfully', $data);
         } catch (\Exception $e) {
             DB::rollBack();
+
             return Failed($e->getMessage());
         }
     }
@@ -251,6 +264,7 @@ class RoomTypesController extends Controller
             $pricingPlan = Pricingplan::findOrFail($request->pricingplan_id);
             if ($this->isPricingPlanExpired($pricingPlan)) {
                 DB::rollBack();
+
                 return Failed('Cannot modify an expired pricing plan.');
             }
 
@@ -261,41 +275,44 @@ class RoomTypesController extends Controller
                 (int) $request->id
             )) {
                 DB::rollBack();
+
                 return $response;
             }
 
             $pricingPlan->update([
-                'NameAr'    => $request->NameAr,
-                'NameEn'    => $request->NameEn,
+                'NameAr' => $request->NameAr,
+                'NameEn' => $request->NameEn,
                 'StartDate' => $request->StartDate,
-                'EndDate'   => $request->EndDate,
+                'EndDate' => $request->EndDate,
                 'ActiveType' => $request->ActiveType,
             ]);
             $roomTypePricing = RoomtypePricingplan::findOrFail($request->id);
             $roomTypePricing->update([
-                'roomtype_id'    => $request->roomtype_id,
+                'roomtype_id' => $request->roomtype_id,
                 'pricingplan_id' => $pricingPlan->id,
-                'DailyPrice'     => $request->DailyPrice,
-                'MonthlyPrice'   => $request->MonthlyPrice,
+                'DailyPrice' => $request->DailyPrice,
+                'MonthlyPrice' => $request->MonthlyPrice,
             ]);
             DB::commit();
             $data = [
-                'id'                    => $roomTypePricing->id,
-                'roomtype_id'           => $roomTypePricing->roomtype_id,
-                'roomtype_nameAr'       => $roomTypePricing->roomType->name_ar ?? '',
-                'roomtype_nameEn'       => $roomTypePricing->roomType->name_en ?? '',
-                'pricingplan_id'        => $pricingPlan->id,
-                'pricingplan_nameAr'    => $pricingPlan->NameAr,
-                'pricingplan_nameEn'    => $pricingPlan->NameEn,
+                'id' => $roomTypePricing->id,
+                'roomtype_id' => $roomTypePricing->roomtype_id,
+                'roomtype_nameAr' => $roomTypePricing->roomType->name_ar ?? '',
+                'roomtype_nameEn' => $roomTypePricing->roomType->name_en ?? '',
+                'pricingplan_id' => $pricingPlan->id,
+                'pricingplan_nameAr' => $pricingPlan->NameAr,
+                'pricingplan_nameEn' => $pricingPlan->NameEn,
                 'pricingplan_StartDate' => $pricingPlan->StartDate,
-                'pricingplan_EndDate'   => $pricingPlan->EndDate,
+                'pricingplan_EndDate' => $pricingPlan->EndDate,
                 'pricingplan_ActiveType' => $pricingPlan->ActiveType,
-                'DailyPrice'            => $roomTypePricing->DailyPrice,
-                'MonthlyPrice'          => $roomTypePricing->MonthlyPrice,
+                'DailyPrice' => $roomTypePricing->DailyPrice,
+                'MonthlyPrice' => $roomTypePricing->MonthlyPrice,
             ];
+
             return SuccessData('Pricing plan updated successfully', $data);
         } catch (\Exception $e) {
             DB::rollBack();
+
             return Failed($e->getMessage());
         }
     }
@@ -322,6 +339,7 @@ class RoomTypesController extends Controller
             return Success('Pricing plan deleted successfully');
         } catch (\Exception $e) {
             DB::rollBack();
+
             return Failed($e->getMessage());
         }
     }

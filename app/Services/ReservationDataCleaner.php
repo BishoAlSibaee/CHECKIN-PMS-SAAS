@@ -39,6 +39,10 @@ class ReservationDataCleaner
                 $counts['financial_audit_logs'] = DB::table('financial_audit_logs')->delete();
             }
 
+            if (Schema::hasTable('reservation_change_logs')) {
+                $counts['reservation_change_logs'] = DB::table('reservation_change_logs')->delete();
+            }
+
             $counts['reservation_daily_charges'] = ReservationDailyCharge::query()->delete();
             $counts['reservation_pay'] = ReservationPay::query()->delete();
             $counts['reservation_extend'] = ReservationExtend::query()->delete();

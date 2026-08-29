@@ -16,7 +16,7 @@ class AllReportsGoldenValidationTest extends TestCase
     use FinanceAssertions;
     use FinanceTestBootstrap;
 
-    public function test_all_twenty_four_report_slugs_pass_verification(): void
+    public function test_all_report_slugs_pass_verification(): void
     {
         $this->bootstrapFinanceData();
 
@@ -26,16 +26,16 @@ class AllReportsGoldenValidationTest extends TestCase
             Carbon::parse(self::FINANCE_PERIOD_END)
         );
 
-        $this->assertCount(24, $results);
+        $this->assertCount(23, $results);
 
         $failures = [];
         foreach ($results as $result) {
-            if (!$result['pass']) {
-                $failures[] = $result['slug'] . ': ' . $result['message'];
+            if (! $result['pass']) {
+                $failures[] = $result['slug'].': '.$result['message'];
             }
         }
 
-        $this->assertEmpty($failures, "Report verification failures:\n" . implode("\n", $failures));
+        $this->assertEmpty($failures, "Report verification failures:\n".implode("\n", $failures));
     }
 
     public function test_financial_reports_via_http_match_service(): void
@@ -145,7 +145,7 @@ class AllReportsGoldenValidationTest extends TestCase
 
     public function test_report_catalog_lists_all_slugs(): void
     {
-        $this->assertCount(24, ReportCatalog::allSlugs());
+        $this->assertCount(23, ReportCatalog::allSlugs());
         $providerSlugs = array_map(fn (array $row) => $row[0], AllReportsSlugTest::reportSlugProvider());
         $this->assertSame(ReportCatalog::allSlugs(), $providerSlugs);
     }

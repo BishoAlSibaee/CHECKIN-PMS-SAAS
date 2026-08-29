@@ -19,8 +19,13 @@ class AllReportsSlugTest extends TestCase
             'view reports', 'view financial reports', 'view accounting reports',
         ]);
 
+        $query = http_build_query(array_merge(
+            ['start_date' => '2026-08-01', 'end_date' => '2026-08-31'],
+            $slug === 'general-ledger' ? ['account_type' => 'asset'] : []
+        ));
+
         $response = $this->actingAs($user, 'api')->getJson(
-            "/api/users/reports/{$slug}?start_date=2026-08-01&end_date=2026-08-31"
+            "/api/users/reports/{$slug}?{$query}"
         );
 
         $response->assertOk();

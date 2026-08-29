@@ -4,9 +4,8 @@ namespace Tests\Feature\Reservation;
 
 use App\Models\Client;
 use App\Models\Reservation;
-use App\Models\ReservationPay;
-use App\Models\ReservationRoom;
 use App\Models\Reservation_source;
+use App\Models\ReservationRoom;
 use App\Models\Room;
 use App\Models\Stay_reason;
 use App\Services\ReservationRoomStatusService;
@@ -31,7 +30,7 @@ class ReservationLifecycleTest extends TestCase
     public function test_cancel_future_reservation(): void
     {
         $reservation = $this->createFutureReservation();
-        if (!$reservation) {
+        if (! $reservation) {
             $this->markTestSkipped('Could not create future reservation.');
         }
 
@@ -49,26 +48,17 @@ class ReservationLifecycleTest extends TestCase
 
     public function test_cancel_releases_room_for_new_booking(): void
     {
-        $reservation = $this->createFutureReservation();
-        if (!$reservation) {
-            $this->markTestSkipped('Could not create future reservation.');
+        $start = '2026-12-01';
+        $end = '2026-12-05';
+
+        $room = $this->createIsolatedTestRoom();
+        if (! $room) {
+            $this->markTestSkipped('Could not create isolated test room.');
         }
 
-        $reservationRoom = ReservationRoom::where('reservation_id', $reservation->id)->first();
-        $this->assertNotNull($reservationRoom);
-
-        $room = Room::findOrFail($reservationRoom->room_id);
-
-        $hasInHouseOnRoom = ReservationRoom::where('room_id', $room->id)
-            ->where('reservation_id', '!=', $reservation->id)
-            ->whereHas('reservation', function ($query) {
-                $query->where('reservation_status', Reservation::STATUS_CONFIRMED)
-                    ->where('logedin', Reservation::LOGEDIN_IN_HOUSE);
-            })
-            ->exists();
-
-        if ($hasInHouseOnRoom) {
-            $this->markTestSkipped('Room has another in-house stay — cannot test cancel release in isolation.');
+        $reservation = $this->createReservationOnRoom($room, $start, $end);
+        if (! $reservation) {
+            $this->markTestSkipped('Could not create reservation on isolated room.');
         }
 
         Room::where('id', $room->id)->update(['roomStatus' => ReservationRoomStatusService::ROOM_OCCUPIED]);
@@ -89,9 +79,9 @@ class ReservationLifecycleTest extends TestCase
         );
 
         $availability = $this->actingAs($user, 'api')->getJson(
-            '/api/users/booking-room-availability?' . http_build_query([
-                'start_date' => $reservation->start_date,
-                'expire_date' => $reservation->expire_date,
+            '/api/users/booking-room-availability?'.http_build_query([
+                'start_date' => $start,
+                'expire_date' => $end,
                 'building_id' => $room->building_id,
             ])
         );
@@ -109,7 +99,7 @@ class ReservationLifecycleTest extends TestCase
             ->where('expire_date', '>=', Carbon::today()->toDateString())
             ->first();
 
-        if (!$reservation) {
+        if (! $reservation) {
             $this->markTestSkipped('No active future reservation.');
         }
 
@@ -127,7 +117,7 @@ class ReservationLifecycleTest extends TestCase
             ->where('expire_date', '>=', Carbon::today()->toDateString())
             ->first();
 
-        if (!$reservation) {
+        if (! $reservation) {
             $this->markTestSkipped('No in-stay reservation for extend test.');
         }
 
@@ -143,11 +133,11 @@ class ReservationLifecycleTest extends TestCase
         );
 
         if ($response->status() === 422) {
-            $this->markTestSkipped('Extend payload differs: ' . $response->json('message'));
+            $this->markTestSkipped('Extend payload differs: '.$response->json('message'));
         }
 
         if ($response->status() === 500) {
-            $this->markTestSkipped('Extend returned 500: ' . $response->json('message'));
+            $this->markTestSkipped('Extend returned 500: '.$response->json('message'));
         }
 
         $this->assertApiSuccess($response);
@@ -168,7 +158,7 @@ class ReservationLifecycleTest extends TestCase
             ->whereDoesntHave('payments')
             ->first();
 
-        if (!$reservation) {
+        if (! $reservation) {
             $this->markTestSkipped('No reservation without payments.');
         }
 
@@ -205,7 +195,7 @@ class ReservationLifecycleTest extends TestCase
         $this->assertNotNull($room);
 
         $response = $this->actingAs($user, 'api')->getJson(
-            '/api/users/checkReservation?room_id=' . $room->id . '&start_date=2026-12-01&expire_date=2026-12-05'
+            '/api/users/checkReservation?room_id='.$room->id.'&start_date=2026-12-01&expire_date=2026-12-05'
         );
 
         $this->assertTrue(in_array($response->status(), [200, 422], true));
@@ -224,7 +214,7 @@ class ReservationLifecycleTest extends TestCase
         $stayReason = Stay_reason::first();
         $source = Reservation_source::first();
 
-        if (!$client || !$stayReason || !$source) {
+        if (! $client || ! $stayReason || ! $source) {
             return null;
         }
 
@@ -239,17 +229,17 @@ class ReservationLifecycleTest extends TestCase
                         ->where('start_date', '<', $end)
                         ->where('expire_date', '>', $start);
                 })->exists();
-            if (!$overlap) {
+            if (! $overlap) {
                 $room = $candidate;
                 break;
             }
         }
 
-        if (!$room) {
+        if (! $room) {
             $room = $this->findOrCreateAvailableRoom($start, $end);
         }
 
-        if (!$room) {
+        if (! $room) {
             return null;
         }
 
@@ -269,7 +259,47 @@ class ReservationLifecycleTest extends TestCase
             'penalties' => 0,
         ]);
 
-        if ($response->status() !== 200 || !$response->json('success')) {
+        if ($response->status() !== 200 || ! $response->json('success')) {
+            return null;
+        }
+
+        $id = $response->json('data.id') ?? $response->json('data.reservation.id') ?? null;
+
+        return $id ? Reservation::find($id) : Reservation::latest('id')->first();
+    }
+
+    private function createReservationOnRoom(Room $room, string $start, string $end): ?Reservation
+    {
+        $user = $this->userWithOnlyPermissions(['view reservations', 'create reservations']);
+        $client = Client::first();
+        $stayReason = Stay_reason::first();
+        $source = Reservation_source::first();
+
+        if (! $client || ! $stayReason || ! $source) {
+            return null;
+        }
+
+        Room::where('id', $room->id)->update([
+            'roomStatus' => ReservationRoomStatusService::ROOM_AVAILABLE,
+        ]);
+
+        $response = $this->actingAs($user, 'api')->postJson('/api/users/makeReservation', [
+            'client_id' => $client->id,
+            'rooms' => [['room_id' => $room->id]],
+            'start_date' => $start,
+            'expire_date' => $end,
+            'reservation_type' => 0,
+            'reservation_status' => 1,
+            'stay_reason_id' => $stayReason->id,
+            'reservation_source_id' => $source->id,
+            'rent_type' => 0,
+            'price_calculation_mode' => 0,
+            'discount' => 0,
+            'extras' => 0,
+            'penalties' => 0,
+        ]);
+
+        if ($response->status() !== 200 || ! $response->json('success')) {
             return null;
         }
 

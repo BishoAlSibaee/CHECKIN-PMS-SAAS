@@ -22,9 +22,10 @@ class RevenueAccrualService
         ?int $entityId,
         Carbon $startDate,
         Carbon $endDate,
-        bool $includeDetails = false
+        bool $includeDetails = false,
+        bool $capRecognizedAtToday = true
     ): array {
-        $charges = $this->queryCharges($scope, $entityId, $startDate, $endDate)->get();
+        $charges = $this->queryCharges($scope, $entityId, $startDate, $endDate, $capRecognizedAtToday)->get();
 
         $clientNames = $this->loadClientNamesById($charges);
         $allocated = $this->allocateCharges($charges, $clientNames);
@@ -84,13 +85,20 @@ class RevenueAccrualService
         ];
     }
 
-    private function queryCharges(string $scope, ?int $entityId, Carbon $startDate, Carbon $endDate)
-    {
+    private function queryCharges(
+        string $scope,
+        ?int $entityId,
+        Carbon $startDate,
+        Carbon $endDate,
+        bool $capRecognizedAtToday = true
+    ) {
         $rangeStart = $startDate->toDateString();
         $recognizedEnd = $endDate->copy()->startOfDay();
-        $today = Carbon::today()->startOfDay();
-        if ($recognizedEnd->gt($today)) {
-            $recognizedEnd = $today;
+        if ($capRecognizedAtToday) {
+            $today = Carbon::today()->startOfDay();
+            if ($recognizedEnd->gt($today)) {
+                $recognizedEnd = $today;
+            }
         }
         $rangeEnd = $recognizedEnd->toDateString();
 
@@ -98,6 +106,7 @@ class RevenueAccrualService
             ->select([
                 'reservation_daily_charges.*',
                 'reservations.discount',
+                'reservations.classification_discount',
                 'reservations.extras',
                 'reservations.penalties',
                 'reservations.base_price as reservation_base_price',
@@ -177,7 +186,7 @@ class RevenueAccrualService
             ->whereIn('id', $clientIds)
             ->get()
             ->mapWithKeys(fn (Client $client) => [
-                $client->id => trim(($client->first_name ?? '') . ' ' . ($client->last_name ?? '')) ?: '—',
+                $client->id => trim(($client->first_name ?? '').' '.($client->last_name ?? '')) ?: '—',
             ])
             ->all();
     }
@@ -206,7 +215,7 @@ class RevenueAccrualService
                 ? (float) $charge->base_amount / $reservationTotalBase
                 : 0;
 
-            $discountAlloc = (float) $charge->discount * $weight;
+            $discountAlloc = ((float) $charge->classification_discount + (float) $charge->discount) * $weight;
             $extrasAlloc = (float) $charge->extras * $weight;
             $penaltiesAlloc = (float) $charge->penalties * $weight;
 

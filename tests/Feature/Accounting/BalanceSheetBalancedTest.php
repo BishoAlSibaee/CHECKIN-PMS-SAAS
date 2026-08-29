@@ -18,7 +18,7 @@ class BalanceSheetBalancedTest extends TestCase
 
         $this->assertTrue(
             $sheet['totals']['balanced'],
-            'Assets ' . $sheet['totals']['assets'] . ' vs L+E ' . $sheet['totals']['liabilities_and_equity']
+            'Assets '.$sheet['totals']['assets'].' vs L+E '.$sheet['totals']['liabilities_and_equity']
         );
     }
 }

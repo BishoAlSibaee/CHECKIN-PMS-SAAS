@@ -3,18 +3,18 @@
 namespace App\Http\Controllers;
 
 use App\Services\Reports\ReportCatalog;
+use App\Services\Reports\ReportCatalogCache;
+use App\Services\Reports\ReportDirectExportPolicy;
 use App\Services\Reports\ReportQueryService;
 use Illuminate\Http\Request;
 
 class ReportController extends Controller
 {
-    public function __construct(private ReportQueryService $reportQueryService)
-    {
-    }
+    public function __construct(private ReportQueryService $reportQueryService) {}
 
     public function catalog()
     {
-        $items = ReportCatalog::all();
+        $items = ReportCatalogCache::remember(fn () => ReportCatalog::all());
 
         return SuccessData('Report catalog', ['reports' => $items]);
     }
@@ -29,7 +29,7 @@ class ReportController extends Controller
             $forExport = filter_var($request->input('for_export'), FILTER_VALIDATE_BOOLEAN);
 
             if ($forExport) {
-                $exportLimit = max(1, (int) config('reports.preview_limit', 500));
+                $exportLimit = ReportDirectExportPolicy::maxDirectDownloadRows();
                 $data['rows'] = array_slice($allRows, 0, $exportLimit);
                 $data['total_rows'] = $totalRows;
                 $data['per_page'] = $exportLimit;
@@ -53,7 +53,9 @@ class ReportController extends Controller
                 $data['is_truncated'] = $totalRows > $perPage;
             }
 
-            $data['export_limit'] = max(1, (int) config('reports.preview_limit', 500));
+            $exportLimit = ReportDirectExportPolicy::maxDirectDownloadRows();
+            $data['export_limit'] = $exportLimit;
+            $data = array_merge($data, ReportDirectExportPolicy::metaForRowCount($totalRows));
 
             return SuccessData('Report generated', $data);
         } catch (\InvalidArgumentException $e) {

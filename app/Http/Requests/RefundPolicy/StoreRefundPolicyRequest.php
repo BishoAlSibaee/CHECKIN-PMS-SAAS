@@ -28,6 +28,7 @@ class StoreRefundPolicyRequest extends FormRequest
             'payment_statuses.*' => 'string|in:partial,full,paid',
             'days_before_checkin' => 'nullable|integer|min:0',
             'during_stay' => 'nullable|in:0,1',
+            'priority' => 'nullable|integer|in:0,1',
         ];
     }
 
@@ -40,6 +41,7 @@ class StoreRefundPolicyRequest extends FormRequest
             'days_before_checkin' => $mode === 'fixed_days'
                 ? (int) $this->input('days_threshold', $this->input('days_before_checkin', 0))
                 : 0,
+            'priority' => $mode === 'percent_of_stay' ? (int) $this->input('priority', 0) : 0,
         ];
 
         if ($mode === 'percent_of_stay') {

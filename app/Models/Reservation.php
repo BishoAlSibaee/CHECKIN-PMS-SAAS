@@ -2,15 +2,22 @@
 
 namespace App\Models;
 
+use App\Support\ReservationRelatedCleanup;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use App\Models\Client;
 
 class Reservation extends Model
 {
     use HasFactory;
+
+    protected static function booted(): void
+    {
+        static::deleting(function (Reservation $reservation): void {
+            ReservationRelatedCleanup::purgeRelated([(int) $reservation->id]);
+        });
+    }
 
     /** Guest physically in room (used by RoomOccupancyService and UI). */
     public const LOGEDIN_IN_HOUSE = 1;
@@ -45,6 +52,21 @@ class Reservation extends Model
     public static function cashReportStatuses(): array
     {
         return [self::STATUS_CONFIRMED, self::STATUS_PENDING_PAYMENT];
+    }
+
+    /**
+     * Statuses whose actual cash movements (payments/refunds) count in cash reports.
+     * Cash is cash: a cancelled reservation can still have a real payment and refund,
+     * so cash-box / payments-refunds must include cancelled to reconcile with the ledger.
+     */
+    public static function cashMovementStatuses(): array
+    {
+        return [
+            self::STATUS_UNCONFIRMED,
+            self::STATUS_CONFIRMED,
+            self::STATUS_PENDING_PAYMENT,
+            self::STATUS_CANCELLED,
+        ];
     }
 
     /** Statuses shown on operational reports (excludes pending + cancelled). */
@@ -87,6 +109,14 @@ class Reservation extends Model
         );
     }
 
+    /** Outstanding guest balances for AR aging / collections (not cancelled). */
+    public function scopeOutstandingForAging($query)
+    {
+        return $query->excludingCancelled()
+            ->whereIn('reservation_status', self::cashReportStatuses())
+            ->withPositiveBalance();
+    }
+
     /**
      * Confirmed stays, plus pending-payment stays that are fully paid (data safety net).
      */
@@ -113,11 +143,11 @@ class Reservation extends Model
 
     public function guestDisplayName(): string
     {
-        if (!$this->relationLoaded('client')) {
+        if (! $this->relationLoaded('client')) {
             $this->load('client');
         }
 
-        $name = trim(($this->client->first_name ?? '') . ' ' . ($this->client->last_name ?? ''));
+        $name = trim(($this->client->first_name ?? '').' '.($this->client->last_name ?? ''));
 
         return $name !== '' ? $name : '—';
     }
@@ -154,6 +184,9 @@ class Reservation extends Model
         'price_calculation_mode',
         'base_price',
         'discount',
+        'classification_discount',
+        'guest_classification_id',
+        'classification_discount_id',
         'extras',
         'penalties',
         'subtotal',
@@ -182,22 +215,22 @@ class Reservation extends Model
         return $this->belongsTo(Room::class);
     }
 
-    function client(): BelongsTo
+    public function client(): BelongsTo
     {
         return $this->belongsTo(Client::class);
     }
 
-    function user(): BelongsTo
+    public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
     }
 
-    function stay_reason(): BelongsTo
+    public function stay_reason(): BelongsTo
     {
         return $this->belongsTo(Stay_reason::class);
     }
 
-    function reservation_source(): BelongsTo
+    public function reservation_source(): BelongsTo
     {
         return $this->belongsTo(Reservation_source::class);
     }
@@ -212,9 +245,39 @@ class Reservation extends Model
         return $this->hasMany(ReservationExtend::class);
     }
 
+    public function paidNetAmountAsOf(\Carbon\Carbon $asOf): float
+    {
+        if (! $this->relationLoaded('payments')) {
+            $this->load('payments');
+        }
+
+        $cutoff = $asOf->copy()->endOfDay();
+
+        $paid = (float) $this->payments
+            ->where('type', ReservationPay::TYPE_PAYMENT)
+            ->filter(fn (ReservationPay $pay) => $pay->created_at !== null && $pay->created_at->lte($cutoff))
+            ->sum('pay');
+        $refunded = (float) $this->payments
+            ->where('type', ReservationPay::TYPE_REFUND)
+            ->filter(fn (ReservationPay $pay) => $pay->created_at !== null && $pay->created_at->lte($cutoff))
+            ->sum('pay');
+
+        return round($paid - $refunded, 2);
+    }
+
+    public function balanceDueAsOf(\Carbon\Carbon $asOf, ?float $total = null): float
+    {
+        $totalAmount = $total ?? (float) $this->total;
+        if ($totalAmount <= 0 && (float) $this->subtotal > 0) {
+            $totalAmount = round((float) $this->subtotal * 1.15, 2);
+        }
+
+        return round(max(0, $totalAmount - $this->paidNetAmountAsOf($asOf)), 2);
+    }
+
     public function paidNetAmount(): float
     {
-        if (!$this->relationLoaded('payments')) {
+        if (! $this->relationLoaded('payments')) {
             $this->load('payments');
         }
 
@@ -233,5 +296,40 @@ class Reservation extends Model
         $totalAmount = $total ?? (float) $this->total;
 
         return round(max(0, $totalAmount - $this->paidNetAmount()), 2);
+    }
+
+    public function guestHasCheckedOut(): bool
+    {
+        if ((int) $this->logedin !== self::LOGEDIN_NOT_IN_HOUSE || empty($this->login_time)) {
+            return false;
+        }
+
+        if (ReservationChangeLog::query()
+            ->where('reservation_id', $this->id)
+            ->where('action', 'checked_in')
+            ->exists()) {
+            return true;
+        }
+
+        if ($this->expire_date === null) {
+            return false;
+        }
+
+        return \Carbon\Carbon::parse($this->expire_date)->startOfDay()->lt(\Carbon\Carbon::today()->startOfDay());
+    }
+
+    public function totalDiscountAmount(): float
+    {
+        return round((float) $this->classification_discount + (float) $this->discount, 2);
+    }
+
+    public function guestClassification(): BelongsTo
+    {
+        return $this->belongsTo(Guest_classification::class, 'guest_classification_id');
+    }
+
+    public function classificationDiscountRule(): BelongsTo
+    {
+        return $this->belongsTo(Discount::class, 'classification_discount_id');
     }
 }

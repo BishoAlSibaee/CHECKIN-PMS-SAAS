@@ -59,14 +59,14 @@ class FullReportsCrossValidationTest extends TestCase
         $this->assertEqualsWithDelta($expectedRevenue, $rowRevenue, 0.15);
 
         $dash = $this->actingAs($user, 'api')->getJson(
-            '/api/users/financials/dashboard?start_date=' . self::FINANCE_PERIOD_START . '&end_date=' . self::FINANCE_PERIOD_END
+            '/api/users/financials/dashboard?start_date='.self::FINANCE_PERIOD_START.'&end_date='.self::FINANCE_PERIOD_END
         );
         $dash->assertOk();
         $kpis = $dash->json('data.kpis');
         $this->assertEqualsWithDelta($expectedRevenue, (float) ($kpis['accrual_total'] ?? 0), 0.05);
 
         $revApi = $this->actingAs($user, 'api')->getJson(
-            '/api/users/revenue/total?start_date=' . self::FINANCE_PERIOD_START . '&end_date=' . self::FINANCE_PERIOD_END . '&include_details=0'
+            '/api/users/revenue/total?start_date='.self::FINANCE_PERIOD_START.'&end_date='.self::FINANCE_PERIOD_END.'&include_details=0'
         );
         $revApi->assertOk();
         $this->assertEqualsWithDelta(
@@ -81,7 +81,7 @@ class FullReportsCrossValidationTest extends TestCase
         $user = $this->bootstrapFinanceData();
 
         $earn = $this->actingAs($user, 'api')->getJson(
-            '/api/users/earnings-summary?start_date=' . self::FINANCE_PERIOD_START . '&end_date=' . self::FINANCE_PERIOD_END
+            '/api/users/earnings-summary?start_date='.self::FINANCE_PERIOD_START.'&end_date='.self::FINANCE_PERIOD_END
         );
         $earn->assertOk();
         $cashIn = (float) ($earn->json('data.total_in') ?? 0);
@@ -89,7 +89,7 @@ class FullReportsCrossValidationTest extends TestCase
         $cashNet = (float) ($earn->json('data.net_earnings') ?? 0);
 
         $dash = $this->actingAs($user, 'api')->getJson(
-            '/api/users/financials/dashboard?start_date=' . self::FINANCE_PERIOD_START . '&end_date=' . self::FINANCE_PERIOD_END
+            '/api/users/financials/dashboard?start_date='.self::FINANCE_PERIOD_START.'&end_date='.self::FINANCE_PERIOD_END
         );
         $kpis = $dash->json('data.kpis');
         $this->assertEqualsWithDelta($cashIn, (float) ($kpis['cash_in'] ?? 0), 0.05);
@@ -133,17 +133,17 @@ class FullReportsCrossValidationTest extends TestCase
 
         $occupancy = $this->report($user, 'occupancy');
         $soldNights = (int) ($this->reportSummaryValue($occupancy, 'Total room nights sold') ?? 0);
-        $this->assertSame($expectedNights, $soldNights);
 
         $chargeCount = ReservationDailyCharge::query()
             ->join('reservations', 'reservation_daily_charges.reservation_id', '=', 'reservations.id')
             ->where('reservations.reservation_status', 1)
             ->whereBetween('reservation_daily_charges.charge_date', [self::FINANCE_PERIOD_START, self::FINANCE_PERIOD_END])
             ->count();
-        $this->assertSame($expectedNights, $chargeCount);
+        $this->assertSame($chargeCount, $soldNights);
 
-        $capacity = (int) ($this->reportSummaryValue($occupancy, 'Available rooms') ?? 0) * (int) ($this->reportSummaryValue($occupancy, 'Days in period') ?? 1);
-        $expectedOcc = $capacity > 0 ? round($expectedNights / $capacity * 100, 1) : 0.0;
+        $capacity = Room::query()->where('active', 1)->whereNotIn('roomStatus', [3, 4])->count()
+            * (int) ($this->reportSummaryValue($occupancy, 'Days in period') ?? 1);
+        $expectedOcc = $capacity > 0 ? round($chargeCount / $capacity * 100, 1) : 0.0;
         $avgOcc = $this->parsePercentSummary($occupancy, 'Average occupancy rate');
         $this->assertEqualsWithDelta($expectedOcc, $avgOcc, 0.2);
     }

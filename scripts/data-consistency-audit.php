@@ -138,13 +138,14 @@ if ($orphanPays === 0) {
 }
 
 $orphanJournal = ReservationRelatedCleanup::countOrphanJournalLines();
-if ($orphanJournal === 0) {
-    line('pass', 'No orphan journal lines (missing reservation)');
+$orphanReservationIds = ReservationRelatedCleanup::collectMissingReservationIdsReferenced();
+if ($orphanJournal === 0 && $orphanReservationIds->isEmpty()) {
+    line('pass', 'No orphan reservation-related rows');
 } elseif ($repairJournalOrphans) {
-    $repaired = ReservationRelatedCleanup::repairOrphanJournalLines();
-    line('pass', "Repaired orphan journal: {$repaired['lines_deleted']} line(s), {$repaired['entries_deleted']} empty entry(ies) removed");
+    $repaired = ReservationRelatedCleanup::purgeOrphansForMissingReservations();
+    line('pass', 'Purged orphan reservation data: '.json_encode($repaired));
 } else {
-    line('fail', "{$orphanJournal} journal line(s) reference deleted reservations — run with --repair-journal-orphans");
+    line('fail', "{$orphanJournal} journal line(s) / {$orphanReservationIds->count()} missing reservation id(s) still referenced — run with --repair-journal-orphans or php artisan reservations:purge-orphans");
 }
 
 if ($cancelledCharges === 0) {

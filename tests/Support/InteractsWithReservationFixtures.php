@@ -29,7 +29,7 @@ trait InteractsWithReservationFixtures
             ->whereHas('roomType')
             ->orderBy('id')
             ->get() as $candidate) {
-            if (!$this->roomHasReservationOverlap($candidate->id, $startDate, $endDate)) {
+            if (! $this->roomHasReservationOverlap($candidate->id, $startDate, $endDate)) {
                 Room::where('id', $candidate->id)->update([
                     'roomStatus' => ReservationRoomStatusService::ROOM_AVAILABLE,
                 ]);
@@ -44,27 +44,29 @@ trait InteractsWithReservationFixtures
     protected function createIsolatedTestRoom(): ?Room
     {
         $roomType = RoomType::query()->first();
-        if (!$roomType) {
+        if (! $roomType) {
             return null;
         }
 
         $buildingId = DB::table('buildings')->value('id');
         $floorId = DB::table('floors')->where('building_id', $buildingId)->value('id');
-        if (!$buildingId || !$floorId) {
+        if (! $buildingId || ! $floorId) {
             return null;
         }
 
-        $number = 'T' . substr((string) microtime(true), -6) . random_int(10, 99);
+        $number = 'T'.substr((string) microtime(true), -6).random_int(10, 99);
 
-        return Room::create([
-            'number' => $number,
-            'building_id' => $buildingId,
-            'floor_id' => $floorId,
-            'suite_id' => null,
-            'room_type_id' => $roomType->id,
-            'capacity' => 2,
-            'active' => 1,
-            'roomStatus' => ReservationRoomStatusService::ROOM_AVAILABLE,
-        ]);
+        return Room::unguarded(function () use ($number, $buildingId, $floorId, $roomType) {
+            return Room::create([
+                'number' => $number,
+                'building_id' => $buildingId,
+                'floor_id' => $floorId,
+                'suite_id' => null,
+                'room_type_id' => $roomType->id,
+                'capacity' => 2,
+                'active' => 1,
+                'roomStatus' => ReservationRoomStatusService::ROOM_AVAILABLE,
+            ]);
+        });
     }
 }

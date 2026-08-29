@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Job_title;
 use App\Http\Requests\JobTitle\AddJobTitleRequest;
-use App\Http\Requests\JobTitle\UpdateJobTitleRequest;
 use App\Http\Requests\JobTitle\DeleteJobTitleRequest;
 use App\Http\Requests\JobTitle\GetJobTitleByDepartmentRequest;
+use App\Http\Requests\JobTitle\UpdateJobTitleRequest;
+use App\Models\Job_title;
+use App\Services\Cache\CacheInvalidator;
+use App\Services\Cache\ReferenceDataCache;
 
 class JobTitlesController extends Controller
 {
@@ -14,7 +16,13 @@ class JobTitlesController extends Controller
     {
         try {
             $perPage = \returnPerPage();
-            $jobTitles = Job_title::paginate($perPage);
+            $page = max(1, (int) request()->input('page', 1));
+            $jobTitles = ReferenceDataCache::remember(
+                'job_titles',
+                "page:{$page}:per:{$perPage}",
+                fn () => Job_title::query()->paginate($perPage)
+            );
+
             return \Pagination($jobTitles);
         } catch (\Exception $e) {
             return \Failed($e->getMessage());
@@ -30,6 +38,7 @@ class JobTitlesController extends Controller
                 'description' => $request->description ?? null,
                 'department_id' => $request->department_id,
             ]);
+            CacheInvalidator::jobTitlesChanged();
 
             return \SuccessData('Job title added successfully', $jobTitle);
         } catch (\Exception $e) {
@@ -48,6 +57,7 @@ class JobTitlesController extends Controller
                 'description' => $request->description ?? $jobTitle->description,
                 'department_id' => $request->department_id ?? $jobTitle->department_id,
             ]);
+            CacheInvalidator::jobTitlesChanged();
 
             return \SuccessData('Job title updated successfully', $jobTitle);
         } catch (\Exception $e) {
@@ -65,6 +75,7 @@ class JobTitlesController extends Controller
             }
 
             $jobTitle->delete();
+            CacheInvalidator::jobTitlesChanged();
 
             return \Success('Job title deleted successfully');
         } catch (\Exception $e) {
@@ -75,8 +86,14 @@ class JobTitlesController extends Controller
     public function getByDepartment(GetJobTitleByDepartmentRequest $request)
     {
         try {
-            $jobTitles = Job_title::where('department_id', $request->department_id)
-                ->get();
+            $departmentId = (int) $request->department_id;
+            $jobTitles = ReferenceDataCache::remember(
+                'job_titles',
+                "department:{$departmentId}",
+                fn () => Job_title::query()
+                    ->where('department_id', $departmentId)
+                    ->get()
+            );
 
             return \SuccessData('Job titles retrieved successfully', $jobTitles);
         } catch (\Exception $e) {

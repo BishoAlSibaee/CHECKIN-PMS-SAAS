@@ -4,8 +4,8 @@
  * Live cross-validation via services (no HTTP). Run: php scripts/cross_validate_finance.php
  */
 
-require __DIR__ . '/../vendor/autoload.php';
-$app = require __DIR__ . '/../bootstrap/app.php';
+require __DIR__.'/../vendor/autoload.php';
+$app = require __DIR__.'/../bootstrap/app.php';
 $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 
 use App\Services\FinancialDashboardService;
@@ -24,6 +24,7 @@ function summaryVal(array $data, string $label): ?float
             return is_numeric($item['value']) ? (float) $item['value'] : null;
         }
     }
+
     return null;
 }
 
@@ -58,7 +59,7 @@ echo "=== Cross-validation Aug 2026 (live DB via services) ===\n\n";
 foreach ($rows as $i => $row) {
     if ($i === 0) {
         printf("%-28s %12s %12s %12s\n", $row[0], $row[1], $row[2], $row[3]);
-        echo str_repeat('-', 70) . "\n";
+        echo str_repeat('-', 70)."\n";
     } else {
         printf(
             "%-28s %12s %12s %12s\n",
@@ -92,10 +93,10 @@ $cashInVals = array_filter([
 
 $spread = fn (array $vals) => count($vals) > 1 ? max($vals) - min($vals) : 0;
 
-echo "\nAccrual spread: " . round($spread($accrualVals), 2) . ($spread($accrualVals) < 0.10 ? ' PASS' : ' MISMATCH') . "\n";
-echo "Cash in spread: " . round($spread($cashInVals), 2) . ($spread($cashInVals) < 0.15 ? ' PASS' : ' MISMATCH') . "\n";
-echo "Cash net spread: " . round($spread($cashNetVals), 2) . ($spread($cashNetVals) < 0.15 ? ' PASS' : ' MISMATCH') . "\n";
+echo "\nAccrual spread: ".round($spread($accrualVals), 2).($spread($accrualVals) < 0.10 ? ' PASS' : ' MISMATCH')."\n";
+echo 'Cash in spread: '.round($spread($cashInVals), 2).($spread($cashInVals) < 0.15 ? ' PASS' : ' MISMATCH')."\n";
+echo 'Cash net spread: '.round($spread($cashNetVals), 2).($spread($cashNetVals) < 0.15 ? ' PASS' : ' MISMATCH')."\n";
 
 echo "\nNOT auto-validated against each other:\n";
-echo "  accounting: chart-of-accounts, trial-balance, balance-sheet, GL, cash-flow\n";
+echo "  accounting: chart-of-accounts, trial-balance, GL, cash-flow\n";
 echo "  operational: occupancy, revpar, room-board, ar-aging, arrivals-departures\n";

@@ -43,16 +43,18 @@ class DashboardSummaryTest extends TestCase
         $this->assertSame((int) ($boardOcc['in_house'] ?? 0), (int) ($dashOcc['in_house'] ?? 0));
     }
 
-    public function test_dashboard_avg_daily_rate_uses_room_nights(): void
+    public function test_dashboard_avg_daily_rate_uses_room_nights_for_last_30_days(): void
     {
         $user = $this->seedAndUser();
         $today = Carbon::today();
+        $periodStart = $today->copy()->subDays(29)->startOfDay();
+        $periodEnd = $today->copy()->endOfDay();
 
         $expected = app(RevenueAccrualService::class)->calculate(
             'total',
             null,
-            $today->copy()->startOfMonth(),
-            $today->copy()->endOfMonth(),
+            $periodStart,
+            $periodEnd,
             false
         );
 
@@ -65,6 +67,8 @@ class DashboardSummaryTest extends TestCase
 
         $this->assertSame($roomNights, (int) $response->json('data.month_room_nights'));
         $this->assertEqualsWithDelta($expectedAdr, (float) $response->json('data.avg_daily_rate'), 0.05);
+        $this->assertSame($periodStart->toDateString(), $response->json('data.accrual_period_start'));
+        $this->assertSame($periodEnd->toDateString(), $response->json('data.accrual_period_end'));
     }
 
     public function test_weekly_accrual_matches_service_per_day(): void

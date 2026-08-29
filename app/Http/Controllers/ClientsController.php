@@ -2,10 +2,13 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Client;
-use Illuminate\Http\Request;
 use App\Http\Requests\Client\AddClientRequest;
 use App\Http\Requests\Client\GetClientByRequest;
+use App\Models\Client;
+use App\Models\Reservation;
+use App\Models\ReservationPay;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class ClientsController extends Controller
 {
@@ -16,7 +19,7 @@ class ClientsController extends Controller
             $search = $request->search;
             $excludeAssigned = $request->exclude_assigned;
 
-            $query = Client::latest();
+            $query = Client::on('mysql2')->latest();
 
             if ($excludeAssigned) {
                 $query->whereDoesntHave('classifications');
@@ -40,6 +43,7 @@ class ClientsController extends Controller
             }
 
             $clients = $query->paginate($perPage);
+
             return \Pagination($clients);
         } catch (\Exception $e) {
             return \Failed($e->getMessage());
@@ -74,7 +78,7 @@ class ClientsController extends Controller
         try {
             $client = Client::find($request->id);
 
-            if (!$client) {
+            if (! $client) {
                 return \Failed('Client not found');
             }
 
@@ -103,7 +107,7 @@ class ClientsController extends Controller
         try {
             $client = Client::find($id);
 
-            if (!$client) {
+            if (! $client) {
                 return \Failed('Client not found');
             }
 
@@ -121,7 +125,7 @@ class ClientsController extends Controller
                 ->orWhere('IdNumber', $request->IdNumber)
                 ->first();
 
-            if (!$client) {
+            if (! $client) {
                 return \Failed('Client not found');
             }
 
@@ -136,13 +140,39 @@ class ClientsController extends Controller
         try {
             $client = Client::find($id);
 
-            if (!$client) {
+            if (! $client) {
                 return \Failed('Client not found');
             }
 
-            return \SuccessData('Client retrieved successfully', $client);
+            $reservationsCount = Reservation::where('client_id', $id)->count();
+            $lastVisit = Reservation::where('client_id', $id)->max('start_date');
+            $totalSpent = $this->clientNetPaidTotal((int) $id);
+
+            $payload = $client->toArray();
+            $payload['reservations_count'] = $reservationsCount;
+            $payload['last_visit'] = $lastVisit;
+            $payload['total_spent'] = $totalSpent;
+
+            return \SuccessData('Client retrieved successfully', $payload);
         } catch (\Exception $e) {
             return \Failed($e->getMessage());
         }
+    }
+
+    private function clientNetPaidTotal(int $clientId): float
+    {
+        $paymentType = ReservationPay::TYPE_PAYMENT;
+        $refundType = ReservationPay::TYPE_REFUND;
+
+        $net = DB::table('reservation_pay')
+            ->join('reservations', 'reservations.id', '=', 'reservation_pay.reservation_id')
+            ->where('reservations.client_id', $clientId)
+            ->selectRaw(
+                'COALESCE(SUM(CASE WHEN reservation_pay.type = ? THEN reservation_pay.pay WHEN reservation_pay.type = ? THEN -reservation_pay.pay ELSE 0 END), 0) as net',
+                [$paymentType, $refundType]
+            )
+            ->value('net');
+
+        return round((float) $net, 2);
     }
 }

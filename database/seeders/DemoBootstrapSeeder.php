@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Artisan;
 /**
  * Post-seed demo bootstrap: deterministic 2026 scenarios, daily charges, GL journal.
  *
- * Runs automatically from DatabaseSeeder after HotelDemoSeeder (or light demo).
+ * Runs from demo:setup after HotelDemoSeeder (or light demo).
  */
 class DemoBootstrapSeeder extends Seeder
 {
