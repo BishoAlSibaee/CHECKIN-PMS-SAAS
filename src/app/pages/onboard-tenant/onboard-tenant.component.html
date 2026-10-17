@@ -1,0 +1,119 @@
+<div class="page">
+  <header class="page-header">
+    <h1>عميل جديد</h1>
+    <a routerLink="/tenants" class="btn btn-secondary">رجوع للقائمة</a>
+  </header>
+
+  @if (result(); as r) {
+    <div class="card success-card">
+      <div class="alert alert-success">تم إنشاء حساب العميل بنجاح.</div>
+
+      <dl>
+        <dt>المستأجر</dt>
+        <dd>{{ r.tenant.name_ar }} ({{ r.tenant.name_en }})</dd>
+
+        <dt>الفندق</dt>
+        <dd>{{ r.hotel.name_ar }} ({{ r.hotel.name_en }})</dd>
+
+        <dt>رقم موظف المدير</dt>
+        <dd>{{ r.admin.job_number }}</dd>
+
+        <dt>كلمة المرور</dt>
+        <dd>{{ adminPassword }}</dd>
+
+        <dt>انتهاء الاشتراك</dt>
+        <dd>{{ r.tenant.subscription_ends_at ? (r.tenant.subscription_ends_at) : 'بلا انتهاء' }}</dd>
+      </dl>
+
+      <a routerLink="/tenants" class="btn btn-primary">الذهاب إلى قائمة المستأجرين</a>
+    </div>
+  } @else {
+    <form class="card" (ngSubmit)="submit()">
+      @if (error()) {
+        <div class="alert alert-danger">{{ error() }}</div>
+      }
+
+      <h2 class="section-title">بيانات المستأجر</h2>
+      <div class="grid-2">
+        <div class="field">
+          <label for="tenantNameAr">اسم المستأجر (عربي)</label>
+          <input id="tenantNameAr" name="tenantNameAr" [(ngModel)]="tenantNameAr" required />
+        </div>
+        <div class="field">
+          <label for="tenantNameEn">اسم المستأجر (إنجليزي)</label>
+          <input id="tenantNameEn" name="tenantNameEn" [(ngModel)]="tenantNameEn" required />
+        </div>
+      </div>
+
+      <h2 class="section-title">بيانات الفندق الأول</h2>
+      <div class="grid-2">
+        <div class="field">
+          <label for="hotelNameAr">اسم الفندق (عربي)</label>
+          <input id="hotelNameAr" name="hotelNameAr" [(ngModel)]="hotelNameAr" required />
+        </div>
+        <div class="field">
+          <label for="hotelNameEn">اسم الفندق (إنجليزي)</label>
+          <input id="hotelNameEn" name="hotelNameEn" [(ngModel)]="hotelNameEn" required />
+        </div>
+      </div>
+      <div class="grid-3">
+        <div class="field">
+          <label for="buildingsCount">عدد المباني</label>
+          <input id="buildingsCount" type="number" min="1" max="26" name="buildingsCount" [(ngModel)]="buildingsCount" required />
+        </div>
+        <div class="field">
+          <label for="floorsCount">عدد الأدوار بكل مبنى</label>
+          <input id="floorsCount" type="number" min="1" max="50" name="floorsCount" [(ngModel)]="floorsCount" required />
+        </div>
+        <div class="field">
+          <label for="roomsPerFloor">عدد الغرف بكل دور</label>
+          <input id="roomsPerFloor" type="number" min="1" max="50" name="roomsPerFloor" [(ngModel)]="roomsPerFloor" required />
+        </div>
+      </div>
+
+      <h2 class="section-title">مدة الاشتراك</h2>
+      <div class="field checkbox-field">
+        <label>
+          <input type="checkbox" name="noExpiry" [(ngModel)]="noExpiry" />
+          بلا انتهاء (عميل دائم)
+        </label>
+      </div>
+      @if (!noExpiry) {
+        <div class="field subscription-days">
+          <label for="subscriptionDays">عدد أيام الاشتراك</label>
+          <input id="subscriptionDays" type="number" min="1" name="subscriptionDays" [(ngModel)]="subscriptionDays" />
+        </div>
+      }
+
+      <h2 class="section-title">حساب مدير الفندق</h2>
+      <div class="grid-2">
+        <div class="field">
+          <label for="adminName">الاسم</label>
+          <input id="adminName" name="adminName" [(ngModel)]="adminName" required />
+        </div>
+        <div class="field">
+          <label for="adminJobNumber">رقم الموظف</label>
+          <input id="adminJobNumber" name="adminJobNumber" [(ngModel)]="adminJobNumber" required />
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="field">
+          <label for="adminEmail">البريد الإلكتروني</label>
+          <input id="adminEmail" type="email" name="adminEmail" [(ngModel)]="adminEmail" required />
+        </div>
+        <div class="field">
+          <label for="adminMobile">رقم الجوال</label>
+          <input id="adminMobile" name="adminMobile" [(ngModel)]="adminMobile" required />
+        </div>
+      </div>
+      <div class="field">
+        <label for="adminPassword">كلمة المرور</label>
+        <input id="adminPassword" type="password" name="adminPassword" [(ngModel)]="adminPassword" required minlength="8" />
+      </div>
+
+      <button type="submit" class="btn btn-primary submit-btn" [disabled]="submitting()">
+        {{ submitting() ? 'جارٍ الإنشاء...' : 'إنشاء العميل' }}
+      </button>
+    </form>
+  }
+</div>

@@ -1,0 +1,68 @@
+<div class="page">
+  <header class="page-header">
+    <div>
+      <h1>المستأجرون</h1>
+      <p class="subtitle">إدارة حسابات العملاء (الفنادق) المشتركة في المنصة</p>
+    </div>
+    <div class="header-actions">
+      <span class="user-name">{{ auth.displayName() }}</span>
+      <a routerLink="/operators" class="btn btn-secondary">المشغّلون</a>
+      <a routerLink="/tenants/new" class="btn btn-primary">+ عميل جديد</a>
+      <button type="button" class="btn btn-secondary" (click)="logout()">تسجيل خروج</button>
+    </div>
+  </header>
+
+  @if (error()) {
+    <div class="alert alert-danger">{{ error() }}</div>
+  }
+
+  @if (loading()) {
+    <p class="subtitle">جارٍ التحميل...</p>
+  } @else {
+    <div class="card table-card">
+      <table>
+        <thead>
+          <tr>
+            <th>المستأجر</th>
+            <th>عدد الفنادق</th>
+            <th>الحالة</th>
+            <th>الاشتراك</th>
+            <th>الأيام المتبقية</th>
+            <th>أنشأه</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (tenant of tenants(); track tenant.id) {
+            <tr class="tenant-row" [routerLink]="['/tenants', tenant.id]">
+              <td>
+                <div class="tenant-name">{{ tenant.name_ar }}</div>
+                <div class="tenant-name-en">{{ tenant.name_en }}</div>
+              </td>
+              <td>{{ tenant.hotels_count }}</td>
+              <td>
+                @if (tenant.is_active) {
+                  <span class="badge badge-active">نشط</span>
+                } @else {
+                  <span class="badge badge-expired">معطّل</span>
+                }
+              </td>
+              <td>
+                @if (tenant.is_subscription_active) {
+                  <span class="badge badge-active">نشط</span>
+                } @else {
+                  <span class="badge badge-expired">منتهٍ</span>
+                }
+              </td>
+              <td>{{ daysRemaining(tenant) }}</td>
+              <td class="muted">{{ tenant.created_by?.name ?? '—' }}</td>
+            </tr>
+          } @empty {
+            <tr>
+              <td colspan="6" class="empty-row">لا يوجد مستأجرون بعد</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</div>
