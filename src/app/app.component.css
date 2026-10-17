@@ -1,0 +1,529 @@
+.app-shell {
+  background-color: var(--background);
+  width: 100%;
+}
+
+.app-shell__main {
+  flex: 1 1 auto;
+  width: 0;
+  min-width: 0;
+}
+
+.min-w-0 {
+  min-width: 0;
+}
+
+.app-main-content {
+  width: 100%;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Routed page fills available width/height */
+.app-main-content > :not(router-outlet) {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* ── Topbar ─────────────────────────────────────────────────────────────── */
+
+.app-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  min-height: 3.75rem;
+  padding: 0.65rem 1rem;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.78)),
+    color-mix(in srgb, var(--card) 88%, transparent);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.app-topbar--elevated {
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+  border-bottom-color: color-mix(in srgb, var(--border) 100%, transparent);
+}
+
+.app-topbar__start,
+.app-topbar__end {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.app-topbar__end {
+  flex-shrink: 0;
+  gap: 0.5rem;
+}
+
+.app-topbar__context {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.app-topbar__eyebrow {
+  margin: 0;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+  line-height: 1.2;
+}
+
+.app-topbar__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--foreground);
+  line-height: 1.25;
+}
+
+.app-topbar__icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  min-width: 2.35rem;
+  height: 2.35rem;
+  padding: 0 0.55rem;
+  border: 1px solid transparent;
+  border-radius: 0.7rem;
+  background: transparent;
+  color: var(--foreground);
+  position: relative;
+  transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+
+.app-topbar__bell-badge {
+  position: absolute;
+  top: 0.15rem;
+  inset-inline-end: 0.15rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.1rem;
+  height: 1.1rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background: #f43f5e;
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: 0 0 0 2px var(--background, #fff);
+}
+
+.app-topbar__icon-btn i {
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+.app-topbar__icon-btn:hover {
+  background: var(--muted);
+  border-color: color-mix(in srgb, var(--border) 70%, transparent);
+  color: var(--primary);
+}
+
+.app-topbar__icon-btn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--primary) 45%, transparent);
+  outline-offset: 2px;
+}
+
+.app-topbar__lang-code {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--muted-foreground);
+}
+
+.app-topbar__date {
+  display: none;
+  align-items: center;
+  gap: 0.4rem;
+  max-width: 14rem;
+  padding: 0.4rem 0.7rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 70%, white);
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  color: var(--muted-foreground);
+  font-size: 0.78rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.app-topbar__date i {
+  font-size: 0.9rem;
+  color: var(--primary);
+  opacity: 0.85;
+}
+
+.app-topbar__date-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--muted-foreground, #475569);
+}
+
+.app-topbar__user {
+  position: relative;
+}
+
+.app-topbar__user-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  max-width: 14rem;
+  min-height: 2.5rem;
+  padding: 0.25rem 0.55rem 0.25rem 0.3rem;
+  border: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--card) 92%, var(--muted));
+  color: var(--foreground);
+  transition: background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.app-topbar__user-btn:hover,
+.app-topbar__user-btn[aria-expanded="true"] {
+  background: var(--card);
+  border-color: color-mix(in srgb, var(--primary) 28%, var(--border));
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
+}
+
+.app-topbar__user-btn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--primary) 45%, transparent);
+  outline-offset: 2px;
+}
+
+.app-topbar__avatar {
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--primary) 88%, white), var(--primary));
+  color: var(--primary-foreground);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.app-topbar__avatar--lg {
+  width: 2.4rem;
+  height: 2.4rem;
+  font-size: 0.8rem;
+}
+
+.app-topbar__user-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  line-height: 1.15;
+}
+
+.app-topbar__user-name {
+  max-width: 8.5rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.app-topbar__user-role {
+  max-width: 8.5rem;
+  font-size: 0.68rem;
+  color: var(--muted-foreground);
+}
+
+.app-topbar__chevron {
+  font-size: 0.7rem;
+  color: var(--muted-foreground);
+  margin-inline-end: 0.15rem;
+  transition: transform 0.18s ease;
+}
+
+.app-topbar__user-btn[aria-expanded="true"] .app-topbar__chevron {
+  transform: rotate(180deg);
+}
+
+/* Hide Bootstrap caret on ngbDropdownToggle */
+.app-topbar__user-btn.dropdown-toggle::after {
+  display: none;
+}
+
+.app-topbar__menu {
+  min-width: 15rem;
+  padding: 0.4rem;
+  margin-top: 0.4rem !important;
+  border: 1px solid var(--border);
+  border-radius: 0.85rem;
+  background: var(--card);
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12);
+}
+
+.app-topbar__menu-header {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.55rem 0.6rem 0.7rem;
+}
+
+.app-topbar__menu-name {
+  font-size: 0.88rem;
+  font-weight: 650;
+  color: var(--foreground);
+}
+
+.app-topbar__menu-role {
+  font-size: 0.72rem;
+  color: var(--muted-foreground);
+}
+
+.app-topbar__menu .dropdown-divider {
+  margin: 0.2rem 0.35rem 0.45rem;
+  border-top: 1px solid var(--border);
+  opacity: 1;
+}
+
+.app-topbar__menu-item {
+  display: flex !important;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  padding: 0.6rem 0.7rem !important;
+  border-radius: 0.55rem;
+  font-size: 0.86rem;
+  color: var(--foreground);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.app-topbar__menu-item i {
+  font-size: 1rem;
+  opacity: 0.75;
+}
+
+.app-topbar__menu-item:hover,
+.app-topbar__menu-item:focus {
+  background: var(--muted) !important;
+  color: var(--foreground);
+}
+
+.app-topbar__menu-item--danger {
+  color: #b91c1c;
+}
+
+.app-topbar__notifications-menu {
+  min-width: 22rem;
+  max-width: min(24rem, 90vw);
+  padding: 0;
+  overflow: hidden;
+}
+
+.app-topbar__notifications-header {
+  padding: 0.75rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--foreground);
+  border-bottom: 1px solid var(--border);
+}
+
+.app-topbar__notifications-list {
+  max-height: 22rem;
+  overflow-y: auto;
+}
+
+.app-topbar__notification-item {
+  display: flex !important;
+  align-items: flex-start;
+  gap: 0.7rem;
+  width: 100%;
+  padding: 0.75rem 1rem !important;
+  border-bottom: 1px solid var(--border);
+  text-align: start;
+  background: transparent;
+  transition: background-color 0.15s ease;
+}
+
+.app-topbar__notification-item:last-child {
+  border-bottom: none;
+}
+
+.app-topbar__notification-item:hover,
+.app-topbar__notification-item:focus {
+  background: var(--muted);
+}
+
+.app-topbar__notification-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 0.6rem;
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
+  font-size: 1rem;
+}
+
+.app-topbar__notification-title {
+  display: block;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--foreground);
+  white-space: normal;
+  line-height: 1.35;
+}
+
+.app-topbar__notification-time {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.72rem;
+  color: var(--muted-foreground);
+}
+
+.app-topbar__notifications-empty {
+  padding: 1.75rem 1rem;
+  margin: 0;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--muted-foreground);
+}
+
+.app-topbar__menu-item--danger:hover,
+.app-topbar__menu-item--danger:focus {
+  background: color-mix(in srgb, #fecaca 55%, white) !important;
+  color: #991b1b;
+}
+
+@media (min-width: 576px) {
+  .app-topbar {
+    padding: 0.7rem 1.25rem;
+  }
+}
+
+@media (min-width: 768px) {
+  .app-topbar__date {
+    display: inline-flex;
+  }
+
+  .app-topbar__title {
+    font-size: 1.15rem;
+  }
+}
+
+@media (min-width: 992px) {
+  .app-topbar {
+    padding-inline: 1.5rem;
+  }
+}
+
+@media (max-width: 419.98px) {
+  .app-topbar__eyebrow {
+    display: none;
+  }
+
+  .app-topbar__lang-code {
+    display: none;
+  }
+}
+
+/* ── Modal Styles ───────────────────────────────────────────────────────── */
+
+.modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1050;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.modal-content {
+  width: 90%;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: white;
+  border-radius: 0.75rem;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+  border: none;
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from { transform: translateY(-20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ── Toast Styles ───────────────────────────────────────────────────────── */
+
+.toast-container {
+  z-index: 2000;
+}
+
+.toast {
+  border: none;
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  animation: slideIn 0.3s ease-out;
+  min-width: 250px;
+}
+
+.toast-body {
+  padding: 1rem;
+  font-size: 0.95rem;
+  flex-grow: 1;
+}
+
+:host-context([dir="rtl"]) .toast-body {
+  text-align: right;
+}
+
+:host-context([dir="rtl"]) .btn-close {
+  margin-left: 0.5rem !important;
+  margin-right: auto !important;
+}
+
+@keyframes slideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+:host-context([dir="rtl"]) .toast {
+  animation: slideInRTL 0.3s ease-out;
+}
+
+@keyframes slideInRTL {
+  from { transform: translateX(-100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}

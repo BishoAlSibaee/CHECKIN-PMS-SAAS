@@ -1,0 +1,212 @@
+<div class="peak-page">
+  <section class="peak-hero">
+    <div class="peak-hero__copy">
+      <p class="peak-hero__eyebrow">
+        <i class="bi bi-graph-up-arrow" aria-hidden="true"></i>
+        {{ 'PEAK_PERIODS.EYEBROW' | translate }}
+      </p>
+      <h1>{{ 'PEAK_PERIODS.TITLE' | translate }}</h1>
+      <p class="peak-hero__subtitle">{{ 'PEAK_PERIODS.SUBTITLE' | translate }}</p>
+    </div>
+    <div class="peak-hero__actions">
+      <button
+        type="button"
+        class="btn btn-outline-secondary"
+        (click)="refresh()"
+        [disabled]="isLoading || isSaving"
+        [attr.aria-label]="'COMMON.REFRESH' | translate">
+        <i class="bi bi-arrow-clockwise" [class.spin]="isLoading" aria-hidden="true"></i>
+        <span>{{ 'COMMON.REFRESH' | translate }}</span>
+      </button>
+      <button
+        type="button"
+        class="btn btn-primary"
+        (click)="saveConfig()"
+        [disabled]="isLoading || isSaving || !hasChanges">
+        <span *ngIf="!isSaving" class="d-inline-flex align-items-center gap-1">
+          <i class="bi bi-save" aria-hidden="true"></i>
+          <span>{{ 'COMMON.SAVE' | translate }}</span>
+        </span>
+        <span *ngIf="isSaving" class="d-inline-flex align-items-center gap-2">
+          <span class="spinner-border spinner-border-sm" role="status"></span>
+          {{ 'PEAK_PERIODS.SAVING' | translate }}
+        </span>
+      </button>
+    </div>
+  </section>
+
+  <div class="alert alert-danger peak-alert" *ngIf="errorMessage && !isLoading" role="alert">
+    <i class="bi bi-exclamation-triangle-fill me-2" aria-hidden="true"></i>
+    {{ errorMessage }}
+  </div>
+
+  <div class="peak-dirty" *ngIf="!isLoading && hasChanges" role="status">
+    <div class="peak-dirty__copy">
+      <i class="bi bi-pencil-square" aria-hidden="true"></i>
+      <span>{{ 'PEAK_PERIODS.UNSAVED_BANNER' | translate }}</span>
+    </div>
+    <button type="button" class="btn btn-sm btn-warning" (click)="saveConfig()" [disabled]="isSaving">
+      {{ 'COMMON.SAVE' | translate }}
+    </button>
+  </div>
+
+  <div class="peak-summary" role="group" [attr.aria-label]="'PEAK_PERIODS.SUMMARY_ARIA' | translate">
+    <ng-container *ngIf="isLoading">
+      <div class="peak-stat" *ngFor="let i of [1,2,3]">
+        <div class="skeleton skeleton-text" style="width: 45%;"></div>
+        <div class="skeleton skeleton-text mt-2" style="width: 30%; height: 1.5rem;"></div>
+      </div>
+    </ng-container>
+    <ng-container *ngIf="!isLoading && peakConfig">
+      <div class="peak-stat peak-stat--days">
+        <span class="peak-stat__label">{{ 'PEAK_PERIODS.STAT_PEAK_DAYS' | translate }}</span>
+        <span class="peak-stat__value">{{ enabledDaysCount }}</span>
+        <span class="peak-stat__hint">{{ 'PEAK_PERIODS.STAT_OF_DAYS' | translate:{ total: peakConfig.peakDays.length } }}</span>
+      </div>
+      <div class="peak-stat peak-stat--months">
+        <span class="peak-stat__label">{{ 'PEAK_PERIODS.STAT_PEAK_MONTHS' | translate }}</span>
+        <span class="peak-stat__value">{{ enabledMonthsCount }}</span>
+        <span class="peak-stat__hint">{{ 'PEAK_PERIODS.STAT_OF_MONTHS' | translate:{ total: peakConfig.peakMonths.length } }}</span>
+      </div>
+      <div class="peak-stat" [class.peak-stat--dirty]="hasChanges">
+        <span class="peak-stat__label">{{ 'PEAK_PERIODS.STAT_STATUS' | translate }}</span>
+        <span class="peak-stat__value peak-stat__value--sm">
+          {{ (hasChanges ? 'PEAK_PERIODS.STAT_UNSAVED' : 'PEAK_PERIODS.STAT_SAVED') | translate }}
+        </span>
+        <span class="peak-stat__hint">{{ 'PEAK_PERIODS.STAT_STATUS_HINT' | translate }}</span>
+      </div>
+    </ng-container>
+  </div>
+
+  <ng-container *ngIf="isLoading">
+    <div class="card border-0 shadow-sm peak-panel">
+      <div class="peak-panel__head">
+        <div class="skeleton" style="width: 2rem; height: 2rem; border-radius: 0.5rem;"></div>
+        <div class="skeleton skeleton-text" style="width: 10rem;"></div>
+      </div>
+      <div class="peak-panel__body">
+        <div class="skeleton skeleton-text mb-3" style="width: 60%;"></div>
+        <div class="peak-days">
+          <div class="peak-day peak-day--skel" *ngFor="let i of [1,2,3,4,5,6,7]">
+            <div class="skeleton skeleton-text" style="width: 50%; margin: 0 auto;"></div>
+            <div class="skeleton skeleton-text mt-2" style="width: 40%; margin: 0 auto;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card border-0 shadow-sm peak-panel">
+      <div class="peak-panel__head">
+        <div class="skeleton" style="width: 2rem; height: 2rem; border-radius: 0.5rem;"></div>
+        <div class="skeleton skeleton-text" style="width: 10rem;"></div>
+      </div>
+      <div class="peak-panel__body">
+        <div class="skeleton skeleton-text mb-3" style="width: 55%;"></div>
+        <div class="peak-months">
+          <div class="peak-month peak-month--skel" *ngFor="let i of [1,2,3,4,5,6]">
+            <div class="skeleton skeleton-text" style="width: 45%;"></div>
+            <div class="skeleton" style="width: 2rem; height: 1.1rem; border-radius: 999px;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </ng-container>
+
+  <ng-container *ngIf="!isLoading && peakConfig">
+    <div class="card border-0 shadow-sm peak-panel">
+      <div class="peak-panel__head">
+        <div class="peak-panel__title-wrap">
+          <div class="peak-panel__icon peak-panel__icon--days">
+            <i class="bi bi-calendar-week" aria-hidden="true"></i>
+          </div>
+          <div>
+            <h2 class="peak-panel__title">{{ 'PEAK_PERIODS.PEAK_DAYS' | translate }}</h2>
+            <p class="peak-panel__desc">{{ 'PEAK_PERIODS.PEAK_DAYS_DESC' | translate }}</p>
+          </div>
+        </div>
+        <div class="peak-panel__actions">
+          <button type="button" class="btn btn-sm btn-outline-secondary" (click)="enableWeekend()" [disabled]="isSaving">
+            {{ 'PEAK_PERIODS.ENABLE_WEEKEND' | translate }}
+          </button>
+          <button type="button" class="btn btn-sm btn-outline-secondary" (click)="clearDays()" [disabled]="isSaving || enabledDaysCount === 0">
+            {{ 'PEAK_PERIODS.CLEAR_DAYS' | translate }}
+          </button>
+        </div>
+      </div>
+      <div class="peak-panel__body">
+        <div class="peak-days" role="group" [attr.aria-label]="'PEAK_PERIODS.PEAK_DAYS' | translate">
+          <button
+            type="button"
+            class="peak-day"
+            *ngFor="let day of peakConfig.peakDays"
+            [class.peak-day--on]="day.enabled"
+            [disabled]="isSaving"
+            (click)="toggleDay(day)">
+            <span class="peak-day__name">{{ 'PEAK_PERIODS.DAYS.' + day.day.toUpperCase() | translate }}</span>
+            <span class="peak-day__state">
+              {{ (day.enabled ? 'PEAK_PERIODS.ENABLED' : 'PEAK_PERIODS.STANDARD') | translate }}
+            </span>
+            <i class="bi peak-day__check" [ngClass]="day.enabled ? 'bi-check-circle-fill' : 'bi-circle'" aria-hidden="true"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card border-0 shadow-sm peak-panel">
+      <div class="peak-panel__head">
+        <div class="peak-panel__title-wrap">
+          <div class="peak-panel__icon peak-panel__icon--months">
+            <i class="bi bi-calendar-month" aria-hidden="true"></i>
+          </div>
+          <div>
+            <h2 class="peak-panel__title">{{ 'PEAK_PERIODS.PEAK_MONTHS' | translate }}</h2>
+            <p class="peak-panel__desc">{{ 'PEAK_PERIODS.PEAK_MONTHS_DESC' | translate }}</p>
+          </div>
+        </div>
+        <div class="peak-panel__actions">
+          <button type="button" class="btn btn-sm btn-outline-secondary" (click)="selectAllMonths()" [disabled]="isSaving">
+            {{ 'PEAK_PERIODS.SELECT_ALL_MONTHS' | translate }}
+          </button>
+          <button type="button" class="btn btn-sm btn-outline-secondary" (click)="clearMonths()" [disabled]="isSaving || enabledMonthsCount === 0">
+            {{ 'PEAK_PERIODS.CLEAR_MONTHS' | translate }}
+          </button>
+        </div>
+      </div>
+      <div class="peak-panel__body">
+        <div class="peak-months" role="group" [attr.aria-label]="'PEAK_PERIODS.PEAK_MONTHS' | translate">
+          <button
+            type="button"
+            class="peak-month"
+            *ngFor="let month of peakConfig.peakMonths"
+            [class.peak-month--on]="month.enabled"
+            [disabled]="isSaving"
+            (click)="toggleMonth(month)">
+            <span class="peak-month__copy">
+              <span class="peak-month__name">{{ 'PEAK_PERIODS.MONTHS.' + month.month.toUpperCase() | translate }}</span>
+              <span class="peak-month__state">
+                {{ (month.enabled ? 'PEAK_PERIODS.ENABLED' : 'PEAK_PERIODS.STANDARD') | translate }}
+              </span>
+            </span>
+            <span class="form-check form-switch mb-0 peak-month__switch" (click)="$event.stopPropagation()">
+              <input
+                class="form-check-input"
+                type="checkbox"
+                role="switch"
+                [checked]="month.enabled"
+                [disabled]="isSaving"
+                (change)="toggleMonth(month)"
+                [attr.aria-label]="'PEAK_PERIODS.MONTHS.' + month.month.toUpperCase() | translate" />
+            </span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="peak-info">
+      <i class="bi bi-info-circle" aria-hidden="true"></i>
+      <div>
+        <div class="peak-info__title">{{ 'PEAK_PERIODS.SUMMARY' | translate }}</div>
+        <p class="peak-info__text">{{ 'PEAK_PERIODS.SUMMARY_HINT' | translate }}</p>
+      </div>
+    </div>
+  </ng-container>
+</div>

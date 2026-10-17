@@ -1,0 +1,83 @@
+<div class="hotels-page" *ngIf="!isLoading && group">
+  <section class="dept-hero">
+    <div class="dept-hero__copy">
+      <p class="dept-hero__eyebrow">
+        <i class="bi bi-people" aria-hidden="true"></i>
+        {{ group.company_name || ('GROUP_BOOKINGS.EYEBROW' | translate) }}
+      </p>
+      <h1>{{ group.name }}</h1>
+      <p class="dept-hero__subtitle" *ngIf="group.contact_name">
+        {{ group.contact_name }} · {{ group.contact_mobile }} · {{ group.contact_email }}
+      </p>
+    </div>
+    <div class="dept-hero__actions">
+      <button type="button" class="btn btn-outline-danger" (click)="cancelGroup()"
+              [disabled]="isCancelling || group.status === STATUS_CANCELLED">
+        <span *ngIf="isCancelling" class="spinner-border spinner-border-sm me-1" role="status"></span>
+        {{ 'GROUP_BOOKINGS.CANCEL_GROUP' | translate }}
+      </button>
+    </div>
+  </section>
+
+  <div class="card border-0 shadow-sm dept-card channex-scores-card mb-3" *ngIf="financials">
+    <div class="channex-scores-summary">
+      <div class="stat-tile">
+        <span class="stat-tile__value">{{ financials.member_count }}</span>
+        <span class="stat-tile__label">{{ 'GROUP_BOOKINGS.MEMBER_COUNT' | translate }}</span>
+      </div>
+      <div class="stat-tile">
+        <span class="stat-tile__value">{{ financials.total | number:'1.2-2' }}</span>
+        <span class="stat-tile__label">{{ 'GROUP_BOOKINGS.TOTAL' | translate }}</span>
+      </div>
+      <div class="stat-tile">
+        <span class="stat-tile__value">{{ financials.paid | number:'1.2-2' }}</span>
+        <span class="stat-tile__label">{{ 'GROUP_BOOKINGS.PAID' | translate }}</span>
+      </div>
+      <div class="stat-tile" [class.stat-tile--warn]="financials.balance_due > 0">
+        <span class="stat-tile__value">{{ financials.balance_due | number:'1.2-2' }}</span>
+        <span class="stat-tile__label">{{ 'GROUP_BOOKINGS.BALANCE_DUE' | translate }}</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card border-0 shadow-sm dept-card p-3 mb-3" *ngIf="cancelResult">
+    <h3 class="section-title">{{ 'GROUP_BOOKINGS.CANCEL_RESULT' | translate }}</h3>
+    <ul class="list-unstyled mb-0">
+      <li *ngFor="let m of cancelResult.members" class="d-flex align-items-center gap-2 mb-1">
+        <i class="bi" [ngClass]="m.success ? 'bi-check-circle-fill text-success' : 'bi-x-circle-fill text-danger'"></i>
+        <span>#{{ m.reservation_id }} — {{ m.message }}</span>
+      </li>
+    </ul>
+  </div>
+
+  <div class="card border-0 shadow-sm dept-card">
+    <div class="table-responsive">
+      <table class="table align-middle mb-0">
+        <thead>
+          <tr>
+            <th>{{ 'GROUP_BOOKINGS.CLIENT' | translate }}</th>
+            <th>{{ 'GROUP_BOOKINGS.START_DATE' | translate }}</th>
+            <th>{{ 'GROUP_BOOKINGS.END_DATE' | translate }}</th>
+            <th>{{ 'GROUP_BOOKINGS.TOTAL' | translate }}</th>
+            <th>{{ 'GROUP_BOOKINGS.BALANCE_DUE' | translate }}</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let m of financials?.members" (click)="goToReservation(m.reservation_id)" class="clickable-row">
+            <td class="fw-semibold">{{ m.client_name || '—' }}</td>
+            <td>{{ m.start_date | date:'mediumDate' }}</td>
+            <td>{{ m.expire_date | date:'mediumDate' }}</td>
+            <td>{{ m.total | number:'1.2-2' }}</td>
+            <td>{{ m.balance_due | number:'1.2-2' }}</td>
+            <td><i class="bi bi-arrow-left-short" aria-hidden="true"></i></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm dept-card p-4 text-center" *ngIf="loadError">
+  <p class="fw-semibold mb-0">{{ loadError }}</p>
+</div>

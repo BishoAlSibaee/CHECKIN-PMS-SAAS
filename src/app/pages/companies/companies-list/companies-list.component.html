@@ -1,0 +1,121 @@
+<div class="hotels-page">
+  <section class="dept-hero">
+    <div class="dept-hero__copy">
+      <p class="dept-hero__eyebrow">
+        <i class="bi bi-building" aria-hidden="true"></i>
+        {{ 'COMPANIES.EYEBROW' | translate }}
+      </p>
+      <h1>{{ 'COMPANIES.TITLE' | translate }}</h1>
+      <p class="dept-hero__subtitle">{{ 'COMPANIES.SUBTITLE' | translate }}</p>
+    </div>
+    <div class="dept-hero__actions">
+      <button type="button" class="btn btn-outline-secondary" (click)="goLedger()">
+        <i class="bi bi-journal-text" aria-hidden="true"></i>
+        <span>{{ 'COMPANIES.VIEW_LEDGER' | translate }}</span>
+      </button>
+      <button type="button" class="btn btn-primary" (click)="openCreate()">
+        <i class="bi bi-plus-lg" aria-hidden="true"></i>
+        <span>{{ 'COMPANIES.NEW_COMPANY' | translate }}</span>
+      </button>
+    </div>
+  </section>
+
+  <div class="card border-0 shadow-sm dept-card">
+    <div class="table-responsive">
+      <table class="table align-middle mb-0">
+        <thead>
+          <tr>
+            <th>{{ 'COMPANIES.NAME' | translate }}</th>
+            <th>{{ 'COMPANIES.CONTACT' | translate }}</th>
+            <th>{{ 'COMPANIES.DISCOUNT' | translate }}</th>
+            <th>{{ 'COMPANIES.CREDIT_LIMIT' | translate }}</th>
+            <th>{{ 'COMPANIES.STATUS' | translate }}</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let company of companies">
+            <td class="fw-semibold">{{ company.name }}</td>
+            <td>{{ company.contact_name || '—' }}</td>
+            <td>{{ company.discount?.name || '—' }}</td>
+            <td>{{ company.credit_limit != null ? (company.credit_limit | number:'1.2-2') : ('COMPANIES.UNLIMITED' | translate) }}</td>
+            <td>
+              <span class="badge border-0" [ngClass]="company.status === STATUS_ACTIVE ? 'badge-active' : 'badge-inactive'">
+                {{ (company.status === STATUS_ACTIVE ? 'COMPANIES.ACTIVE' : 'COMPANIES.INACTIVE') | translate }}
+              </span>
+            </td>
+            <td>
+              <button type="button" class="btn btn-sm btn-outline-secondary" (click)="openEdit(company)">
+                <i class="bi bi-pencil" aria-hidden="true"></i>
+              </button>
+            </td>
+          </tr>
+          <tr *ngIf="!isLoading && companies.length === 0">
+            <td colspan="6" class="text-center text-muted py-4">{{ 'COMPANIES.NO_COMPANIES' | translate }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="channex-pagination" *ngIf="companies.length > 0">
+      <button type="button" class="btn btn-sm btn-outline-secondary" (click)="previousPage()" [disabled]="page <= 1">
+        <i class="bi bi-chevron-left" aria-hidden="true"></i>
+      </button>
+      <span class="channex-pagination__page">{{ page }} / {{ lastPage }}</span>
+      <button type="button" class="btn btn-sm btn-outline-secondary" (click)="nextPage()" [disabled]="page >= lastPage">
+        <i class="bi bi-chevron-right" aria-hidden="true"></i>
+      </button>
+    </div>
+  </div>
+</div>
+
+<div *ngIf="showForm" class="modal-backdrop-custom" (click)="closeForm()">
+  <div class="modal-content-custom card border-0 shadow-lg" (click)="$event.stopPropagation()" role="dialog" aria-modal="true" style="max-width: 32rem;">
+    <div class="card-header bg-white py-3 border-bottom d-flex align-items-center justify-content-between">
+      <h2 class="h5 mb-0">{{ (editingCompany ? 'COMPANIES.EDIT_COMPANY' : 'COMPANIES.NEW_COMPANY') | translate }}</h2>
+      <button type="button" class="btn btn-sm btn-light" (click)="closeForm()"><i class="bi bi-x-lg" aria-hidden="true"></i></button>
+    </div>
+    <div class="card-body p-4">
+      <div class="row g-3">
+        <div class="col-12">
+          <label class="form-label">{{ 'COMPANIES.NAME' | translate }} *</label>
+          <input type="text" class="form-control" [(ngModel)]="form.name" name="companyName">
+        </div>
+        <div class="col-6">
+          <label class="form-label">{{ 'COMPANIES.CONTACT_NAME' | translate }}</label>
+          <input type="text" class="form-control" [(ngModel)]="form.contact_name" name="contactName">
+        </div>
+        <div class="col-6">
+          <label class="form-label">{{ 'COMPANIES.CONTACT_MOBILE' | translate }}</label>
+          <input type="text" class="form-control" [(ngModel)]="form.contact_mobile" name="contactMobile">
+        </div>
+        <div class="col-12">
+          <label class="form-label">{{ 'COMPANIES.CONTACT_EMAIL' | translate }}</label>
+          <input type="email" class="form-control" [(ngModel)]="form.contact_email" name="contactEmail">
+        </div>
+        <div class="col-6">
+          <label class="form-label">{{ 'COMPANIES.DISCOUNT' | translate }}</label>
+          <select class="form-select" [(ngModel)]="form.discount_id" name="discountId">
+            <option [ngValue]="null">—</option>
+            <option *ngFor="let d of discounts" [ngValue]="d.id">{{ d.name }}</option>
+          </select>
+        </div>
+        <div class="col-6">
+          <label class="form-label">{{ 'COMPANIES.CREDIT_LIMIT' | translate }}</label>
+          <input type="number" min="0" class="form-control" [(ngModel)]="form.credit_limit" name="creditLimit" [placeholder]="'COMPANIES.UNLIMITED' | translate">
+        </div>
+        <div class="col-12">
+          <label class="form-label">{{ 'COMPANIES.NOTES' | translate }}</label>
+          <textarea class="form-control" rows="2" [(ngModel)]="form.notes" name="notes"></textarea>
+        </div>
+      </div>
+      <div class="d-flex justify-content-end gap-2 mt-4">
+        <button type="button" class="btn btn-outline-secondary" (click)="closeForm()">{{ 'COMMON.CANCEL' | translate }}</button>
+        <button type="button" class="btn btn-primary" (click)="save()" [disabled]="!form.name.trim() || isSaving">
+          <span *ngIf="isSaving" class="spinner-border spinner-border-sm me-1" role="status"></span>
+          {{ 'COMMON.SAVE' | translate }}
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

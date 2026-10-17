@@ -1,0 +1,367 @@
+﻿.discounts-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+  padding: 0.25rem 0 1.5rem;
+}
+
+.discounts-hero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem 1.35rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(5, 150, 105, 0.14);
+  background:
+    linear-gradient(135deg, rgba(5, 150, 105, 0.09), rgba(236, 253, 245, 0.65) 42%, rgba(248, 250, 252, 0.95));
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.05);
+}
+
+.discounts-hero__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0 0 0.45rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #059669;
+}
+
+.discounts-hero h1 {
+  margin: 0 0 0.35rem;
+  font-size: 1.85rem;
+  font-weight: 800;
+  color: var(--primary, #0f4c4c);
+}
+
+.discounts-hero__subtitle {
+  margin: 0;
+  max-width: 40rem;
+  color: #475569;
+  font-size: 1.02rem;
+  line-height: 1.45;
+}
+
+.discounts-hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.discounts-hero__actions .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.95rem;
+}
+
+.discounts-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.discounts-stat {
+  flex: 1 1 10rem;
+  min-width: 9rem;
+  padding: 0.9rem 1.05rem;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(15, 76, 76, 0.1);
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.discounts-stat--active {
+  border-color: rgba(5, 150, 105, 0.22);
+  background: linear-gradient(155deg, rgba(236, 253, 245, 0.95), #fff 55%);
+}
+
+.discounts-stat--percent {
+  border-color: rgba(8, 145, 178, 0.22);
+  background: linear-gradient(155deg, rgba(236, 254, 255, 0.95), #fff 55%);
+}
+
+.discounts-stat__label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #475569;
+  margin-bottom: 0.35rem;
+}
+
+.discounts-stat__value {
+  display: block;
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: #0f172a;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.discounts-card {
+  border-radius: 1rem !important;
+  overflow: hidden;
+}
+
+.discounts-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid rgba(15, 76, 76, 0.08);
+  background: #f8fafc;
+}
+
+.discounts-search {
+  min-width: 12rem;
+}
+
+.discounts-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.discounts-chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0.3rem;
+  border-radius: 0.7rem;
+  background: #fff;
+  border: 1px solid rgba(15, 76, 76, 0.08);
+}
+
+.discounts-chip {
+  border: 0;
+  background: transparent;
+  color: #475569;
+  font-size: 0.875rem;
+  font-weight: 700;
+  padding: 0.4rem 0.75rem;
+  border-radius: 0.5rem;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.discounts-chip:hover {
+  background: #f1f5f9;
+  color: var(--primary, #0f4c4c);
+}
+
+.discounts-chip--active {
+  background: var(--primary, #0f4c4c);
+  color: #fff;
+}
+
+.discounts-chip--active:hover {
+  background: var(--primary, #0f4c4c);
+  color: #fff;
+}
+
+.discounts-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f8fafc;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #475569;
+  white-space: nowrap;
+  border-top: 0;
+  padding-top: 0.85rem;
+  padding-bottom: 0.85rem;
+}
+
+.discounts-table thead th:first-child,
+.discounts-table tbody td:first-child {
+  padding-inline-start: 1.15rem;
+}
+
+.discounts-table thead th:last-child,
+.discounts-table tbody td:last-child {
+  padding-inline-end: 1.15rem;
+}
+
+.discounts-table tbody td {
+  font-size: 0.95rem;
+  vertical-align: middle;
+}
+
+.discounts-badge--percent {
+  background: #ecfeff;
+  color: #0e7490;
+  font-weight: 700;
+}
+
+.discounts-badge--fixed {
+  background: #fffbeb;
+  color: #b45309;
+  font-weight: 700;
+}
+
+.discounts-badge--active {
+  background: #ecfdf5;
+  color: #047857;
+  font-weight: 700;
+}
+
+.discounts-badge--inactive {
+  background: #f1f5f9;
+  color: #475569;
+  font-weight: 700;
+}
+
+.text-warning-emphasis {
+  color: #b45309;
+}
+
+.discounts-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 22rem;
+  margin: 0 auto;
+}
+
+.discounts-empty .bi {
+  font-size: 2rem;
+  color: #059669;
+  opacity: 0.45;
+  margin-bottom: 0.65rem;
+}
+
+.discounts-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.85rem 1.15rem;
+  border-top: 1px solid rgba(15, 76, 76, 0.08);
+  background: #fff;
+}
+
+.discount-status-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+.discount-status-cell .form-switch {
+  min-height: 1.5rem;
+  padding-left: 0;
+}
+
+.discount-status-cell .form-switch .form-check-input {
+  margin-left: 0;
+  float: none;
+}
+
+.status-col {
+  min-width: 8.5rem;
+  white-space: nowrap;
+}
+
+.discount-status-modal {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 0.9rem;
+  border-radius: 0.75rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.discounts-type-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.discounts-type-pills .btn {
+  border-radius: 999px;
+  padding-inline: 1rem;
+}
+
+.spin {
+  animation: discounts-spin 0.8s linear infinite;
+}
+
+@keyframes discounts-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.modal-backdrop-custom {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(4px);
+  z-index: 1050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: discounts-fade 0.2s ease-out;
+  padding: 1rem;
+}
+
+.modal-content-custom {
+  width: 100%;
+  max-width: 32rem;
+  max-height: min(92vh, 40rem);
+  overflow-y: auto;
+  border-radius: 1rem;
+  animation: discounts-slide 0.25s ease-out;
+}
+
+@keyframes discounts-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes discounts-slide {
+  from { transform: translateY(16px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@media (max-width: 575.98px) {
+  .discounts-hero {
+    padding: 1rem;
+  }
+
+  .discounts-hero h1 {
+    font-size: 1.55rem;
+  }
+
+  .discounts-hero__actions {
+    width: 100%;
+  }
+
+  .discounts-hero__actions .btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  .discounts-hero__actions .btn span {
+    display: none;
+  }
+
+  .discounts-chip-group {
+    width: 100%;
+  }
+
+  .discounts-chip {
+    flex: 1 1 auto;
+    text-align: center;
+  }
+}

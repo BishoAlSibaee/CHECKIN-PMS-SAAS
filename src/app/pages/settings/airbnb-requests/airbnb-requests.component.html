@@ -1,0 +1,138 @@
+<div class="hotels-page">
+  <section class="dept-hero">
+    <div class="dept-hero__copy">
+      <p class="dept-hero__eyebrow">
+        <i class="bi bi-house-heart" aria-hidden="true"></i>
+        {{ 'AIRBNB_REQUESTS.EYEBROW' | translate }}
+      </p>
+      <h1>{{ 'AIRBNB_REQUESTS.TITLE' | translate }}</h1>
+      <p class="dept-hero__subtitle">{{ 'AIRBNB_REQUESTS.SUBTITLE' | translate }}</p>
+    </div>
+    <div class="dept-hero__actions">
+      <div class="form-check form-switch d-flex align-items-center me-2">
+        <input class="form-check-input" type="checkbox" id="showResolved"
+               [checked]="showResolved" (change)="toggleShowResolved()">
+        <label class="form-check-label small ms-2 mb-0" for="showResolved">
+          {{ 'AIRBNB_REQUESTS.SHOW_RESOLVED' | translate }}
+        </label>
+      </div>
+      <button type="button" class="btn btn-outline-secondary" (click)="loadRequests()" [disabled]="isLoading">
+        <i class="bi bi-arrow-clockwise" [class.spin]="isLoading" aria-hidden="true"></i>
+        <span>{{ 'COMMON.REFRESH' | translate }}</span>
+      </button>
+    </div>
+  </section>
+
+  <div class="card border-0 shadow-sm dept-card">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0 dept-table">
+        <thead>
+          <tr>
+            <th>{{ 'AIRBNB_REQUESTS.BOOKING' | translate }}</th>
+            <th>{{ 'AIRBNB_REQUESTS.DATES' | translate }}</th>
+            <th>{{ 'AIRBNB_REQUESTS.RECEIVED_AT' | translate }}</th>
+            <th>{{ 'AIRBNB_REQUESTS.DEADLINE' | translate }}</th>
+            <th>{{ 'AIRBNB_REQUESTS.STATUS' | translate }}</th>
+            <th class="text-end">{{ 'COMMON.ACTIONS' | translate }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <ng-container *ngIf="isLoading">
+            <tr *ngFor="let i of [1,2,3]">
+              <td colspan="6"><div class="skeleton skeleton-text" style="width: 100%; height: 22px;"></div></td>
+            </tr>
+          </ng-container>
+
+          <tr *ngIf="!isLoading && requests.length === 0">
+            <td colspan="6" class="py-5 text-center">
+              <div class="dept-empty">
+                <i class="bi bi-house-heart" aria-hidden="true"></i>
+                <p class="fw-semibold mb-1">{{ 'AIRBNB_REQUESTS.NO_REQUESTS' | translate }}</p>
+                <p class="text-muted small mb-0">{{ 'AIRBNB_REQUESTS.EMPTY_HINT' | translate }}</p>
+              </div>
+            </td>
+          </tr>
+
+          <tr *ngFor="let request of requests">
+            <td class="fw-semibold">{{ request.raw_payload.booking_id || request.channex_booking_id || '—' }}</td>
+            <td>
+              <span *ngIf="request.raw_payload.arrival_date">
+                {{ request.raw_payload.arrival_date }} → {{ request.raw_payload.departure_date }}
+              </span>
+              <span *ngIf="!request.raw_payload.arrival_date">—</span>
+            </td>
+            <td>{{ request.received_at | date:'short' }}</td>
+            <td>
+              <span class="badge border-0" [ngClass]="isNearDeadline(request) ? 'bg-danger-subtle text-danger' : 'bg-secondary-subtle text-secondary'">
+                <i class="bi bi-hourglass-split me-1" aria-hidden="true"></i>{{ deadline(request) | date:'short' }}
+              </span>
+            </td>
+            <td>
+              <span *ngIf="request.status === 'pending'" class="badge border-0 bg-warning-subtle text-warning">
+                {{ 'AIRBNB_REQUESTS.PENDING' | translate }}
+              </span>
+              <span *ngIf="request.status === 'resolved' && request.resolution === 'accept'" class="badge border-0 bg-success-subtle text-success">
+                {{ 'AIRBNB_REQUESTS.ACCEPTED' | translate }}
+              </span>
+              <span *ngIf="request.status === 'resolved' && request.resolution === 'decline'" class="badge border-0 bg-danger-subtle text-danger">
+                {{ 'AIRBNB_REQUESTS.DECLINED' | translate }}
+              </span>
+            </td>
+            <td class="text-end text-nowrap">
+              <ng-container *ngIf="request.status === 'pending'; else resolvedInfo">
+                <button type="button" class="btn btn-sm btn-success me-1"
+                        (click)="accept(request)" [disabled]="processingId === request.id">
+                  <span class="spinner-border spinner-border-sm me-1" *ngIf="processingId === request.id" role="status"></span>
+                  <i class="bi bi-check-lg" *ngIf="processingId !== request.id" aria-hidden="true"></i>
+                  {{ 'AIRBNB_REQUESTS.ACCEPT' | translate }}
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-danger"
+                        (click)="openDeclineModal(request)" [disabled]="processingId === request.id">
+                  <i class="bi bi-x-lg" aria-hidden="true"></i>
+                  {{ 'AIRBNB_REQUESTS.DECLINE' | translate }}
+                </button>
+              </ng-container>
+              <ng-template #resolvedInfo>
+                <span class="text-muted small">{{ resolvedByKey(request) | translate }}</span>
+              </ng-template>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div *ngIf="showDeclineModal && declineTarget" class="modal-backdrop-custom" (click)="closeDeclineModal()">
+  <div class="modal-content-custom card border-0 shadow-lg" (click)="$event.stopPropagation()"
+       role="dialog" aria-modal="true" [attr.aria-labelledby]="'decline-modal-title'">
+    <div class="card-header bg-white py-3 border-bottom d-flex align-items-center justify-content-between">
+      <div>
+        <p class="small text-muted text-uppercase fw-semibold mb-1">{{ 'AIRBNB_REQUESTS.EYEBROW' | translate }}</p>
+        <h2 class="h5 mb-0" id="decline-modal-title">{{ 'AIRBNB_REQUESTS.DECLINE_TITLE' | translate }}</h2>
+      </div>
+      <button type="button" class="btn btn-sm btn-light" (click)="closeDeclineModal()"
+              [attr.aria-label]="'COMMON.CANCEL' | translate">
+        <i class="bi bi-x-lg" aria-hidden="true"></i>
+      </button>
+    </div>
+    <div class="card-body p-4">
+      <label class="form-label small fw-bold" for="declineReasonSelect">{{ 'AIRBNB_SETTINGS.DECLINE_REASON' | translate }}</label>
+      <select id="declineReasonSelect" class="form-select mb-4" [(ngModel)]="declineReason" name="decline_reason">
+        <option *ngFor="let reason of declineReasons" [value]="reason">
+          {{ reasonLabelKey(reason) | translate }}
+        </option>
+      </select>
+
+      <div class="d-flex gap-2">
+        <button type="button" class="btn btn-light flex-grow-1" (click)="closeDeclineModal()" [disabled]="processingId !== null">
+          {{ 'COMMON.CANCEL' | translate }}
+        </button>
+        <button type="button" class="btn btn-danger flex-grow-1" (click)="confirmDecline()" [disabled]="processingId !== null">
+          <span class="spinner-border spinner-border-sm me-2" *ngIf="processingId !== null" role="status"></span>
+          {{ 'AIRBNB_REQUESTS.DECLINE' | translate }}
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

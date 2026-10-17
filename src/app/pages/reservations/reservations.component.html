@@ -1,0 +1,623 @@
+<div class="reservations-page">
+  <section class="reservations-hero">
+    <div class="reservations-hero__copy">
+      <p class="reservations-hero__eyebrow">
+        <i class="bi bi-calendar-range" aria-hidden="true"></i>
+        {{ 'RESERVATIONS.EYEBROW' | translate }}
+      </p>
+      <h1>{{ 'RESERVATIONS.TITLE' | translate }}</h1>
+      <p class="reservations-hero__subtitle">{{ 'RESERVATIONS.SUBTITLE' | translate }}</p>
+    </div>
+    <div class="reservations-hero__actions">
+      <button
+        type="button"
+        class="btn btn-outline-secondary"
+        (click)="refresh()"
+        [disabled]="isBusy"
+        [attr.aria-label]="'COMMON.REFRESH' | translate">
+        <i class="bi bi-arrow-clockwise" [class.spin]="isBusy" aria-hidden="true"></i>
+        <span>{{ 'COMMON.REFRESH' | translate }}</span>
+      </button>
+      <a class="btn btn-outline-secondary" routerLink="/dashboard/room-board"
+         [attr.aria-label]="'SIDEBAR.ROOM_BOARD' | translate">
+        <i class="bi bi-grid-3x3-gap" aria-hidden="true"></i>
+        <span>{{ 'SIDEBAR.ROOM_BOARD' | translate }}</span>
+      </a>
+      <button
+        type="button"
+        class="btn btn-primary d-none d-md-inline-flex"
+        *ngIf="canCreateReservation"
+        (click)="openNewBooking()">
+        <i class="bi bi-plus-lg" aria-hidden="true"></i>
+        <span>{{ 'RESERVATIONS.NEW_BOOKING' | translate }}</span>
+      </button>
+    </div>
+  </section>
+
+  <div class="alert alert-danger reservations-alert" *ngIf="listError" role="alert">
+    <i class="bi bi-exclamation-triangle-fill me-2" aria-hidden="true"></i>
+    {{ listError }}
+  </div>
+
+  <div class="reservations-summary" role="group" [attr.aria-label]="'RESERVATIONS.SUMMARY_ARIA' | translate">
+    <ng-container *ngIf="isLoadingList">
+      <div class="reservations-stat" *ngFor="let i of [1,2,3,4]">
+        <div class="skeleton skeleton-text" style="width: 45%;"></div>
+        <div class="skeleton skeleton-text mt-2" style="width: 35%; height: 1.5rem;"></div>
+      </div>
+    </ng-container>
+    <ng-container *ngIf="!isLoadingList">
+      <div class="reservations-stat">
+        <span class="reservations-stat__label">{{ 'RESERVATIONS.STAT_TOTAL' | translate }}</span>
+        <span class="reservations-stat__value">{{ totalItems }}</span>
+        <span class="reservations-stat__hint">{{ 'RESERVATIONS.STAT_TOTAL_HINT' | translate }}</span>
+      </div>
+      <button
+        type="button"
+        class="reservations-stat reservations-stat--in-house"
+        [class.reservations-stat--active]="statusFilter === 'checked-in'"
+        (click)="setStayFilter('checked-in')">
+        <span class="reservations-stat__label">{{ 'RESERVATIONS.CHECKED_IN' | translate }}</span>
+        <span class="reservations-stat__value">{{ pageCheckedInCount }}</span>
+        <span class="reservations-stat__hint d-none d-md-inline">{{ 'RESERVATIONS.STAT_PAGE_HINT' | translate }}</span>
+      </button>
+      <button
+        type="button"
+        class="reservations-stat reservations-stat--due"
+        [class.reservations-stat--active]="paymentFilter === 'balance_due'"
+        (click)="setPaymentQuickFilter('balance_due')">
+        <span class="reservations-stat__label">{{ 'RESERVATIONS.PAYMENT_FILTER_DUE' | translate }}</span>
+        <span class="reservations-stat__value">{{ pageBalanceDueCount }}</span>
+        <span class="reservations-stat__hint d-none d-md-inline">{{ 'RESERVATIONS.STAT_PAGE_HINT' | translate }}</span>
+      </button>
+      <button
+        type="button"
+        class="reservations-stat reservations-stat--paid d-none d-md-block"
+        [class.reservations-stat--active]="paymentFilter === 'paid_full'"
+        (click)="setPaymentQuickFilter('paid_full')">
+        <span class="reservations-stat__label">{{ 'RESERVATIONS.PAYMENT_FILTER_PAID' | translate }}</span>
+        <span class="reservations-stat__value">{{ pagePaidFullCount }}</span>
+        <span class="reservations-stat__hint">{{ 'RESERVATIONS.STAT_PAGE_HINT' | translate }}</span>
+      </button>
+    </ng-container>
+  </div>
+
+  <div class="card border-0 shadow-sm reservations-panel">
+    <div class="reservations-panel__head">
+      <div class="reservations-panel__head-start">
+        <h2 class="reservations-panel__title">
+          <i class="bi bi-calendar3" aria-hidden="true"></i>
+          {{ 'RESERVATIONS.BOOKING_CALENDAR' | translate }}
+        </h2>
+        <button
+          type="button"
+          class="btn btn-sm btn-outline-secondary reservations-calendar-toggle d-lg-none"
+          (click)="toggleCalendarExpanded()"
+          [attr.aria-expanded]="calendarExpanded"
+          [attr.aria-controls]="'reservationsCalendarBody'">
+          <i class="bi" [ngClass]="calendarExpanded ? 'bi-chevron-up' : 'bi-chevron-down'" aria-hidden="true"></i>
+          {{ (calendarExpanded ? 'RESERVATIONS.HIDE_CALENDAR' : 'RESERVATIONS.SHOW_CALENDAR') | translate }}
+        </button>
+      </div>
+      <div class="reservations-calendar-nav">
+        <button type="button" class="btn btn-sm btn-light" (click)="previousMonth()" [disabled]="isLoadingCalendar"
+                [attr.aria-label]="'RESERVATIONS.PREV_PAGE' | translate">
+          <i class="bi" [ngClass]="currentLang === 'ar' ? 'bi-chevron-right' : 'bi-chevron-left'" aria-hidden="true"></i>
+        </button>
+        <span class="reservations-calendar-nav__label">{{ viewDate | calendarDate:'monthViewTitle':currentLang }}</span>
+        <button type="button" class="btn btn-sm btn-light" (click)="nextMonth()" [disabled]="isLoadingCalendar"
+                [attr.aria-label]="'RESERVATIONS.NEXT_PAGE' | translate">
+          <i class="bi" [ngClass]="currentLang === 'ar' ? 'bi-chevron-left' : 'bi-chevron-right'" aria-hidden="true"></i>
+        </button>
+      </div>
+    </div>
+    <div
+      id="reservationsCalendarBody"
+      class="calendar-wrap"
+      [class.calendar-wrap--collapsed]="!calendarExpanded">
+      <ng-container *ngIf="isLoadingCalendar">
+        <div class="p-3">
+          <div class="row g-0 border-top border-start">
+            <div class="col calendar-skel-cell" *ngFor="let i of [1,2,3,4,5,6,7]">
+              <div class="p-2"><div class="skeleton skeleton-text" style="width: 20px;"></div></div>
+            </div>
+          </div>
+          <div class="row g-0 border-start" *ngFor="let j of [1,2,3,4]">
+            <div class="col calendar-skel-cell" *ngFor="let i of [1,2,3,4,5,6,7]">
+              <div class="p-2"><div class="skeleton skeleton-text" style="width: 20px;"></div></div>
+            </div>
+          </div>
+        </div>
+      </ng-container>
+      <mwl-calendar-month-view
+        *ngIf="!isLoadingCalendar"
+        [viewDate]="viewDate"
+        [activeDay]="activeDay"
+        [locale]="currentLang"
+        [weekStartsOn]="weekStartsOn"
+        [activeDayIsOpen]="false"
+        [events]="calendarEvents"
+        (dayClicked)="onDayClicked($event)"
+        (eventClicked)="onEventClicked($event.event)">
+      </mwl-calendar-month-view>
+      <div class="calendar-legend" *ngIf="!isLoadingCalendar">
+        <span class="calendar-legend__title">{{ 'RESERVATIONS.CALENDAR_LEGEND.TITLE' | translate }}</span>
+        <div class="calendar-legend__items">
+          <span class="calendar-legend__item" *ngFor="let item of calendarLegend">
+            <span class="calendar-legend__dot" [style.background-color]="item.color"></span>
+            <span>{{ calendarLegendKey(item.state) | translate }}</span>
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card border-0 shadow-sm reservations-panel reservations-list-card">
+    <div class="reservations-toolbar">
+      <div class="reservations-search flex-grow-1">
+        <i class="bi bi-search reservations-search__icon" aria-hidden="true"></i>
+        <label class="visually-hidden" for="reservationsSearch">{{ 'RESERVATIONS.SEARCH_BOOKINGS' | translate }}</label>
+        <input
+          id="reservationsSearch"
+          type="search"
+          class="form-control reservations-search__input"
+          [ngModel]="search"
+          (ngModelChange)="onSearchChange($event)"
+          [placeholder]="'RESERVATIONS.SEARCH_BOOKINGS' | translate" />
+      </div>
+      <button type="button" class="btn btn-outline-secondary btn-sm" *ngIf="search.trim()" (click)="clearSearch()">
+        {{ 'RESERVATIONS.CLEAR_SEARCH' | translate }}
+      </button>
+      <button
+        type="button"
+        class="btn btn-outline-secondary btn-sm reservations-today-btn"
+        (click)="setTodayFilter()">
+        {{ 'RESERVATIONS.FILTER_TODAY' | translate }}
+      </button>
+      <button
+        type="button"
+        class="btn btn-outline-primary btn-sm d-lg-none reservations-filters-btn"
+        (click)="openFiltersSheet()"
+        [attr.aria-expanded]="showFiltersSheet">
+        <i class="bi bi-funnel" aria-hidden="true"></i>
+        <span>{{ 'RESERVATIONS.FILTERS_TITLE' | translate }}</span>
+        <span class="badge text-bg-primary" *ngIf="sheetFilterCount">{{ sheetFilterCount }}</span>
+      </button>
+    </div>
+
+    <div class="reservations-tabs" role="tablist" [attr.aria-label]="'RESERVATIONS.STAY_TABS_ARIA' | translate">
+      <button
+        type="button"
+        role="tab"
+        class="reservations-tab"
+        *ngFor="let tab of stayTabs"
+        [class.reservations-tab--active]="statusFilter === tab.id"
+        [attr.aria-selected]="statusFilter === tab.id"
+        (click)="setStayFilter(tab.id)">
+        {{ tab.labelKey | translate }}
+      </button>
+      <button
+        type="button"
+        role="tab"
+        class="reservations-tab reservations-tab--due"
+        [class.reservations-tab--active]="paymentFilter === 'balance_due'"
+        [attr.aria-selected]="paymentFilter === 'balance_due'"
+        (click)="setPaymentQuickFilter('balance_due')">
+        {{ 'RESERVATIONS.PAYMENT_FILTER_DUE' | translate }}
+      </button>
+    </div>
+
+    <div class="reservations-filter-bar d-none d-lg-flex">
+      <span class="reservations-filter-bar__label">
+        <i class="bi bi-funnel" aria-hidden="true"></i>
+        {{ 'RESERVATIONS.FILTERS_TITLE' | translate }}
+      </span>
+      <label class="reservations-filter-field">
+        <span>{{ 'RESERVATIONS.DATE_FROM' | translate }}</span>
+        <input type="date" class="form-control form-control-sm"
+               [(ngModel)]="dateFrom" (change)="applyApiFilters()" />
+      </label>
+      <label class="reservations-filter-field">
+        <span>{{ 'RESERVATIONS.DATE_TO' | translate }}</span>
+        <input type="date" class="form-control form-control-sm"
+               [(ngModel)]="dateTo" (change)="applyApiFilters()" />
+      </label>
+      <label class="reservations-filter-field">
+        <span>{{ 'RESERVATIONS.STATUS' | translate }}</span>
+        <select class="form-select form-select-sm"
+                [(ngModel)]="statusFilterApi" (change)="applyApiFilters()">
+          <option value="">{{ 'RESERVATIONS.ALL_STATUS' | translate }}</option>
+          <option value="1">{{ 'RESERVATIONS.CONFIRMED' | translate }}</option>
+          <option value="2">{{ 'RESERVATIONS.PENDING_PAYMENT' | translate }}</option>
+          <option value="3">{{ 'RESERVATIONS.CANCELLED' | translate }}</option>
+        </select>
+      </label>
+      <label class="reservations-filter-field">
+        <span>{{ 'RESERVATIONS.PAYMENT' | translate }}</span>
+        <select class="form-select form-select-sm"
+                [(ngModel)]="paymentFilter" (change)="onPaymentFilterChange()">
+          <option value="all">{{ 'RESERVATIONS.PAYMENT_FILTER_ALL' | translate }}</option>
+          <option value="balance_due">{{ 'RESERVATIONS.PAYMENT_FILTER_DUE' | translate }}</option>
+          <option value="paid_full">{{ 'RESERVATIONS.PAYMENT_FILTER_PAID' | translate }}</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="reservations-chips" *ngIf="hasActiveFilters">
+      <div *ngIf="clientIdFilter" class="reservations-chip reservations-chip--primary">
+        <span>{{ 'RESERVATIONS.CLIENT_FILTER' | translate:{ id: clientIdFilter } }}</span>
+        <button type="button" (click)="clearClientFilter()"
+                [attr.aria-label]="'RESERVATIONS.CLEAR_CLIENT_FILTER' | translate">
+          <i class="bi bi-x" aria-hidden="true"></i>
+        </button>
+      </div>
+      <div *ngIf="pendingCheckoutFilter" class="reservations-chip reservations-chip--warn">
+        <span>{{ 'RESERVATIONS.PENDING_CHECKOUT_FILTER' | translate }}</span>
+        <button type="button" (click)="clearPendingCheckoutFilter()"
+                [attr.aria-label]="'RESERVATIONS.CLEAR_PENDING_CHECKOUT_FILTER' | translate">
+          <i class="bi bi-x" aria-hidden="true"></i>
+        </button>
+      </div>
+      <div *ngIf="hasDayFilter" class="reservations-chip reservations-chip--info">
+        <span>{{ 'RESERVATIONS.DAY_FILTER' | translate:{ date: dateFrom } }}</span>
+        <button type="button" (click)="clearDayFilter()"
+                [attr.aria-label]="'RESERVATIONS.CLEAR_DAY_FILTER' | translate">
+          <i class="bi bi-x" aria-hidden="true"></i>
+        </button>
+      </div>
+      <div *ngIf="hasMonthRangeFilter" class="reservations-chip">
+        <span>{{ 'RESERVATIONS.MONTH_FILTER' | translate:{ from: dateFrom, to: dateTo } }}</span>
+        <button type="button" (click)="clearDayFilter()"
+                [attr.aria-label]="'RESERVATIONS.CLEAR_MONTH_FILTER' | translate">
+          <i class="bi bi-x" aria-hidden="true"></i>
+        </button>
+      </div>
+      <div *ngIf="statusFilterApi" class="reservations-chip">
+        <span>{{ 'RESERVATIONS.STATUS' | translate }}</span>
+        <button type="button" (click)="statusFilterApi = ''; applyApiFilters()"
+                [attr.aria-label]="'RESERVATIONS.CLEAR_ALL_FILTERS' | translate">
+          <i class="bi bi-x" aria-hidden="true"></i>
+        </button>
+      </div>
+      <div *ngIf="paymentFilter !== 'all'" class="reservations-chip reservations-chip--warn">
+        <span>{{ (paymentFilter === 'balance_due' ? 'RESERVATIONS.PAYMENT_FILTER_DUE' : 'RESERVATIONS.PAYMENT_FILTER_PAID') | translate }}</span>
+        <button type="button" (click)="paymentFilter = 'all'; onPaymentFilterChange()"
+                [attr.aria-label]="'RESERVATIONS.CLEAR_ALL_FILTERS' | translate">
+          <i class="bi bi-x" aria-hidden="true"></i>
+        </button>
+      </div>
+      <button type="button" class="btn btn-link btn-sm px-0" (click)="clearAllFilters()">
+        {{ 'RESERVATIONS.CLEAR_ALL_FILTERS' | translate }}
+      </button>
+    </div>
+
+    <div class="table-responsive d-none d-lg-block">
+      <table class="table mb-0 reservations-table">
+        <thead>
+          <tr>
+            <th>{{ 'RESERVATIONS.BOOKING_ID' | translate }}</th>
+            <th>{{ 'RESERVATIONS.GUEST' | translate }}</th>
+            <th>{{ 'RESERVATIONS.ROOM' | translate }}</th>
+            <th>{{ 'RESERVATIONS.CHECK_IN' | translate }}</th>
+            <th>{{ 'RESERVATIONS.CHECK_OUT' | translate }}</th>
+            <th>{{ 'RESERVATIONS.STATUS' | translate }}</th>
+            <th>{{ 'RESERVATIONS.AMOUNT' | translate }}</th>
+            <th>{{ 'RESERVATIONS.PAYMENT' | translate }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <ng-container *ngIf="isLoadingList">
+            <tr *ngFor="let i of [1,2,3,4,5]">
+              <td><div class="skeleton skeleton-text" style="width: 60px;"></div></td>
+              <td><div class="skeleton skeleton-text" style="width: 120px;"></div></td>
+              <td><div class="skeleton skeleton-text" style="width: 80px;"></div></td>
+              <td><div class="skeleton skeleton-text" style="width: 60px;"></div></td>
+              <td><div class="skeleton skeleton-text" style="width: 60px;"></div></td>
+              <td><div class="skeleton" style="width: 80px; height: 20px; border-radius: 10px;"></div></td>
+              <td><div class="skeleton skeleton-text" style="width: 60px;"></div></td>
+              <td><div class="skeleton skeleton-text" style="width: 80px;"></div></td>
+            </tr>
+          </ng-container>
+          <ng-container *ngIf="!isLoadingList">
+            <tr *ngFor="let booking of paginatedBookings" (click)="viewBookingDetail(booking.id)" class="row-clickable">
+              <td>
+                <span class="reservations-id">#{{ booking.id }}</span>
+              </td>
+              <td>
+                <div class="reservations-guest">
+                  <span class="reservations-guest__avatar" aria-hidden="true">{{ guestInitials(booking.guest) }}</span>
+                  <span class="reservations-guest__name">{{ booking.guest }}</span>
+                </div>
+              </td>
+              <td>
+                <span class="reservations-room">{{ booking.room }}</span>
+              </td>
+              <td>{{ booking.checkIn }}</td>
+              <td>{{ booking.checkOut }}</td>
+              <td>
+                <span class="badge rounded-pill status-pill" [ngClass]="getBookingStatusBadgeClass(booking)">
+                  {{ ('RESERVATIONS.' + booking.status.toUpperCase().replace('-', '_')) | translate }}
+                </span>
+              </td>
+              <td class="reservations-amount">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ booking.amount | number:'1.2-2' }}</td>
+              <td>
+                <span *ngIf="(booking.balanceDue ?? 0) <= 0" class="badge reservations-pay-badge reservations-pay-badge--ok">
+                  {{ 'RESERVATIONS.PAID_IN_FULL' | translate }}
+                </span>
+                <span *ngIf="(booking.balanceDue ?? 0) > 0" class="reservations-due">
+                  {{ 'RESERVATIONS.AMOUNT_DUE' | translate }}:
+                  {{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ booking.balanceDue | number:'1.2-2' }}
+                </span>
+              </td>
+            </tr>
+            <tr *ngIf="paginatedBookings.length === 0">
+              <td colspan="8">
+                <div class="reservations-empty">
+                  <i class="bi bi-calendar-x" aria-hidden="true"></i>
+                  <p class="reservations-empty__title">
+                    {{ (hasActiveFilters ? 'RESERVATIONS.NO_RESULTS_FILTERED' : 'RESERVATIONS.NO_RESULTS') | translate }}
+                  </p>
+                  <p class="reservations-empty__hint" *ngIf="hasActiveFilters">
+                    {{ 'RESERVATIONS.NO_RESULTS_FILTERED_HINT' | translate }}
+                  </p>
+                  <div class="d-flex flex-wrap justify-content-center gap-2 mt-3">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" *ngIf="hasActiveFilters"
+                            (click)="clearAllFilters()">
+                      {{ 'RESERVATIONS.CLEAR_ALL_FILTERS' | translate }}
+                    </button>
+                    <button type="button" class="btn btn-primary btn-sm" *ngIf="canCreateReservation"
+                            (click)="openNewBooking()">
+                      {{ 'RESERVATIONS.NEW_BOOKING' | translate }}
+                    </button>
+                  </div>
+                </div>
+              </td>
+            </tr>
+          </ng-container>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="reservations-cards d-lg-none">
+      <ng-container *ngIf="isLoadingList">
+        <div class="reservations-card-item" *ngFor="let i of [1,2,3]">
+          <div class="skeleton skeleton-text" style="width: 40%;"></div>
+          <div class="skeleton skeleton-text mt-2" style="width: 70%;"></div>
+          <div class="skeleton skeleton-text mt-2" style="width: 55%;"></div>
+        </div>
+      </ng-container>
+
+      <ng-container *ngIf="!isLoadingList">
+        <div *ngIf="paginatedBookings.length === 0" class="reservations-empty">
+          <i class="bi bi-calendar-x" aria-hidden="true"></i>
+          <p class="reservations-empty__title">
+            {{ (hasActiveFilters ? 'RESERVATIONS.NO_RESULTS_FILTERED' : 'RESERVATIONS.NO_RESULTS') | translate }}
+          </p>
+          <p class="reservations-empty__hint" *ngIf="hasActiveFilters">
+            {{ 'RESERVATIONS.NO_RESULTS_FILTERED_HINT' | translate }}
+          </p>
+          <div class="d-flex flex-wrap justify-content-center gap-2 mt-3">
+            <button type="button" class="btn btn-outline-secondary btn-sm" *ngIf="hasActiveFilters"
+                    (click)="clearAllFilters()">
+              {{ 'RESERVATIONS.CLEAR_ALL_FILTERS' | translate }}
+            </button>
+            <button type="button" class="btn btn-primary btn-sm" *ngIf="canCreateReservation"
+                    (click)="openNewBooking()">
+              {{ 'RESERVATIONS.NEW_BOOKING' | translate }}
+            </button>
+          </div>
+        </div>
+
+        <article class="reservations-card-item" *ngFor="let booking of paginatedBookings">
+          <button type="button" class="reservations-card-item__main" (click)="viewBookingDetail(booking.id)">
+            <div class="reservations-card-item__top">
+              <div class="reservations-guest">
+                <span class="reservations-guest__avatar" aria-hidden="true">{{ guestInitials(booking.guest) }}</span>
+                <div>
+                  <div class="reservations-guest__name">{{ booking.guest }}</div>
+                  <div class="reservations-card-item__meta">#{{ booking.id }} · {{ booking.room }}</div>
+                </div>
+              </div>
+              <span class="badge rounded-pill status-pill" [ngClass]="getBookingStatusBadgeClass(booking)">
+                {{ ('RESERVATIONS.' + booking.status.toUpperCase().replace('-', '_')) | translate }}
+              </span>
+            </div>
+            <div class="reservations-card-item__dates">
+              <span>{{ booking.checkIn }}</span>
+              <i class="bi bi-arrow-left-right" aria-hidden="true"></i>
+              <span>{{ booking.checkOut }}</span>
+            </div>
+            <div class="reservations-card-item__foot">
+              <span class="reservations-amount">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ booking.amount | number:'1.2-2' }}</span>
+              <span *ngIf="(booking.balanceDue ?? 0) <= 0" class="badge reservations-pay-badge reservations-pay-badge--ok">
+                {{ 'RESERVATIONS.PAID_IN_FULL' | translate }}
+              </span>
+              <span *ngIf="(booking.balanceDue ?? 0) > 0" class="reservations-due">
+                {{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ booking.balanceDue | number:'1.2-2' }}
+              </span>
+            </div>
+          </button>
+          <div class="reservations-card-item__actions">
+            <button type="button" class="btn btn-sm btn-outline-secondary flex-grow-1"
+                    (click)="viewBookingDetail(booking.id, $event)">
+              <i class="bi bi-eye" aria-hidden="true"></i>
+              {{ 'CLIENTS.VIEW_DETAILS' | translate }}
+            </button>
+            <button
+              type="button"
+              class="btn btn-sm btn-primary flex-grow-1"
+              *ngIf="canCollectPayment && (booking.balanceDue ?? 0) > 0.005 && booking.status !== 'cancelled'"
+              (click)="collectPayment(booking.id, $event)">
+              <i class="bi bi-credit-card" aria-hidden="true"></i>
+              {{ 'COLLECTIONS.COLLECT' | translate }}
+            </button>
+          </div>
+        </article>
+      </ng-container>
+    </div>
+
+    <div class="card-footer reservations-pagination bg-white border-top py-3"
+         *ngIf="!isLoadingList && totalPages > 1">
+      <div class="reservations-pagination__info small text-muted">
+        {{ 'RESERVATIONS.PAGINATION_SHOWING' | translate:{ from: paginationFrom, to: paginationTo, total: totalItems } }}
+      </div>
+      <nav class="reservations-pagination__nav" [attr.aria-label]="'RESERVATIONS.PAGE_NAV_ARIA' | translate">
+        <ul class="pagination pagination-sm mb-0">
+          <li class="page-item" [class.disabled]="currentPage === 1">
+            <button type="button" class="page-link" (click)="setPage(currentPage - 1)" [disabled]="currentPage === 1">
+              <i class="bi" [ngClass]="currentLang === 'ar' ? 'bi-chevron-right' : 'bi-chevron-left'"></i>
+              <span class="d-none d-sm-inline ms-1">{{ 'RESERVATIONS.PREV_PAGE' | translate }}</span>
+            </button>
+          </li>
+          <ng-container *ngFor="let page of visiblePages">
+            <li class="page-item disabled" *ngIf="!isNumber(page)">
+              <span class="page-link page-ellipsis">…</span>
+            </li>
+            <li class="page-item" *ngIf="isNumber(page)" [class.active]="currentPage === page">
+              <button type="button" class="page-link" (click)="setPage(page)">{{ page }}</button>
+            </li>
+          </ng-container>
+          <li class="page-item" [class.disabled]="currentPage === totalPages">
+            <button type="button" class="page-link" (click)="setPage(currentPage + 1)" [disabled]="currentPage === totalPages">
+              <span class="d-none d-sm-inline me-1">{{ 'RESERVATIONS.NEXT_PAGE' | translate }}</span>
+              <i class="bi" [ngClass]="currentLang === 'ar' ? 'bi-chevron-left' : 'bi-chevron-right'"></i>
+            </button>
+          </li>
+        </ul>
+      </nav>
+    </div>
+  </div>
+
+  <div class="reservations-sticky-cta d-md-none" *ngIf="canCreateReservation">
+    <button type="button" class="btn btn-primary w-100" (click)="openNewBooking()">
+      <i class="bi bi-plus-lg" aria-hidden="true"></i>
+      {{ 'RESERVATIONS.NEW_BOOKING' | translate }}
+    </button>
+  </div>
+</div>
+
+<div *ngIf="showFiltersSheet" class="ui-modal-backdrop" (click)="closeFiltersSheet()">
+  <div class="ui-modal" (click)="$event.stopPropagation()" role="dialog" aria-modal="true"
+       [attr.aria-label]="'RESERVATIONS.FILTERS_TITLE' | translate">
+    <div class="ui-modal__header">
+      <div class="ui-modal__title-row">
+        <span class="ui-modal__icon" aria-hidden="true"><i class="bi bi-funnel"></i></span>
+        <div class="min-w-0">
+          <h3 class="ui-modal__title">{{ 'RESERVATIONS.FILTERS_TITLE' | translate }}</h3>
+          <p class="ui-modal__subtitle">{{ 'RESERVATIONS.FILTERS_SHEET_HINT' | translate }}</p>
+        </div>
+      </div>
+      <button type="button" class="ui-modal__close" (click)="closeFiltersSheet()"
+              [attr.aria-label]="'COMMON.CANCEL' | translate">
+        <i class="bi bi-x-lg" aria-hidden="true"></i>
+      </button>
+    </div>
+    <div class="ui-modal__body">
+      <div class="reservations-sheet-fields">
+        <label class="reservations-filter-field">
+          <span>{{ 'RESERVATIONS.DATE_FROM' | translate }}</span>
+          <input type="date" class="form-control" [(ngModel)]="draftDateFrom" />
+        </label>
+        <label class="reservations-filter-field">
+          <span>{{ 'RESERVATIONS.DATE_TO' | translate }}</span>
+          <input type="date" class="form-control" [(ngModel)]="draftDateTo" />
+        </label>
+        <label class="reservations-filter-field">
+          <span>{{ 'RESERVATIONS.STATUS' | translate }}</span>
+          <select class="form-select" [(ngModel)]="draftStatusFilterApi">
+            <option value="">{{ 'RESERVATIONS.ALL_STATUS' | translate }}</option>
+            <option value="1">{{ 'RESERVATIONS.CONFIRMED' | translate }}</option>
+            <option value="2">{{ 'RESERVATIONS.PENDING_PAYMENT' | translate }}</option>
+            <option value="3">{{ 'RESERVATIONS.CANCELLED' | translate }}</option>
+          </select>
+        </label>
+        <label class="reservations-filter-field">
+          <span>{{ 'RESERVATIONS.PAYMENT' | translate }}</span>
+          <select class="form-select" [(ngModel)]="draftPaymentFilter">
+            <option value="all">{{ 'RESERVATIONS.PAYMENT_FILTER_ALL' | translate }}</option>
+            <option value="balance_due">{{ 'RESERVATIONS.PAYMENT_FILTER_DUE' | translate }}</option>
+            <option value="paid_full">{{ 'RESERVATIONS.PAYMENT_FILTER_PAID' | translate }}</option>
+          </select>
+        </label>
+      </div>
+    </div>
+    <div class="ui-modal__footer">
+      <button type="button" class="btn btn-light" (click)="closeFiltersSheet()">{{ 'COMMON.CANCEL' | translate }}</button>
+      <button type="button" class="btn btn-primary" (click)="applyFiltersSheet()">
+        {{ 'RESERVATIONS.APPLY_FILTERS' | translate }}
+      </button>
+    </div>
+  </div>
+</div>
+
+<div *ngIf="selectedBooking" class="ui-modal-backdrop" (click)="selectedBooking = null">
+  <div class="ui-modal" (click)="$event.stopPropagation()" role="dialog" aria-modal="true"
+       [attr.aria-label]="'RESERVATIONS.BOOKING_DETAILS' | translate">
+    <div class="ui-modal__header">
+      <div class="ui-modal__title-row">
+        <span class="ui-modal__icon" aria-hidden="true"><i class="bi bi-calendar-check"></i></span>
+        <div class="min-w-0">
+          <h3 class="ui-modal__title">{{ 'RESERVATIONS.BOOKING_DETAILS' | translate }}</h3>
+          <p class="ui-modal__subtitle">#{{ selectedBooking.id }}</p>
+        </div>
+      </div>
+      <button type="button" class="ui-modal__close" (click)="selectedBooking = null"
+              [attr.aria-label]="'COMMON.CANCEL' | translate">
+        <i class="bi bi-x-lg" aria-hidden="true"></i>
+      </button>
+    </div>
+    <div class="ui-modal__kpis">
+      <div class="ui-modal__kpi">
+        <span class="ui-modal__kpi-label">{{ 'RESERVATIONS.STATUS' | translate }}</span>
+        <span class="badge rounded-pill status-pill" [ngClass]="getBookingStatusBadgeClass(selectedBooking)">
+          {{ ('RESERVATIONS.' + selectedBooking.status.toUpperCase().replace('-', '_')) | translate }}
+        </span>
+      </div>
+      <div class="ui-modal__kpi">
+        <span class="ui-modal__kpi-label">{{ 'RESERVATIONS.TOTAL_AMOUNT' | translate }}</span>
+        <strong class="ui-modal__kpi-value">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ selectedBooking.amount | number:'1.2-2' }}</strong>
+      </div>
+      <div class="ui-modal__kpi">
+        <span class="ui-modal__kpi-label">{{ 'RESERVATIONS.PAYMENT' | translate }}</span>
+        <strong class="ui-modal__kpi-value" *ngIf="(selectedBooking.balanceDue ?? 0) <= 0">{{ 'RESERVATIONS.PAID_IN_FULL' | translate }}</strong>
+        <strong class="ui-modal__kpi-value text-danger" *ngIf="(selectedBooking.balanceDue ?? 0) > 0">
+          {{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ selectedBooking.balanceDue | number:'1.2-2' }}
+        </strong>
+      </div>
+    </div>
+    <div class="ui-modal__body">
+      <dl class="rd-dl rd-dl--compact booking-quick-dl">
+        <div class="rd-dl__item">
+          <dt>{{ 'RESERVATIONS.GUEST' | translate }}</dt>
+          <dd>{{ selectedBooking.guest }}</dd>
+        </div>
+        <div class="rd-dl__item">
+          <dt>{{ 'RESERVATIONS.ROOM' | translate }}</dt>
+          <dd>{{ selectedBooking.room }}</dd>
+        </div>
+        <div class="rd-dl__item">
+          <dt>{{ 'RESERVATIONS.PHONE' | translate }}</dt>
+          <dd>{{ selectedBooking.phone }}</dd>
+        </div>
+        <div class="rd-dl__item">
+          <dt>{{ 'RESERVATIONS.EMAIL' | translate }}</dt>
+          <dd>{{ selectedBooking.email }}</dd>
+        </div>
+        <div class="rd-dl__item">
+          <dt>{{ 'RESERVATIONS.CHECK_IN' | translate }}</dt>
+          <dd>{{ selectedBooking.checkIn }}</dd>
+        </div>
+        <div class="rd-dl__item">
+          <dt>{{ 'RESERVATIONS.CHECK_OUT' | translate }}</dt>
+          <dd>{{ selectedBooking.checkOut }}</dd>
+        </div>
+      </dl>
+    </div>
+    <div class="ui-modal__footer">
+      <button type="button" class="btn btn-light" (click)="selectedBooking = null">{{ 'COMMON.CANCEL' | translate }}</button>
+      <button type="button" class="btn btn-primary" (click)="viewBookingDetail(selectedBooking.id)">
+        {{ 'RESERVATIONS.BOOKING_DETAILS' | translate }}
+      </button>
+    </div>
+  </div>
+</div>

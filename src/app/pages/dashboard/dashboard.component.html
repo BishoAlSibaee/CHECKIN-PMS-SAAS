@@ -1,0 +1,523 @@
+﻿<div class="dashboard-page">
+  <section class="dashboard-hero">
+    <div class="dashboard-hero__copy">
+      <p class="dashboard-hero__eyebrow">
+        <i class="bi bi-speedometer2" aria-hidden="true"></i>
+        {{ 'DASHBOARD.EYEBROW' | translate }}
+        <span class="dashboard-live-badge">
+          <span class="dashboard-live-badge__dot" aria-hidden="true"></span>
+          {{ 'DASHBOARD.LIVE' | translate }}
+        </span>
+      </p>
+      <p class="dashboard-hero__subtitle">{{ 'DASHBOARD.SUBTITLE' | translate }}</p>
+      <div class="dashboard-hero__meta">
+        <span *ngIf="lastUpdatedLabel">
+          <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
+          {{ 'DASHBOARD.LAST_UPDATED' | translate:{ time: lastUpdatedLabel } }}
+        </span>
+      </div>
+    </div>
+    <div class="dashboard-hero__actions">
+      <button
+        type="button"
+        class="btn btn-outline-secondary"
+        (click)="refresh()"
+        [disabled]="isLoading"
+        [attr.aria-label]="'COMMON.REFRESH' | translate">
+        <i class="bi bi-arrow-clockwise" [class.spin]="isLoading" aria-hidden="true"></i>
+        <span>{{ 'COMMON.REFRESH' | translate }}</span>
+      </button>
+      <button type="button" class="btn btn-primary" (click)="openRoomBoard()" [disabled]="isLoading">
+        <i class="bi bi-grid-3x3-gap" aria-hidden="true"></i>
+        <span>{{ 'DASHBOARD.OPEN_ROOM_BOARD' | translate }}</span>
+      </button>
+    </div>
+  </section>
+
+  <nav class="dashboard-quick" [attr.aria-label]="'DASHBOARD.QUICK_ACTIONS_ARIA' | translate">
+    <button
+      type="button"
+      class="dashboard-quick__btn"
+      *ngIf="canCreateReservation"
+      (click)="openNewBooking()">
+      <i class="bi bi-plus-lg" aria-hidden="true"></i>
+      <span>{{ 'DASHBOARD.QUICK_NEW_BOOKING' | translate }}</span>
+    </button>
+    <button
+      type="button"
+      class="dashboard-quick__btn"
+      *ngIf="canViewReservations"
+      (click)="openReservations()">
+      <i class="bi bi-calendar-range" aria-hidden="true"></i>
+      <span>{{ 'DASHBOARD.QUICK_RESERVATIONS' | translate }}</span>
+    </button>
+    <button
+      type="button"
+      class="dashboard-quick__btn"
+      [class.dashboard-quick__btn--warn]="collectionsSummary && collectionsSummary.count > 0"
+      *ngIf="canViewCollections"
+      (click)="openCollections()">
+      <i class="bi bi-cash-coin" aria-hidden="true"></i>
+      <span>{{ 'DASHBOARD.QUICK_COLLECTIONS' | translate }}</span>
+      <span class="dashboard-quick__count" *ngIf="collectionsSummary && collectionsSummary.count > 0">
+        {{ collectionsSummary.count }} {{ 'DASHBOARD.PENDING' | translate }}
+      </span>
+    </button>
+    <button
+      type="button"
+      class="dashboard-quick__btn"
+      *ngIf="canViewReports"
+      (click)="openReports()">
+      <i class="bi bi-file-earmark-bar-graph" aria-hidden="true"></i>
+      <span>{{ 'DASHBOARD.QUICK_REPORTS' | translate }}</span>
+    </button>
+    <button type="button" class="dashboard-quick__btn" (click)="openRoomBoard()">
+      <i class="bi bi-grid-3x3-gap" aria-hidden="true"></i>
+      <span>{{ 'DASHBOARD.QUICK_ROOM_BOARD' | translate }}</span>
+    </button>
+  </nav>
+
+  <div class="alert alert-danger dashboard-alert" *ngIf="errorMessage && !isLoading" role="alert">
+    <i class="bi bi-exclamation-triangle-fill me-2" aria-hidden="true"></i>
+    {{ errorMessage }}
+  </div>
+
+  <div
+    class="dashboard-collections"
+    *ngIf="!isLoading && canViewCollections && collectionsSummary && collectionsSummary.count > 0"
+    role="status">
+    <div class="dashboard-collections__icon" aria-hidden="true">
+      <i class="bi bi-wallet2"></i>
+    </div>
+    <div class="dashboard-collections__copy">
+      <div class="dashboard-collections__title">{{ 'DASHBOARD.COLLECTIONS_BANNER_TITLE' | translate }}</div>
+      <div class="dashboard-collections__body">
+        {{ 'DASHBOARD.COLLECTIONS_BANNER_BODY' | translate:{
+          total: (collectionsSummary.total_balance | number:'1.2-2'),
+          count: collectionsSummary.count,
+          checkout: collectionsSummary.checkout_today_count,
+          currency: ('COMMON.CURRENCY_SYMBOL' | translate)
+        } }}
+      </div>
+    </div>
+    <button type="button" class="btn btn-warning" (click)="openCollections('checkout_today')">
+      {{ 'DASHBOARD.COLLECTIONS_BANNER_CTA' | translate }}
+    </button>
+  </div>
+
+  <div class="dashboard-kpis" role="group" [attr.aria-label]="'DASHBOARD.SUMMARY_ARIA' | translate">
+    <ng-container *ngIf="isLoading">
+      <div class="card stat-card dashboard-stat" *ngFor="let i of [1,2,3,4]">
+        <div class="card-body dashboard-stat__body">
+          <div class="dashboard-stat__text">
+            <div class="skeleton skeleton-text" style="width: 55%;"></div>
+            <div class="skeleton skeleton-text mt-2" style="width: 40%; height: 1.75rem;"></div>
+            <div class="skeleton skeleton-text mt-2" style="width: 70%;"></div>
+          </div>
+          <div class="skeleton dashboard-stat__icon-skel"></div>
+        </div>
+      </div>
+    </ng-container>
+
+    <ng-container *ngIf="!isLoading">
+      <button
+        type="button"
+        class="card stat-card dashboard-stat dashboard-stat--occupancy dashboard-stat--clickable"
+        (click)="openOccupancyKpi()">
+        <div class="card-body dashboard-stat__body">
+          <div class="dashboard-stat__text">
+            <p class="dashboard-stat__label">{{ 'DASHBOARD.OCCUPANCY_RATE' | translate }}</p>
+            <p class="h3 dashboard-stat__value mb-0">{{ occupancyRate }}%</p>
+            <div class="dashboard-segments" aria-hidden="true">
+              <span
+                class="dashboard-segments__bar"
+                *ngFor="let item of roomStatusLegend"
+                [style.width.%]="totalRooms > 0 ? (item.value / totalRooms * 100) : 0"
+                [style.background]="item.color">
+              </span>
+            </div>
+            <div class="dashboard-segments__legend">
+              <span class="dashboard-segments__legend-item" *ngFor="let item of roomStatusLegend">
+                <span class="dashboard-segments__dot" [style.background]="item.color"></span>
+                {{ item.value }}
+              </span>
+            </div>
+            <span class="dashboard-stat__hint">{{ totalRooms }} {{ 'DASHBOARD.TOTAL_ROOMS' | translate }}</span>
+            <span class="dashboard-stat__cta">{{ 'DASHBOARD.KPI_OPEN_ROOM_BOARD' | translate }}</span>
+          </div>
+          <div class="dashboard-stat__icon">
+            <i class="bi bi-pie-chart-fill" aria-hidden="true"></i>
+          </div>
+        </div>
+      </button>
+
+      <button
+        type="button"
+        class="card stat-card dashboard-stat dashboard-stat--revenue"
+        [class.dashboard-stat--clickable]="canViewFinancials || canViewReports"
+        [disabled]="!(canViewFinancials || canViewReports)"
+        (click)="openRevenueKpi()">
+        <div class="card-body dashboard-stat__body">
+          <div class="dashboard-stat__text">
+            <p class="dashboard-stat__label">{{ 'DASHBOARD.MONTH_ACCRUAL' | translate }}</p>
+            <p class="dashboard-stat__period" *ngIf="accrualPeriodStart && accrualPeriodEnd">
+              {{ 'DASHBOARD.ACCRUAL_PERIOD' | translate:{ start: accrualPeriodStart, end: accrualPeriodEnd } }}
+            </p>
+            <p class="h3 dashboard-stat__value mb-0">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ formatMoney(monthAccrualRevenue) }}</p>
+            <span class="dashboard-stat__hint">
+              {{ 'DASHBOARD.CASH_NET' | translate }}: {{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ formatMoney(monthCashNet) }}
+            </span>
+            <span class="dashboard-stat__cta" *ngIf="canViewFinancials || canViewReports">
+              {{ 'DASHBOARD.KPI_OPEN_FINANCE' | translate }}
+            </span>
+          </div>
+          <div class="dashboard-stat__icon">
+            <i class="bi bi-cash-stack" aria-hidden="true"></i>
+          </div>
+        </div>
+      </button>
+
+      <button
+        type="button"
+        class="card stat-card dashboard-stat dashboard-stat--guests"
+        [class.dashboard-stat--clickable]="canViewReservations"
+        [disabled]="!canViewReservations"
+        (click)="openGuestsKpi()">
+        <div class="card-body dashboard-stat__body">
+          <div class="dashboard-stat__text">
+            <p class="dashboard-stat__label">{{ 'DASHBOARD.ACTIVE_GUESTS' | translate }}</p>
+            <p class="h3 dashboard-stat__value mb-0">{{ inHouseGuests }}</p>
+            <span class="dashboard-stat__hint">
+              {{ 'DASHBOARD.CHECK_INS_TODAY' | translate }}: {{ checkInsToday }}
+              <span class="dashboard-stat__sep">·</span>
+              {{ 'DASHBOARD.CHECK_OUTS_TODAY' | translate }}: {{ checkOutsToday }}
+              <ng-container *ngIf="overdueCheckouts > 0">
+                <span class="dashboard-stat__sep">·</span>
+                <span class="dashboard-stat__warn">{{ 'DASHBOARD.OVERDUE_CHECKOUTS' | translate }}: {{ overdueCheckouts }}</span>
+              </ng-container>
+            </span>
+            <span class="dashboard-stat__cta" *ngIf="canViewReservations">
+              {{ 'DASHBOARD.KPI_OPEN_RESERVATIONS' | translate }}
+            </span>
+          </div>
+          <div class="dashboard-stat__icon">
+            <i class="bi bi-people-fill" aria-hidden="true"></i>
+          </div>
+        </div>
+      </button>
+
+      <button
+        type="button"
+        class="card stat-card dashboard-stat dashboard-stat--adr"
+        [class.dashboard-stat--clickable]="canViewFinancials || canViewReports"
+        [disabled]="!(canViewFinancials || canViewReports)"
+        (click)="openAdrKpi()">
+        <div class="card-body dashboard-stat__body">
+          <div class="dashboard-stat__text">
+            <p class="dashboard-stat__label">{{ 'DASHBOARD.AVG_DAILY_RATE' | translate }}</p>
+            <p class="h3 dashboard-stat__value mb-0">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ formatMoney(avgDailyRate) }}</p>
+            <span class="dashboard-stat__hint">{{ 'DASHBOARD.AVG_DAILY_HINT' | translate }}</span>
+            <span class="dashboard-stat__cta" *ngIf="canViewFinancials || canViewReports">
+              {{ 'DASHBOARD.KPI_OPEN_FINANCE' | translate }}
+            </span>
+          </div>
+          <div class="dashboard-stat__icon">
+            <i class="bi bi-graph-up-arrow" aria-hidden="true"></i>
+          </div>
+        </div>
+      </button>
+    </ng-container>
+  </div>
+
+  <div class="dashboard-charts">
+    <ng-container *ngIf="isLoading">
+      <div class="card dashboard-panel dashboard-panel--wide">
+        <div class="card-body">
+          <div class="skeleton skeleton-text" style="width: 10rem; margin-bottom: 1.25rem;"></div>
+          <div class="skeleton" style="width: 100%; height: 14rem; border-radius: 0.75rem;"></div>
+        </div>
+      </div>
+      <div class="card dashboard-panel">
+        <div class="card-body">
+          <div class="skeleton skeleton-text" style="width: 8rem; margin-bottom: 1.25rem;"></div>
+          <div class="skeleton mx-auto" style="width: 10rem; height: 10rem; border-radius: 50%;"></div>
+          <div class="d-flex justify-content-center gap-3 mt-4">
+            <div class="skeleton" style="width: 4rem; height: 1rem;"></div>
+            <div class="skeleton" style="width: 4rem; height: 1rem;"></div>
+            <div class="skeleton" style="width: 4rem; height: 1rem;"></div>
+          </div>
+        </div>
+      </div>
+    </ng-container>
+
+    <ng-container *ngIf="!isLoading">
+      <div class="card dashboard-panel dashboard-panel--wide chart-wrap">
+        <div class="card-body">
+          <div class="dashboard-panel__head">
+            <h2 class="dashboard-panel__title">{{ 'DASHBOARD.WEEKLY_REVENUE' | translate }}</h2>
+          </div>
+          <div class="chart-canvas">
+            <canvas baseChart [data]="weeklyRevenueData" [options]="weeklyRevenueOptions" [type]="'bar'"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="card dashboard-panel">
+        <div class="card-body">
+          <div class="dashboard-panel__head">
+            <h2 class="dashboard-panel__title">{{ 'DASHBOARD.ROOM_STATUS' | translate }}</h2>
+          </div>
+          <div class="donut-wrap">
+            <canvas baseChart [data]="roomStatusData" [options]="roomStatusOptions" [type]="'doughnut'"></canvas>
+          </div>
+          <ul class="dashboard-legend">
+            <li class="dashboard-legend__item" *ngFor="let item of roomStatusLegend">
+              <span class="dashboard-legend__dot" [style.background]="item.color" aria-hidden="true"></span>
+              <span class="dashboard-legend__label">{{ item.label | translate }}</span>
+              <span class="dashboard-legend__value">{{ item.value }}</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </ng-container>
+  </div>
+
+  <div class="dashboard-ops">
+    <div class="card dashboard-panel">
+      <div class="card-body">
+        <div class="dashboard-panel__head">
+          <h2 class="dashboard-panel__title">
+            <i class="bi bi-box-arrow-in-right" aria-hidden="true"></i>
+            {{ 'DASHBOARD.ARRIVALS_TODAY' | translate }}
+            <span class="dashboard-panel__count" *ngIf="!isLoading">{{ checkInsToday }}</span>
+          </h2>
+          <button
+            type="button"
+            class="btn btn-sm btn-link dashboard-panel__link"
+            *ngIf="!isLoading && arrivalsToday.length > 0 && canViewReservations"
+            (click)="openArrivalsList()">
+            {{ 'DASHBOARD.VIEW_ALL' | translate }}
+          </button>
+        </div>
+
+        <ng-container *ngIf="isLoading">
+          <div class="dashboard-movement dashboard-movement--skel" *ngFor="let i of [1,2,3]">
+            <div class="flex-grow-1">
+              <div class="skeleton skeleton-text" style="width: 45%;"></div>
+              <div class="skeleton skeleton-text" style="width: 70%;"></div>
+            </div>
+            <div class="skeleton" style="width: 4.5rem; height: 1.75rem; border-radius: 0.5rem;"></div>
+          </div>
+        </ng-container>
+
+        <div *ngIf="!isLoading && arrivalsToday.length === 0" class="dashboard-empty">
+          <i class="bi bi-calendar-plus" aria-hidden="true"></i>
+          <p class="dashboard-empty__title">{{ 'DASHBOARD.NO_MOVEMENTS' | translate }}</p>
+          <p class="dashboard-empty__hint">{{ 'DASHBOARD.NO_MOVEMENTS_HINT' | translate }}</p>
+          <button
+            type="button"
+            class="btn btn-sm btn-outline-primary mt-3"
+            *ngIf="canCreateReservation"
+            (click)="openNewBooking()">
+            {{ 'DASHBOARD.QUICK_NEW_BOOKING' | translate }}
+          </button>
+        </div>
+
+        <div class="dashboard-movement movement-row" *ngFor="let a of visibleArrivals">
+          <div
+            class="dashboard-movement__hit"
+            (click)="openReservation(a.reservation_id)"
+            (keyup.enter)="openReservation(a.reservation_id)"
+            tabindex="0"
+            role="button"
+            [attr.aria-label]="a.guest">
+            <div class="dashboard-movement__avatar" aria-hidden="true">{{ guestInitials(a.guest) }}</div>
+            <div class="dashboard-movement__meta">
+              <div class="dashboard-movement__name">{{ a.guest }}</div>
+              <div class="dashboard-movement__detail">
+                {{ 'DASHBOARD.ROOM' | translate }} {{ a.room }}
+                <span class="dashboard-stat__sep">·</span>
+                {{ a.start_date }}
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            class="btn btn-sm btn-primary"
+            *ngIf="authPerm.has('update reservations') && a.logedin === 0"
+            [disabled]="checkingInId === a.reservation_id"
+            (click)="checkInGuest(a, $event)">
+            <span *ngIf="checkingInId !== a.reservation_id">{{ 'RESERVATIONS.CHECK_IN_BTN' | translate }}</span>
+            <span *ngIf="checkingInId === a.reservation_id" class="spinner-border spinner-border-sm" role="status"></span>
+          </button>
+          <span *ngIf="a.logedin === 1" class="badge dashboard-badge dashboard-badge--ok">
+            {{ 'DASHBOARD.CHECKED_IN' | translate }}
+          </span>
+        </div>
+
+        <button
+          type="button"
+          class="dashboard-more"
+          *ngIf="!isLoading && hasMoreArrivals"
+          (click)="openArrivalsList()">
+          {{ 'DASHBOARD.SHOW_MORE' | translate:{ count: arrivalsToday.length - movementPreviewLimit } }}
+        </button>
+      </div>
+    </div>
+
+    <div class="card dashboard-panel">
+      <div class="card-body">
+        <div class="dashboard-panel__head">
+          <h2 class="dashboard-panel__title">
+            <i class="bi bi-box-arrow-right" aria-hidden="true"></i>
+            {{ 'DASHBOARD.DEPARTURES_TODAY' | translate }}
+            <span class="dashboard-panel__count" *ngIf="!isLoading">{{ pendingCheckouts }}</span>
+            <span class="dashboard-panel__warn" *ngIf="!isLoading && overdueCheckouts > 0">
+              {{ overdueCheckouts }} {{ 'DASHBOARD.OVERDUE' | translate }}
+            </span>
+          </h2>
+          <button
+            type="button"
+            class="btn btn-sm btn-link dashboard-panel__link"
+            *ngIf="!isLoading && pendingCheckouts > 0"
+            (click)="openPendingCheckouts()">
+            {{ 'DASHBOARD.VIEW_ALL' | translate }}
+          </button>
+        </div>
+
+        <ng-container *ngIf="isLoading">
+          <div class="dashboard-movement dashboard-movement--skel" *ngFor="let i of [1,2,3]">
+            <div class="flex-grow-1">
+              <div class="skeleton skeleton-text" style="width: 45%;"></div>
+              <div class="skeleton skeleton-text" style="width: 70%;"></div>
+            </div>
+            <div class="skeleton" style="width: 4.5rem; height: 1.75rem; border-radius: 0.5rem;"></div>
+          </div>
+        </ng-container>
+
+        <div *ngIf="!isLoading && departuresToday.length === 0" class="dashboard-empty">
+          <i class="bi bi-door-open" aria-hidden="true"></i>
+          <p class="dashboard-empty__title">{{ 'DASHBOARD.NO_PENDING_CHECKOUTS' | translate }}</p>
+          <p class="dashboard-empty__hint">{{ 'DASHBOARD.NO_PENDING_CHECKOUTS_HINT' | translate }}</p>
+          <button type="button" class="btn btn-sm btn-outline-primary mt-3" (click)="openRoomBoard()">
+            {{ 'DASHBOARD.OPEN_ROOM_BOARD' | translate }}
+          </button>
+        </div>
+
+        <div
+          class="dashboard-movement movement-row"
+          [class.dashboard-movement--overdue]="d.is_overdue"
+          *ngFor="let d of visibleDepartures">
+          <div
+            class="dashboard-movement__hit"
+            (click)="openReservation(d.reservation_id)"
+            (keyup.enter)="openReservation(d.reservation_id)"
+            tabindex="0"
+            role="button"
+            [attr.aria-label]="d.guest">
+            <div class="dashboard-movement__avatar" aria-hidden="true">{{ guestInitials(d.guest) }}</div>
+            <div class="dashboard-movement__meta">
+              <div class="dashboard-movement__name">{{ d.guest }}</div>
+              <div class="dashboard-movement__detail">
+                {{ 'DASHBOARD.ROOM' | translate }} {{ d.room }}
+                <span class="dashboard-stat__sep">·</span>
+                {{ d.expire_date }}
+                <span *ngIf="d.is_overdue" class="badge dashboard-badge dashboard-badge--warn">
+                  {{ 'DASHBOARD.OVERDUE' | translate }}
+                </span>
+              </div>
+              <div *ngIf="(d.balance_due ?? 0) > 0" class="dashboard-movement__balance">
+                {{ 'RESERVATIONS.CHECKOUT_REQUIRES_PAYMENT' | translate:{ amount: (d.balance_due | number:'1.2-2') } }}
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            class="btn btn-sm btn-success"
+            *ngIf="authPerm.has('update reservations') && d.logedin === 1"
+            [disabled]="checkingOutId === d.reservation_id || (d.balance_due ?? 0) > 0.005"
+            [title]="(d.balance_due ?? 0) > 0.005 ? ('RESERVATIONS.CHECKOUT_REQUIRES_PAYMENT' | translate:{ amount: (d.balance_due | number:'1.2-2') }) : ''"
+            (click)="checkOutGuest(d, $event)">
+            <span *ngIf="checkingOutId !== d.reservation_id">{{ 'DASHBOARD.CHECK_OUT_BTN' | translate }}</span>
+            <span *ngIf="checkingOutId === d.reservation_id" class="spinner-border spinner-border-sm" role="status"></span>
+          </button>
+        </div>
+
+        <button
+          type="button"
+          class="dashboard-more"
+          *ngIf="!isLoading && hasMoreDepartures"
+          (click)="openPendingCheckouts()">
+          {{ 'DASHBOARD.SHOW_MORE' | translate:{ count: departuresToday.length - movementPreviewLimit } }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card dashboard-panel">
+    <div class="card-body">
+      <div class="dashboard-panel__head">
+        <h2 class="dashboard-panel__title">
+          <i class="bi bi-clock-history" aria-hidden="true"></i>
+          {{ 'DASHBOARD.RECENT_ACTIVITY' | translate }}
+        </h2>
+      </div>
+
+      <div class="dashboard-activity">
+        <ng-container *ngIf="isLoading">
+          <div class="dashboard-activity__row" *ngFor="let i of [1,2,3,4,5]">
+            <div class="d-flex align-items-center gap-3">
+              <div class="skeleton skeleton-avatar" style="width: 2.25rem; height: 2.25rem;"></div>
+              <div style="width: 12rem;">
+                <div class="skeleton skeleton-text" style="width: 55%;"></div>
+                <div class="skeleton skeleton-text" style="width: 85%;"></div>
+              </div>
+            </div>
+            <div class="skeleton" style="width: 3.5rem; height: 1rem;"></div>
+          </div>
+        </ng-container>
+
+        <ng-container *ngIf="!isLoading">
+          <div *ngIf="recentActivity.length === 0" class="dashboard-empty">
+            <i class="bi bi-activity" aria-hidden="true"></i>
+            <p class="dashboard-empty__title">{{ 'DASHBOARD.NO_RECENT_ACTIVITY' | translate }}</p>
+            <p class="dashboard-empty__hint">{{ 'DASHBOARD.NO_RECENT_ACTIVITY_HINT' | translate }}</p>
+            <button
+              type="button"
+              class="btn btn-sm btn-outline-primary mt-3"
+              *ngIf="canCreateReservation"
+              (click)="openNewBooking()">
+              {{ 'DASHBOARD.QUICK_NEW_BOOKING' | translate }}
+            </button>
+          </div>
+
+          <div
+            class="dashboard-activity__row room-activity-row"
+            *ngFor="let item of recentActivity"
+            (click)="openReservation(item.reservationId)"
+            (keyup.enter)="openReservation(item.reservationId)"
+            tabindex="0"
+            role="button">
+            <div class="d-flex align-items-center gap-3 min-w-0">
+              <div class="avatar dashboard-activity__avatar text-white" [style.background]="item.avatar">
+                {{ item.initials }}
+              </div>
+              <div class="min-w-0">
+                <div class="dashboard-movement__name text-truncate">{{ item.guest }}</div>
+                <small class="dashboard-movement__detail">
+                  {{ item.action | translate }}
+                  <span class="dashboard-stat__sep">·</span>
+                  {{ 'DASHBOARD.ROOM' | translate }} {{ item.room }}
+                </small>
+              </div>
+            </div>
+            <div class="dashboard-activity__time">
+              <i class="bi bi-clock" aria-hidden="true"></i>
+              <span>{{ item.time }}</span>
+            </div>
+          </div>
+        </ng-container>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,89 @@
+<div class="hotels-page">
+  <section class="dept-hero">
+    <div class="dept-hero__copy">
+      <p class="dept-hero__eyebrow">
+        <i class="bi bi-shop" aria-hidden="true"></i>
+        {{ 'POS.EYEBROW' | translate }}
+      </p>
+      <h1>{{ 'POS.CATEGORIES_TITLE' | translate }}</h1>
+      <p class="dept-hero__subtitle">{{ 'POS.CATEGORIES_SUBTITLE' | translate }}</p>
+    </div>
+    <div class="dept-hero__actions">
+      <button type="button" class="btn btn-primary" (click)="openCreate()">
+        <i class="bi bi-plus-lg" aria-hidden="true"></i>
+        <span>{{ 'POS.NEW_CATEGORY' | translate }}</span>
+      </button>
+    </div>
+  </section>
+
+  <div class="card border-0 shadow-sm dept-card">
+    <div class="table-responsive">
+      <table class="table align-middle mb-0">
+        <thead>
+          <tr>
+            <th>{{ 'POS.CATEGORY_NAME_EN' | translate }}</th>
+            <th>{{ 'POS.CATEGORY_NAME_AR' | translate }}</th>
+            <th>{{ 'POS.ACCOUNT' | translate }}</th>
+            <th>{{ 'POS.STATUS' | translate }}</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let category of categories">
+            <td class="fw-semibold">{{ category.name_en }}</td>
+            <td>{{ category.name_ar }}</td>
+            <td>{{ category.account?.code }} — {{ category.account?.name_en }}</td>
+            <td>
+              <span class="badge border-0" [ngClass]="category.is_active ? 'badge-active' : 'badge-inactive'">
+                {{ (category.is_active ? 'POS.STATUS_ACTIVE' : 'POS.STATUS_INACTIVE') | translate }}
+              </span>
+            </td>
+            <td>
+              <button type="button" class="btn btn-sm btn-outline-secondary" (click)="openEdit(category)">
+                <i class="bi bi-pencil" aria-hidden="true"></i>
+              </button>
+            </td>
+          </tr>
+          <tr *ngIf="!isLoading && categories.length === 0">
+            <td colspan="5" class="text-center text-muted py-4">{{ 'POS.NO_CATEGORIES' | translate }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div *ngIf="showForm" class="modal-backdrop-custom" (click)="closeForm()">
+  <div class="modal-content-custom card border-0 shadow-lg" (click)="$event.stopPropagation()" role="dialog" aria-modal="true" style="max-width: 28rem;">
+    <div class="card-header bg-white py-3 border-bottom d-flex align-items-center justify-content-between">
+      <h2 class="h5 mb-0">{{ (editingCategory ? 'POS.EDIT_CATEGORY' : 'POS.NEW_CATEGORY') | translate }}</h2>
+      <button type="button" class="btn btn-sm btn-light" (click)="closeForm()"><i class="bi bi-x-lg" aria-hidden="true"></i></button>
+    </div>
+    <div class="card-body p-4">
+      <div class="row g-3">
+        <div class="col-12">
+          <label class="form-label">{{ 'POS.CATEGORY_NAME_EN' | translate }} *</label>
+          <input type="text" class="form-control" [(ngModel)]="form.name_en" name="nameEn">
+        </div>
+        <div class="col-12">
+          <label class="form-label">{{ 'POS.CATEGORY_NAME_AR' | translate }} *</label>
+          <input type="text" class="form-control" [(ngModel)]="form.name_ar" name="nameAr">
+        </div>
+        <div class="col-12">
+          <label class="form-label">{{ 'POS.ACCOUNT' | translate }} *</label>
+          <select class="form-select" [(ngModel)]="form.account_id" name="accountId">
+            <option [ngValue]="null">—</option>
+            <option *ngFor="let a of accounts" [ngValue]="a.id">{{ a.code }} — {{ a.name_en }}</option>
+          </select>
+        </div>
+      </div>
+      <div class="d-flex justify-content-end gap-2 mt-4">
+        <button type="button" class="btn btn-outline-secondary" (click)="closeForm()">{{ 'COMMON.CANCEL' | translate }}</button>
+        <button type="button" class="btn btn-primary" (click)="save()" [disabled]="!form.name_en.trim() || !form.name_ar.trim() || !form.account_id || isSaving">
+          <span *ngIf="isSaving" class="spinner-border spinner-border-sm me-1" role="status"></span>
+          {{ 'COMMON.SAVE' | translate }}
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

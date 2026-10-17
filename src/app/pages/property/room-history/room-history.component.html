@@ -1,0 +1,211 @@
+<div class="container-fluid room-history-page">
+  <section class="room-history-hero room-history-no-print">
+    <div class="room-history-hero__start">
+      <button type="button" class="room-history-hero__back" (click)="goBack()" [attr.aria-label]="'COMMON.BACK' | translate">
+        <i class="bi bi-arrow-left" aria-hidden="true"></i>
+      </button>
+      <div class="room-history-hero__copy min-w-0">
+        <p class="room-history-hero__eyebrow">
+          <i class="bi bi-door-open" aria-hidden="true"></i>
+          {{ 'ROOM_HISTORY.EYEBROW' | translate }}
+        </p>
+        <h1>{{ 'ROOM_HISTORY.TITLE' | translate:{ number: roomNumber } }}</h1>
+        <p class="room-history-hero__subtitle">{{ 'ROOM_HISTORY.SUBTITLE' | translate }}</p>
+      </div>
+    </div>
+  </section>
+
+  <div *ngIf="loadError" class="alert alert-danger d-flex align-items-center gap-2 room-history-no-print" role="alert">
+    <i class="bi bi-exclamation-triangle-fill"></i>
+    <span>{{ loadError }}</span>
+  </div>
+
+  <div class="room-history-summary room-history-no-print" role="group" [attr.aria-label]="'ROOM_HISTORY.SUMMARY_ARIA' | translate">
+    <ng-container *ngIf="isLoadingSummary; else summaryReady">
+      <div class="room-history-stat" *ngFor="let i of [1,2,3,4]">
+        <div class="skeleton skeleton-text" style="width: 50%;"></div>
+        <div class="skeleton skeleton-text mt-2" style="width: 40%; height: 1.4rem;"></div>
+      </div>
+    </ng-container>
+    <ng-template #summaryReady>
+      <div class="room-history-stat room-history-stat--primary">
+        <span class="room-history-stat__label">{{ 'ROOM_HISTORY.TOTAL_RESERVATIONS' | translate }}</span>
+        <span class="room-history-stat__value">{{ totalItems }}</span>
+      </div>
+      <div class="room-history-stat room-history-stat--success">
+        <span class="room-history-stat__label">{{ 'ROOM_HISTORY.TOTAL_PAID' | translate }}</span>
+        <span class="room-history-stat__value">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ totalRevenue | number:'1.2-2' }}</span>
+      </div>
+      <div class="room-history-stat room-history-stat--danger">
+        <span class="room-history-stat__label">{{ 'ROOM_HISTORY.REMAINING' | translate }}</span>
+        <span class="room-history-stat__value">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ totalRemaining | number:'1.2-2' }}</span>
+      </div>
+      <div class="room-history-stat room-history-stat--info">
+        <span class="room-history-stat__label">{{ 'ROOM_HISTORY.OCCUPANCY_AVG' | translate }}</span>
+        <span class="room-history-stat__value">{{ occupancyAverage }}%</span>
+        <div class="occupancy-bar mt-2" *ngIf="occupancyMetrics.spanFrom && occupancyMetrics.spanTo">
+          <div class="occupancy-bar__fill" [style.width.%]="occupancyAverage"></div>
+        </div>
+        <small class="room-history-stat__hint" *ngIf="occupancyMetrics.spanFrom">
+          {{ 'ROOM_HISTORY.OCCUPANCY_FORMULA' | translate:{
+            nights: occupancyMetrics.bookedNights,
+            days: occupancyMetrics.spanDays
+          } }}
+        </small>
+        <small class="room-history-stat__hint" *ngIf="!occupancyMetrics.spanFrom">
+          {{ 'ROOM_HISTORY.OCCUPANCY_EMPTY' | translate }}
+        </small>
+      </div>
+    </ng-template>
+  </div>
+
+  <div class="room-history-print-header" aria-hidden="true">
+    <h2 class="mb-1">{{ 'ROOM_HISTORY.TITLE' | translate:{ number: roomNumber } }}</h2>
+    <p class="mb-1 text-muted">{{ 'ROOM_HISTORY.TABLE_TITLE' | translate }}</p>
+    <p class="mb-0 small" *ngIf="totalItems > 0">
+      {{ 'ROOM_HISTORY.PAGINATION' | translate:{ from: paginationFrom, to: paginationTo, total: totalItems } }}
+    </p>
+    <p class="mb-0 small text-muted">{{ 'ROOM_HISTORY.PRINT_GENERATED' | translate }} {{ printGeneratedAt }}</p>
+  </div>
+
+  <!-- Table Section -->
+  <div class="card border-0 shadow-sm room-history-table-card room-history-print-table" id="room-history-table">
+    <div class="card-header bg-white room-history-table-header room-history-no-print">
+      <div class="d-flex align-items-center gap-2 flex-wrap">
+        <h6 class="mb-0">{{ 'ROOM_HISTORY.TABLE_TITLE' | translate }}</h6>
+        <span class="badge rounded-pill bg-primary-subtle text-primary border border-primary-subtle" *ngIf="totalItems > 0">
+          {{ 'ROOM_HISTORY.TABLE_COUNT' | translate:{ count: totalItems } }}
+        </span>
+      </div>
+      <div class="d-flex align-items-center gap-2 flex-wrap">
+        <span class="text-muted small d-none d-md-inline" *ngIf="!isLoading && bookings.length">
+          <i class="bi bi-hand-index-thumb me-1"></i>{{ 'ROOM_HISTORY.ROW_CLICK_HINT' | translate }}
+        </span>
+        <button
+          type="button"
+          class="btn btn-sm btn-outline-secondary"
+          (click)="printCurrentPage()"
+          [disabled]="isLoading || bookings.length === 0">
+          <i class="bi bi-printer me-1"></i>{{ 'ROOM_HISTORY.PRINT_TABLE' | translate }}
+        </button>
+      </div>
+    </div>
+
+    <div class="table-responsive room-history-table-wrap">
+      <table class="table table-hover align-middle mb-0 room-history-table">
+        <thead>
+          <tr>
+            <th class="ps-4">{{ 'ROOM_HISTORY.GUEST' | translate }}</th>
+            <th class="d-none d-md-table-cell">{{ 'ROOM_HISTORY.CHECK_IN' | translate }}</th>
+            <th class="d-none d-md-table-cell">{{ 'ROOM_HISTORY.CHECK_OUT' | translate }}</th>
+            <th class="d-none d-lg-table-cell text-center">{{ 'ROOM_HISTORY.NIGHTS' | translate }}</th>
+            <th>{{ 'ROOM_HISTORY.STATUS' | translate }}</th>
+            <th class="text-end d-none d-sm-table-cell">{{ 'ROOM_HISTORY.TOTAL' | translate }}</th>
+            <th class="text-end d-none d-lg-table-cell">{{ 'ROOM_HISTORY.PAID' | translate }}</th>
+            <th class="text-end d-none d-xl-table-cell">{{ 'ROOM_HISTORY.REMAINING_COL' | translate }}</th>
+            <th class="text-end pe-4 room-history-no-print" aria-hidden="true"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <ng-container *ngIf="isLoading">
+            <tr *ngFor="let i of [1,2,3,4,5,6]">
+              <td class="ps-4"><div class="skeleton skeleton-text" style="width: 140px;"></div></td>
+              <td class="d-none d-md-table-cell"><div class="skeleton skeleton-text" style="width: 90px;"></div></td>
+              <td class="d-none d-md-table-cell"><div class="skeleton skeleton-text" style="width: 90px;"></div></td>
+              <td class="d-none d-lg-table-cell"><div class="skeleton skeleton-text mx-auto" style="width: 36px;"></div></td>
+              <td><div class="skeleton skeleton-pill"></div></td>
+              <td class="d-none d-sm-table-cell"><div class="skeleton skeleton-text ms-auto" style="width: 70px;"></div></td>
+              <td class="d-none d-lg-table-cell"><div class="skeleton skeleton-text ms-auto" style="width: 70px;"></div></td>
+              <td class="d-none d-xl-table-cell"><div class="skeleton skeleton-text ms-auto" style="width: 70px;"></div></td>
+              <td class="pe-4 room-history-no-print"><div class="skeleton skeleton-icon ms-auto"></div></td>
+            </tr>
+          </ng-container>
+
+          <ng-container *ngIf="!isLoading">
+            <tr *ngFor="let booking of bookings"
+                class="row-clickable"
+                (click)="viewBooking(booking.id)"
+                [attr.aria-label]="'ROOM_HISTORY.OPEN_BOOKING' | translate:{ id: booking.id }">
+              <td class="ps-4">
+                <div class="guest-cell">
+                  <div class="guest-cell__avatar" aria-hidden="true">{{ (booking.guest || '?').charAt(0) }}</div>
+                  <div class="guest-cell__info">
+                    <div class="guest-cell__name">{{ booking.guest }}</div>
+                    <div class="guest-cell__meta">#{{ booking.id }}</div>
+                    <div class="guest-cell__dates d-md-none text-muted small">
+                      {{ booking.checkIn }} → {{ booking.checkOut }}
+                      <span class="ms-1">· {{ getStayNights(booking) }} {{ 'ROOM_HISTORY.NIGHTS_SHORT' | translate }}</span>
+                    </div>
+                  </div>
+                </div>
+              </td>
+              <td class="d-none d-md-table-cell text-nowrap">{{ booking.checkIn }}</td>
+              <td class="d-none d-md-table-cell text-nowrap">{{ booking.checkOut }}</td>
+              <td class="d-none d-lg-table-cell text-center">
+                <span class="badge rounded-pill bg-light text-dark border">{{ getStayNights(booking) }}</span>
+              </td>
+              <td>
+                <span class="badge rounded-pill status-badge" [ngClass]="getBookingStatusClass(booking)">
+                  {{ bookingStatusLabel(booking.status) }}
+                </span>
+              </td>
+              <td class="text-end fw-semibold d-none d-sm-table-cell text-nowrap">
+                {{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ booking.amount | number:'1.2-2' }}
+              </td>
+              <td class="text-end text-success d-none d-lg-table-cell text-nowrap">
+                {{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ getBookingTotalPaid(booking) | number:'1.2-2' }}
+              </td>
+              <td class="text-end d-none d-xl-table-cell text-nowrap"
+                  [class.text-danger]="getBookingRemaining(booking) > 0"
+                  [class.text-muted]="getBookingRemaining(booking) <= 0">
+                {{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ getBookingRemaining(booking) | number:'1.2-2' }}
+              </td>
+              <td class="text-end pe-4 room-history-no-print">
+                <i class="bi row-chevron" [ngClass]="currentLang === 'ar' ? 'bi-chevron-left' : 'bi-chevron-right'"></i>
+              </td>
+            </tr>
+
+            <tr *ngIf="bookings.length === 0 && !loadError">
+              <td colspan="9" class="empty-state">
+                <i class="bi bi-calendar-x empty-state__icon"></i>
+                <p class="empty-state__title mb-1">{{ 'ROOM_HISTORY.EMPTY' | translate }}</p>
+                <p class="empty-state__hint mb-0">{{ 'ROOM_HISTORY.EMPTY_HINT' | translate }}</p>
+              </td>
+            </tr>
+          </ng-container>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card-footer bg-white room-history-pagination room-history-no-print"
+         *ngIf="!isLoading && totalItems > 0">
+      <div class="room-history-pagination__info small text-muted">
+        {{ 'ROOM_HISTORY.PAGINATION' | translate:{ from: paginationFrom, to: paginationTo, total: totalItems } }}
+      </div>
+      <nav class="room-history-pagination__nav" aria-label="Page navigation" *ngIf="totalPages > 1">
+        <ul class="pagination pagination-sm mb-0">
+          <li class="page-item" [class.disabled]="currentPage === 1">
+            <button type="button" class="page-link" (click)="setPage(currentPage - 1)" [disabled]="currentPage === 1 || isLoading">
+              <i class="bi" [ngClass]="currentLang === 'ar' ? 'bi-chevron-right' : 'bi-chevron-left'"></i>
+              <span class="d-none d-sm-inline ms-1">{{ 'RESERVATIONS.PREV_PAGE' | translate }}</span>
+            </button>
+          </li>
+          <ng-container *ngFor="let page of visiblePages">
+            <li class="page-item disabled" *ngIf="!isNumber(page)">
+              <span class="page-link page-ellipsis">…</span>
+            </li>
+            <li class="page-item" *ngIf="isNumber(page)" [class.active]="currentPage === page">
+              <button type="button" class="page-link" (click)="setPage(page)" [disabled]="isLoading">{{ page }}</button>
+            </li>
+          </ng-container>
+          <li class="page-item" [class.disabled]="currentPage === totalPages">
+            <button type="button" class="page-link" (click)="setPage(currentPage + 1)" [disabled]="currentPage === totalPages || isLoading">
+              <span class="d-none d-sm-inline me-1">{{ 'RESERVATIONS.NEXT_PAGE' | translate }}</span>
+              <i class="bi" [ngClass]="currentLang === 'ar' ? 'bi-chevron-left' : 'bi-chevron-right'"></i>
+            </button>
+          </li>
+        </ul>
+      </nav>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,753 @@
+<div class="report-runner">
+  <section class="report-runner__hero">
+    <div class="report-runner__hero-start">
+      <button type="button" class="report-runner__back" (click)="goBack()">
+        <i class="bi bi-arrow-left" aria-hidden="true"></i>
+        <span>{{ 'REPORTS.BACK' | translate }}</span>
+      </button>
+      <div class="report-runner__hero-copy min-w-0">
+        <p class="report-runner__eyebrow">
+          <i class="bi bi-file-earmark-bar-graph" aria-hidden="true"></i>
+          {{ 'REPORTS.RUNNER_EYEBROW' | translate }}
+        </p>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <h1>{{ titleKey | translate }}</h1>
+          <span class="report-soft-badge" *ngIf="isSoftRefreshing">
+            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+            {{ 'REPORTS.SOFT_REFRESHING' | translate }}
+          </span>
+        </div>
+        <p class="report-runner__subtitle" *ngIf="descKey">{{ descKey | translate }}</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="card border-0 shadow-sm mb-4 report-guide" [class.report-guide--collapsed]="guideCollapsed">
+    <div class="card-body p-3">
+      <button type="button" class="report-guide__toggle" (click)="toggleGuide()"
+              [attr.aria-expanded]="!guideCollapsed">
+        <span class="d-flex align-items-center gap-2">
+          <i class="bi bi-info-circle text-primary" aria-hidden="true"></i>
+          <span class="fw-semibold small">{{ 'REPORTS.GUIDE_TITLE' | translate }}</span>
+        </span>
+        <i class="bi" [ngClass]="guideCollapsed ? 'bi-chevron-down' : 'bi-chevron-up'" aria-hidden="true"></i>
+      </button>
+      <div class="report-guide__body mt-2" *ngIf="!guideCollapsed">
+        <p class="small text-muted mb-0">{{ guideKey | translate }}</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="card border-0 shadow-sm mb-4 report-controls">
+    <div class="card-body p-3">
+      <div class="row g-3 report-controls__top">
+        <div class="col-lg-6 d-flex">
+          <div class="report-controls__section w-100">
+            <div class="report-controls__label">
+              <i class="bi bi-calendar3" aria-hidden="true"></i>
+              {{ 'REPORTS.PERIOD' | translate }}
+            </div>
+            <div class="report-controls__body">
+              <div class="row g-2 align-items-end">
+                <div class="col-md-4" *ngIf="!isAsOfReport">
+                  <label class="form-label small fw-semibold">{{ 'REPORTS.START_DATE' | translate }}</label>
+                  <input type="date" class="form-control form-control-sm" [(ngModel)]="startDate"
+                         (ngModelChange)="onStartDateChange()" [max]="endDate || null">
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label small fw-semibold">{{ endDateLabelKey | translate }}</label>
+                  <input type="date" class="form-control form-control-sm" [(ngModel)]="endDate"
+                         (ngModelChange)="onEndDateChange()" [min]="isAsOfReport ? null : (startDate || null)">
+                </div>
+                <div class="col-md-4">
+                  <button type="button" class="btn btn-primary btn-sm w-100" (click)="generateReport()"
+                          [disabled]="isLoading || !canRunReport">
+                    <i class="bi bi-play-fill me-1" aria-hidden="true"></i>
+                    {{ 'REPORTS.GENERATE' | translate }}
+                  </button>
+                </div>
+              </div>
+              <p class="small text-muted mb-0 mt-2" *ngIf="asOfHintKey">{{ asOfHintKey | translate }}</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-6 d-flex">
+          <div class="report-controls__section report-controls__section--export w-100"
+               [class.report-controls__section--blocked]="requiresEmailOrFilters && !isLoading">
+            <div class="report-controls__label d-flex align-items-center justify-content-between gap-2">
+              <span>
+                <i class="bi bi-download" aria-hidden="true"></i>
+                {{ 'REPORTS.EXPORT_GROUP_LABEL' | translate }}
+              </span>
+              <span class="export-email-only-badge" *ngIf="requiresEmailOrFilters && !isLoading">
+                <i class="bi bi-envelope" aria-hidden="true"></i>
+                {{ 'REPORTS.EXPORT_EMAIL_ONLY_BADGE' | translate }}
+              </span>
+            </div>
+            <div class="report-controls__body">
+              <div class="export-actions" [class.export-actions--blocked]="requiresEmailOrFilters && !isLoading">
+                <div class="export-actions__btns d-flex gap-1">
+                  <span class="export-tip-wrap flex-fill"
+                        [class.export-tip-wrap--active]="requiresEmailOrFilters && !isLoading">
+                    <button type="button" class="btn btn-outline-success btn-sm w-100" (click)="exportExcel()"
+                            [disabled]="!canDirectExport || isLoading || isExporting"
+                            [attr.aria-describedby]="requiresEmailOrFilters ? 'export-limit-tip' : null">
+                      <i class="bi bi-file-earmark-spreadsheet me-1" aria-hidden="true"></i>
+                      {{ 'REPORTS.EXPORT_EXCEL' | translate }}
+                    </button>
+                    <span class="export-tip" id="export-limit-tip" role="tooltip" *ngIf="requiresEmailOrFilters && !isLoading">
+                      <i class="bi bi-envelope-exclamation" aria-hidden="true"></i>
+                      <span>{{ directExportBlockedTooltip }}</span>
+                    </span>
+                  </span>
+                  <span class="export-tip-wrap flex-fill"
+                        [class.export-tip-wrap--active]="requiresEmailOrFilters && !isLoading">
+                    <button type="button" class="btn btn-outline-danger btn-sm w-100" (click)="exportPdf()"
+                            [disabled]="!canDirectExport || isLoading || isExporting">
+                      <i class="bi bi-file-earmark-pdf me-1" aria-hidden="true"></i>
+                      {{ 'REPORTS.EXPORT_PDF' | translate }}
+                    </button>
+                    <span class="export-tip" role="tooltip" *ngIf="requiresEmailOrFilters && !isLoading">
+                      <i class="bi bi-envelope-exclamation" aria-hidden="true"></i>
+                      <span>{{ directExportBlockedTooltip }}</span>
+                    </span>
+                  </span>
+                  <span class="export-tip-wrap flex-fill"
+                        [class.export-tip-wrap--active]="requiresEmailOrFilters && !isLoading">
+                    <button type="button" class="btn btn-outline-secondary btn-sm w-100" (click)="exportCsv()"
+                            [disabled]="!canDirectExport || isLoading || isExporting">
+                      <i class="bi bi-filetype-csv me-1" aria-hidden="true"></i>
+                      {{ 'REPORTS.EXPORT_CSV' | translate }}
+                    </button>
+                    <span class="export-tip" role="tooltip" *ngIf="requiresEmailOrFilters && !isLoading">
+                      <i class="bi bi-envelope-exclamation" aria-hidden="true"></i>
+                      <span>{{ directExportBlockedTooltip }}</span>
+                    </span>
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-12" *ngIf="earnedAccrualHintKey">
+          <div class="alert alert-info border-0 py-2 px-3 small mb-0">
+            <i class="bi bi-info-circle me-1"></i>{{ earnedAccrualHintKey | translate }}
+          </div>
+        </div>
+        <div class="col-12" *ngIf="requiresEmailOrFilters && !isLoading">
+          <div class="export-limit-banner" role="status">
+            <div class="export-limit-banner__icon" aria-hidden="true">
+              <i class="bi bi-cloud-arrow-up"></i>
+            </div>
+            <div class="export-limit-banner__body">
+              <div class="export-limit-banner__title">{{ 'REPORTS.EXPORT_LIMIT_BANNER_TITLE' | translate }}</div>
+              <p class="export-limit-banner__text mb-0">
+                {{ 'REPORTS.EXPORT_LIMIT_BANNER_BODY' | translate:{ total: totalRows, exportLimit: exportLimit } }}
+              </p>
+            </div>
+            <button type="button" class="btn btn-sm export-limit-banner__cta" *ngIf="emailExportEnabled"
+                    (click)="focusEmailExport()">
+              <i class="bi bi-envelope me-1" aria-hidden="true"></i>
+              {{ 'REPORTS.EXPORT_LIMIT_BANNER_CTA' | translate }}
+            </button>
+          </div>
+        </div>
+        <div class="col-12" *ngIf="supportsComparison">
+          <div class="report-compare border-top pt-3 mt-1">
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+              <label class="report-compare__toggle" [class.report-compare__toggle--active]="showComparison"
+                     for="compareSwitch">
+                <span class="form-check form-switch mb-0">
+                  <input class="form-check-input" type="checkbox" id="compareSwitch"
+                         [(ngModel)]="showComparison" (ngModelChange)="onToggleComparison()">
+                </span>
+                <span class="report-compare__toggle-text">
+                  <i class="bi bi-bar-chart-line"></i>{{ 'REPORTS.COMPARE' | translate }}
+                </span>
+              </label>
+              <span class="badge rounded-pill report-compare__badge" *ngIf="comparisonActive">
+                <i class="bi bi-arrow-left-right me-1"></i>{{ 'REPORTS.COMPARE_VS' | translate:{ start: compareStartDate, end: compareEndDate } }}
+              </span>
+            </div>
+
+            <div class="report-compare__body mt-3" *ngIf="showComparison">
+              <div class="report-compare__presets mb-2 d-flex align-items-center flex-wrap gap-2">
+                <span class="small text-muted">{{ 'REPORTS.COMPARE_QUICK' | translate }}</span>
+                <button type="button" class="btn btn-sm"
+                        [class.btn-primary]="activeComparePreset === 'previous'"
+                        [class.btn-outline-primary]="activeComparePreset !== 'previous'"
+                        (click)="applyComparePreset('previous')">
+                  <i class="bi bi-arrow-bar-left me-1"></i>{{ 'REPORTS.COMPARE_PREV_PERIOD' | translate }}
+                </button>
+                <button type="button" class="btn btn-sm"
+                        [class.btn-primary]="activeComparePreset === 'last_year'"
+                        [class.btn-outline-primary]="activeComparePreset !== 'last_year'"
+                        (click)="applyComparePreset('last_year')">
+                  <i class="bi bi-calendar-event me-1"></i>{{ 'REPORTS.COMPARE_LAST_YEAR' | translate }}
+                </button>
+                <span class="badge rounded-pill text-bg-light border" *ngIf="activeComparePreset === 'custom'">
+                  {{ 'REPORTS.COMPARE_CUSTOM' | translate }}
+                </span>
+              </div>
+              <div class="row g-2 align-items-end">
+                <div class="col-md-3">
+                  <label class="form-label small fw-semibold" for="compareStart">{{ 'REPORTS.COMPARE_START_DATE' | translate }}</label>
+                  <input id="compareStart" type="date" class="form-control form-control-sm" [(ngModel)]="compareStartDate"
+                         (ngModelChange)="onCompareStartDateChange()" [max]="compareEndDate || null">
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label small fw-semibold" for="compareEnd">{{ 'REPORTS.COMPARE_END_DATE' | translate }}</label>
+                  <input id="compareEnd" type="date" class="form-control form-control-sm" [(ngModel)]="compareEndDate"
+                         (ngModelChange)="onCompareEndDateChange()" [min]="compareStartDate || null">
+                </div>
+                <div class="col-md-3">
+                  <button type="button" class="btn btn-primary btn-sm w-100" (click)="generateReport()"
+                          [disabled]="isLoading || !canRunReport">
+                    <i class="bi bi-bar-chart-line me-1"></i>{{ 'REPORTS.COMPARE_APPLY' | translate }}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-12" *ngIf="isAccrualRevenueReport">
+          <div class="report-filter-bar border-top pt-3 mt-1">
+            <span class="report-filter-bar__label">
+              <i class="bi bi-funnel me-1"></i>{{ 'REPORTS.FILTERS_TITLE' | translate }}
+            </span>
+            <label class="report-filter-chip" [class.report-filter-chip--active]="hideEmptyNights"
+                   for="hideEmptyNightsSwitch">
+              <span class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox" id="hideEmptyNightsSwitch"
+                       [(ngModel)]="hideEmptyNights" (ngModelChange)="onAccrualFilterChange()">
+              </span>
+              <span class="report-filter-chip__text">
+                <i class="bi bi-calendar-x"></i>{{ 'REPORTS.FILTER_HIDE_EMPTY_NIGHTS' | translate }}
+              </span>
+            </label>
+            <span class="badge rounded-pill report-filter-badge" *ngIf="hideEmptyNights && !isLoading && hiddenDaysCount > 0">
+              <i class="bi bi-eye-slash me-1"></i>{{ 'REPORTS.FILTER_HIDDEN_DAYS' | translate:{ count: hiddenDaysCount } }}
+            </span>
+            <button type="button" class="btn btn-link btn-sm p-0 ms-auto report-filter-reset"
+                    *ngIf="hideEmptyNights" (click)="clearAccrualFilters()">
+              <i class="bi bi-x-circle me-1"></i>{{ 'REPORTS.FILTER_CLEAR' | translate }}
+            </button>
+          </div>
+        </div>
+        <div class="col-12" *ngIf="isRevenueSummaryReport">
+          <div class="report-filter-bar border-top pt-3 mt-1">
+            <span class="report-filter-bar__label">
+              <i class="bi bi-funnel me-1"></i>{{ 'REPORTS.FILTERS_TITLE' | translate }}
+            </span>
+            <label class="report-filter-chip" [class.report-filter-chip--active]="hideZeroRows"
+                   for="revenueSummaryHideZeroSwitch">
+              <span class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox" id="revenueSummaryHideZeroSwitch"
+                       [(ngModel)]="hideZeroRows" (ngModelChange)="onRevenueSummaryFilterChange()">
+              </span>
+              <span class="report-filter-chip__text">
+                <i class="bi bi-eye-slash"></i>{{ 'REPORTS.FILTER_HIDE_ZERO' | translate }}
+              </span>
+            </label>
+            <span class="badge rounded-pill report-filter-badge" *ngIf="hideZeroRows && !isLoading && hiddenDaysCount > 0">
+              <i class="bi bi-eye-slash me-1"></i>{{ 'REPORTS.FILTER_HIDDEN_DAYS' | translate:{ count: hiddenDaysCount } }}
+            </span>
+            <span class="badge rounded-pill report-filter-badge" *ngIf="hideZeroRows && !isLoading && hiddenDaysCount === 0">
+              <i class="bi bi-check2-circle me-1"></i>{{ 'REPORTS.FILTER_HIDE_ZERO_ACTIVE' | translate }}
+            </span>
+            <button type="button" class="btn btn-link btn-sm p-0 ms-auto report-filter-reset"
+                    *ngIf="hideZeroRows" (click)="clearRevenueSummaryZeroFilter()">
+              <i class="bi bi-x-circle me-1"></i>{{ 'REPORTS.FILTER_SHOW_ALL_ROWS' | translate }}
+            </button>
+          </div>
+        </div>
+        <div class="col-12" *ngIf="dateRangeError">
+          <div class="alert alert-warning py-2 mb-0 small">{{ 'REPORTS.DATE_RANGE_ERROR' | translate }}</div>
+        </div>
+        <div class="col-12" *ngIf="compareDateRangeError">
+          <div class="alert alert-warning py-2 mb-0 small">{{ 'REPORTS.COMPARE_DATE_RANGE_ERROR' | translate }}</div>
+        </div>
+        <ng-container *ngIf="isAccountingReport">
+          <div class="col-12">
+            <div class="report-filters-panel">
+              <div class="report-filters-panel__title">
+                <i class="bi bi-sliders" aria-hidden="true"></i>
+                {{ 'REPORTS.ACCOUNTING_FILTERS_TITLE' | translate }}
+              </div>
+              <div class="row g-2 align-items-end">
+          <div class="col-md-3" *ngIf="showAccountingFilter('account_type')">
+            <label class="form-label small fw-semibold">
+              {{ 'REPORTS.GL_ACCOUNT_TYPE' | translate }}
+              <span *ngIf="isGeneralLedgerReport" class="text-danger">*</span>
+            </label>
+            <select class="form-select form-select-sm" [(ngModel)]="selectedAccountType"
+                    (ngModelChange)="onAccountingAccountTypeChange()">
+              <option [ngValue]="null">{{ isGeneralLedgerReport ? ('REPORTS.GL_SELECT_TYPE' | translate) : ('REPORTS.FILTER_ANY' | translate) }}</option>
+              <option *ngFor="let type of generalLedgerAccountTypes" [ngValue]="type">
+                {{ ('REPORTS.ACCOUNT_TYPES.' + type.toUpperCase()) | translate }}
+              </option>
+            </select>
+          </div>
+          <div class="col-md-4" *ngIf="showAccountingFilter('account_id')">
+            <label class="form-label small fw-semibold">{{ 'REPORTS.GL_ACCOUNT' | translate }}</label>
+            <select class="form-select form-select-sm" [(ngModel)]="selectedAccountId"
+                    (ngModelChange)="onAccountingAccountChange()"
+                    [disabled]="isLoadingChartAccounts || (isGeneralLedgerReport && !selectedAccountType)">
+              <option [ngValue]="null">{{ 'REPORTS.GL_ALL_ACCOUNTS_OF_TYPE' | translate }}</option>
+              <option *ngFor="let account of filteredAccountOptions" [ngValue]="account.id">
+                {{ account.code }} — {{ glAccountName(account) }}
+              </option>
+            </select>
+          </div>
+          <div class="col-md-3" *ngIf="showAccountingFilter('search')">
+            <label class="form-label small fw-semibold">{{ 'REPORTS.FILTER_SEARCH' | translate }}</label>
+            <input type="search" class="form-control form-control-sm" [(ngModel)]="accountingSearch"
+                   [placeholder]="'REPORTS.FILTER_SEARCH_PLACEHOLDER' | translate"
+                   (keyup.enter)="onAccountingFilterChange()">
+          </div>
+          <div class="col-md-2" *ngIf="showAccountingFilter('reservation_id')">
+            <label class="form-label small fw-semibold">{{ 'REPORTS.FILTER_RESERVATION' | translate }}</label>
+            <input type="number" min="1" class="form-control form-control-sm" [(ngModel)]="accountingReservationId"
+                   (keyup.enter)="onAccountingFilterChange()">
+          </div>
+          <div class="col-md-2" *ngIf="showAccountingFilter('source_type')">
+            <label class="form-label small fw-semibold">{{ 'REPORTS.FILTER_SOURCE' | translate }}</label>
+            <select class="form-select form-select-sm" [(ngModel)]="accountingSourceType"
+                    (ngModelChange)="onAccountingFilterChange()">
+              <option value="">{{ 'REPORTS.FILTER_ANY' | translate }}</option>
+              <option value="reservation_pay">{{ 'REPORTS.SOURCE_TYPES.PAYMENT' | translate }}</option>
+              <option value="daily_charge">{{ 'REPORTS.SOURCE_TYPES.ACCRUAL' | translate }}</option>
+              <option value="manual">{{ 'REPORTS.SOURCE_TYPES.MANUAL' | translate }}</option>
+            </select>
+          </div>
+          <div class="col-md-3" *ngIf="showAccountingFilter('operation')">
+            <label class="form-label small fw-semibold">{{ 'REPORTS.FILTER_OPERATION' | translate }}</label>
+            <select class="form-select form-select-sm" [(ngModel)]="accountingOperation"
+                    (ngModelChange)="onAccountingFilterChange()">
+              <option value="">{{ 'REPORTS.FILTER_ANY' | translate }}</option>
+              <option value="payment_posted">{{ 'REPORTS.AUDIT_OPS.PAYMENT' | translate }}</option>
+              <option value="refund_posted">{{ 'REPORTS.AUDIT_OPS.REFUND' | translate }}</option>
+              <option value="accrual_posted">{{ 'REPORTS.AUDIT_OPS.ACCRUAL' | translate }}</option>
+              <option value="journal_entry_created">{{ 'REPORTS.AUDIT_OPS.MANUAL' | translate }}</option>
+              <option value="period_closed">{{ 'REPORTS.AUDIT_OPS.PERIOD_CLOSE' | translate }}</option>
+            </select>
+          </div>
+          <div class="col-md-2" *ngIf="showAccountingFilter('amount_range')">
+            <label class="form-label small fw-semibold">{{ 'REPORTS.FILTER_MIN_AMOUNT' | translate }}</label>
+            <input type="number" min="0" step="0.01" class="form-control form-control-sm" [(ngModel)]="accountingMinAmount"
+                   (keyup.enter)="onAccountingFilterChange()">
+          </div>
+          <div class="col-md-2" *ngIf="showAccountingFilter('amount_range')">
+            <label class="form-label small fw-semibold">{{ 'REPORTS.FILTER_MAX_AMOUNT' | translate }}</label>
+            <input type="number" min="0" step="0.01" class="form-control form-control-sm" [(ngModel)]="accountingMaxAmount"
+                   (keyup.enter)="onAccountingFilterChange()">
+          </div>
+          <div class="col-12" *ngIf="showAccountingFilter('hide_zero')">
+            <div class="report-filter-bar border-top pt-2 mt-1">
+              <span class="report-filter-bar__label">
+                <i class="bi bi-sliders me-1"></i>{{ 'REPORTS.FILTER_DISPLAY_TITLE' | translate }}
+              </span>
+              <label class="report-filter-chip" [class.report-filter-chip--active]="accountingHideZero"
+                     for="hideZeroSwitch">
+                <span class="form-check form-switch mb-0">
+                  <input class="form-check-input" type="checkbox" id="hideZeroSwitch"
+                         [(ngModel)]="accountingHideZero" (ngModelChange)="onAccountingFilterChange()">
+                </span>
+                <span class="report-filter-chip__text">
+                  <i class="bi bi-eye-slash"></i>{{ 'REPORTS.FILTER_HIDE_ZERO' | translate }}
+                </span>
+              </label>
+              <span class="badge rounded-pill report-filter-badge" *ngIf="accountingHideZero && !isLoading">
+                <i class="bi bi-check2-circle me-1"></i>{{ 'REPORTS.FILTER_HIDE_ZERO_ACTIVE' | translate }}
+              </span>
+              <span class="small text-muted d-none d-md-inline" *ngIf="!accountingHideZero">
+                {{ 'REPORTS.FILTER_HIDE_ZERO_HINT' | translate }}
+              </span>
+              <button type="button" class="btn btn-link btn-sm p-0 ms-auto report-filter-reset"
+                      *ngIf="accountingHideZero" (click)="accountingHideZero = false; onAccountingFilterChange()">
+                <i class="bi bi-x-circle me-1"></i>{{ 'REPORTS.FILTER_SHOW_ALL_ROWS' | translate }}
+              </button>
+            </div>
+          </div>
+          <div class="col-md-2 d-flex align-items-end gap-1">
+            <button type="button" class="btn btn-outline-primary btn-sm w-100" (click)="onAccountingFilterChange()"
+                    [disabled]="isLoading || !canRunReport">
+              {{ 'REPORTS.FILTER_APPLY' | translate }}
+            </button>
+          </div>
+          <div class="col-md-2 d-flex align-items-end" *ngIf="accountingSearch || accountingHideZero || selectedAccountType || selectedAccountId || accountingReservationId || accountingSourceType || accountingOperation || accountingMinAmount || accountingMaxAmount">
+            <button type="button" class="btn btn-outline-secondary btn-sm w-100" (click)="clearAccountingFilters()">
+              {{ 'REPORTS.FILTER_CLEAR' | translate }}
+            </button>
+          </div>
+          <div class="col-12" *ngIf="isGeneralLedgerReport && !selectedAccountType && !isLoading">
+            <div class="alert alert-info py-2 mb-0 small">{{ 'REPORTS.GL_SELECT_TYPE_HINT' | translate }}</div>
+          </div>
+              </div>
+            </div>
+          </div>
+        </ng-container>
+      </div>
+    </div>
+  </div>
+
+  <div class="card border-0 shadow-sm mb-4 report-smtp-off-card" *ngIf="showSmtpOffExportCard">
+    <div class="card-body p-3">
+      <div class="d-flex align-items-start gap-3">
+        <div class="report-smtp-off-card__icon" aria-hidden="true">
+          <i class="bi bi-funnel"></i>
+        </div>
+        <div>
+          <h2 class="h6 fw-bold mb-1">{{ 'REPORTS.SMTP_OFF_TITLE' | translate }}</h2>
+          <p class="small text-muted mb-2 mb-md-0">
+            {{ 'REPORTS.SMTP_OFF_BODY' | translate:{ total: totalRows, exportLimit: exportLimit } }}
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="report-email-export"
+       class="card border-0 shadow-sm mb-4 report-email-card"
+       *ngIf="emailExportEnabled"
+       [class.report-email-card--required]="requiresEmailOrFilters">
+    <div class="card-body p-0">
+      <div class="report-email-card__hero">
+        <div class="report-email-card__icon" aria-hidden="true">
+          <i class="bi bi-envelope-paper"></i>
+        </div>
+        <div class="report-email-card__hero-text">
+          <div class="d-flex align-items-center flex-wrap gap-2 mb-1">
+            <h2 class="h6 fw-bold mb-0">{{ 'REPORTS.EMAIL_EXPORT_TITLE' | translate }}</h2>
+            <span class="report-email-card__badge" *ngIf="requiresEmailOrFilters">
+              <i class="bi bi-lightning-charge-fill" aria-hidden="true"></i>
+              {{ 'REPORTS.EMAIL_EXPORT_BADGE_RECOMMENDED' | translate }}
+            </span>
+          </div>
+          <p class="small mb-0 report-email-card__desc">
+            {{ (requiresEmailOrFilters ? 'REPORTS.EMAIL_EXPORT_DESC_REQUIRED' : 'REPORTS.EMAIL_EXPORT_DESC') | translate:{ total: totalRows, exportLimit: exportLimit } }}
+          </p>
+        </div>
+      </div>
+
+      <div class="report-email-card__points">
+        <span class="report-email-card__point">
+          <i class="bi bi-check2-circle" aria-hidden="true"></i>
+          {{ 'REPORTS.EMAIL_EXPORT_POINT_FULL' | translate }}
+        </span>
+        <span class="report-email-card__point">
+          <i class="bi bi-check2-circle" aria-hidden="true"></i>
+          {{ 'REPORTS.EMAIL_EXPORT_POINT_ASYNC' | translate }}
+        </span>
+        <span class="report-email-card__point">
+          <i class="bi bi-check2-circle" aria-hidden="true"></i>
+          {{ 'REPORTS.EMAIL_EXPORT_POINT_FORMATS' | translate }}
+        </span>
+      </div>
+
+      <div class="report-email-card__form">
+        <div class="row g-3 align-items-end">
+          <div class="col-md-5">
+            <label class="form-label small fw-semibold" for="reportEmailRecipient">
+              {{ 'REPORTS.EMAIL_RECIPIENT' | translate }}
+            </label>
+            <div class="input-group input-group-sm report-email-card__input">
+              <span class="input-group-text"><i class="bi bi-at" aria-hidden="true"></i></span>
+              <input id="reportEmailRecipient" type="email" class="form-control"
+                     [(ngModel)]="recipientEmail"
+                     [placeholder]="'REPORTS.EMAIL_PLACEHOLDER' | translate">
+            </div>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small fw-semibold">{{ 'REPORTS.EMAIL_FORMAT' | translate }}</label>
+            <div class="report-email-format" role="group" [attr.aria-label]="'REPORTS.EMAIL_FORMAT' | translate">
+              <button type="button" class="report-email-format__btn"
+                      [class.report-email-format__btn--active]="emailFormat === 'excel'"
+                      (click)="emailFormat = 'excel'">
+                <i class="bi bi-file-earmark-spreadsheet" aria-hidden="true"></i>
+                {{ 'REPORTS.EMAIL_FORMAT_EXCEL' | translate }}
+              </button>
+              <button type="button" class="report-email-format__btn"
+                      [class.report-email-format__btn--active]="emailFormat === 'pdf'"
+                      (click)="emailFormat = 'pdf'">
+                <i class="bi bi-file-earmark-pdf" aria-hidden="true"></i>
+                {{ 'REPORTS.EMAIL_FORMAT_PDF' | translate }}
+              </button>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <button type="button" class="btn btn-sm w-100 report-email-card__submit"
+                    (click)="requestEmailExport()"
+                    [disabled]="isRequestingEmail || isLoading || !canRunReport">
+              <span *ngIf="!isRequestingEmail" class="d-inline-flex align-items-center justify-content-center gap-1">
+                <i class="bi bi-send-fill" aria-hidden="true"></i>
+                {{ 'REPORTS.EMAIL_SEND_BTN' | translate }}
+              </span>
+              <span *ngIf="isRequestingEmail" class="d-inline-flex align-items-center justify-content-center gap-1">
+                <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                {{ 'REPORTS.EMAIL_SENDING' | translate }}
+              </span>
+            </button>
+          </div>
+        </div>
+        <p class="report-email-card__hint mb-0">
+          <i class="bi bi-info-circle" aria-hidden="true"></i>
+          {{ 'REPORTS.EMAIL_SEND_HINT' | translate }}
+        </p>
+        <div class="report-email-card__status report-email-card__status--ok" *ngIf="emailRequestMessage">
+          <i class="bi bi-check-circle-fill" aria-hidden="true"></i>
+          {{ emailRequestMessage }}
+        </div>
+        <div class="report-email-card__status report-email-card__status--err" *ngIf="emailRequestError">
+          <i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i>
+          {{ emailRequestError }}
+        </div>
+
+        <div class="report-email-queue mt-3" *ngIf="emailExportEnabled">
+          <div class="report-email-queue__head">
+            <span class="report-email-queue__title">
+              <i class="bi bi-hourglass-split" aria-hidden="true"></i>
+              {{ 'REPORTS.EMAIL_QUEUE_TITLE' | translate }}
+            </span>
+            <button type="button" class="btn btn-link btn-sm p-0" (click)="refreshEmailExports()"
+                    [disabled]="isLoadingEmailExports">
+              {{ 'REPORTS.EMAIL_QUEUE_REFRESH' | translate }}
+            </button>
+          </div>
+          <p class="report-email-queue__limit small mb-2" *ngIf="emailExportsNearLimit">
+            {{ 'REPORTS.EMAIL_QUEUE_LIMIT' | translate:{ max: maxPendingEmailExports } }}
+          </p>
+          <p class="report-email-queue__hint small text-muted mb-2" *ngIf="pendingEmailExportCount > 0">
+            {{ 'REPORTS.EMAIL_QUEUE_WORKER_HINT' | translate }}
+          </p>
+          <ul class="report-email-queue__list list-unstyled mb-0" *ngIf="recentEmailExports.length">
+            <li class="report-email-queue__item" *ngFor="let item of recentEmailExports">
+              <div class="min-w-0">
+                <div class="fw-semibold small text-truncate">{{ item.slug }} · {{ item.format }}</div>
+                <div class="text-muted small text-truncate">{{ item.email }} · {{ item.created_at }}</div>
+                <div class="small text-danger" *ngIf="item.status === 'failed' && item.error_message">{{ item.error_message }}</div>
+              </div>
+              <div class="report-email-queue__actions">
+                <span class="report-email-queue__status"
+                      [class.report-email-queue__status--ready]="item.status === 'ready'"
+                      [class.report-email-queue__status--failed]="item.status === 'failed'"
+                      [class.report-email-queue__status--active]="item.status === 'pending' || item.status === 'processing'">
+                  {{ emailExportStatusKey(item.status) | translate }}
+                </span>
+                <a *ngIf="item.download_url" class="btn btn-sm btn-outline-primary" [href]="item.download_url" target="_blank" rel="noopener">
+                  {{ 'REPORTS.EMAIL_QUEUE_DOWNLOAD' | translate }}
+                </a>
+              </div>
+            </li>
+          </ul>
+          <p class="small text-muted mb-0" *ngIf="!recentEmailExports.length && !isLoadingEmailExports">
+            {{ 'REPORTS.EMAIL_QUEUE_EMPTY' | translate }}
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="alert alert-info small py-2" *ngIf="isTruncated && !requiresEmailOrFilters && !isLoading">
+    {{ 'REPORTS.EXPORT_FULL_HINT' | translate:{ pageSize: pageSize, total: totalRows, exportLimit: exportLimit } }}
+  </div>
+
+  <div class="ui-error mb-3" *ngIf="errorMessage" role="alert">
+    <span class="ui-error__icon" aria-hidden="true"><i class="bi bi-exclamation-triangle-fill"></i></span>
+    <div>
+      <p class="ui-error__title">{{ 'COMMON.ERROR' | translate }}</p>
+      <p class="ui-error__text">{{ errorMessage }}</p>
+    </div>
+  </div>
+
+  <div class="report-meta-card mb-3" *ngIf="!isLoading && metaLines.length" role="region"
+       [attr.aria-label]="'REPORTS.META_CARD_TITLE' | translate">
+    <div class="report-meta-card__hero">
+      <div class="report-meta-card__icon" aria-hidden="true">
+        <i class="bi bi-journal-text"></i>
+      </div>
+      <div class="report-meta-card__hero-text">
+        <div class="report-meta-card__title">{{ 'REPORTS.META_CARD_TITLE' | translate }}</div>
+        <div class="report-meta-card__chips">
+          <span class="report-meta-card__chip" *ngIf="metaPeriodRange">
+            <i class="bi bi-calendar3" aria-hidden="true"></i>
+            <span>{{ 'REPORTS.PERIOD' | translate }}:</span>
+            <strong>{{ metaPeriodRange.start }} → {{ metaPeriodRange.end }}</strong>
+          </span>
+          <span class="report-meta-card__chip" *ngIf="metaAsOfDate">
+            <i class="bi bi-calendar-event" aria-hidden="true"></i>
+            <span>{{ 'REPORTS.AS_OF_DATE' | translate }}:</span>
+            <strong>{{ metaAsOfDate }}</strong>
+          </span>
+          <span class="report-meta-card__chip report-meta-card__chip--compare" *ngIf="metaCompareRange">
+            <i class="bi bi-arrow-left-right" aria-hidden="true"></i>
+            <span>{{ 'REPORTS.COMPARE' | translate }}:</span>
+            <strong>{{ metaCompareRange.start }} → {{ metaCompareRange.end }}</strong>
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <p class="report-meta-card__intro" *ngIf="metaIntroLine">{{ metaIntroLine }}</p>
+
+    <ul class="report-meta-card__notes" *ngIf="metaDetailNotes.length">
+      <li *ngFor="let note of metaDetailNotes">
+        <i class="bi bi-info-circle" aria-hidden="true"></i>
+        <span>{{ note }}</span>
+      </li>
+    </ul>
+  </div>
+
+  <div class="report-loading ui-loading" *ngIf="isLoading" role="status" [attr.aria-label]="'REPORTS.LOADING' | translate">
+    <p class="ui-loading__text">{{ 'REPORTS.LOADING' | translate }}</p>
+    <div class="row g-2 mb-3 w-100">
+      <div class="col-md-3 col-6" *ngFor="let _ of [1,2,3,4]">
+        <div class="skeleton skeleton-text" style="height: 4rem; border-radius: 0.65rem;"></div>
+      </div>
+    </div>
+    <div class="skeleton w-100 mb-2" style="height: 2.25rem; border-radius: 0.5rem;"></div>
+    <div class="skeleton w-100 mb-2" style="height: 2.25rem; border-radius: 0.5rem;"></div>
+    <div class="skeleton w-100" style="height: 2.25rem; border-radius: 0.5rem;"></div>
+  </div>
+
+  <div class="report-summary-bar mb-3" *ngIf="!isLoading && primarySummary.length">
+    <div class="report-summary-bar__head">
+      <span class="report-summary-bar__title">
+        <i class="bi bi-speedometer2" aria-hidden="true"></i>
+        {{ 'REPORTS.SUMMARY_TITLE' | translate }}
+      </span>
+      <span class="report-summary-bar__meta" *ngIf="!isAsOfReport && startDate && endDate">
+        {{ startDate }} → {{ endDate }}
+      </span>
+      <span class="report-summary-bar__meta" *ngIf="isAsOfReport && endDate">
+        {{ endDate }}
+      </span>
+    </div>
+    <div class="report-kpi-grid" [attr.data-count]="primarySummary.length">
+      <article class="report-kpi-card" *ngFor="let s of primarySummary"
+               [class]="summaryToneClass(s)">
+        <div class="report-kpi-card__top">
+          <span class="report-kpi-card__label">{{ s.label }}</span>
+          <span class="report-kpi-card__icon" aria-hidden="true">
+            <i class="bi" [ngClass]="summaryIcon(s.label)"></i>
+          </span>
+        </div>
+        <div class="report-kpi-card__value">{{ formatSummaryValue(s.value) }}</div>
+      </article>
+    </div>
+  </div>
+
+  <div class="report-compare-summary mb-3" *ngIf="!isLoading && hasCompareSummary">
+    <div class="report-summary-bar__head">
+      <span class="report-summary-bar__title">
+        <i class="bi bi-bar-chart-line" aria-hidden="true"></i>
+        {{ 'REPORTS.COMPARE_SUMMARY_TITLE' | translate:{ start: compareStartDate, end: compareEndDate } }}
+      </span>
+    </div>
+    <div class="report-kpi-grid" [attr.data-count]="compareSummaryCards.length">
+      <article class="report-kpi-card report-kpi-card--compare" *ngFor="let s of compareSummaryCards"
+               [class]="summaryToneClass(s)">
+        <div class="report-kpi-card__top">
+          <span class="report-kpi-card__label">{{ s.label }}</span>
+          <span class="report-kpi-card__icon" aria-hidden="true">
+            <i class="bi" [ngClass]="summaryIcon(s.label)"></i>
+          </span>
+        </div>
+        <div class="report-kpi-card__value">{{ formatSummaryValue(s.value) }}</div>
+      </article>
+    </div>
+  </div>
+
+  <div class="report-drill-hint" *ngIf="!isLoading && drillDownHintKey">
+    <i class="bi bi-hand-index-thumb" aria-hidden="true"></i>
+    <span>{{ drillDownHintKey | translate }}</span>
+  </div>
+
+  <div class="alert alert-primary py-2 mb-3 d-flex align-items-center justify-content-between flex-wrap gap-2"
+       *ngIf="!isLoading && isGeneralLedgerReport && selectedAccountId">
+    <span class="small mb-0">{{ 'REPORTS.GL_ACCOUNT_FILTER' | translate:{ account: selectedAccountLabel } }}</span>
+    <button type="button" class="btn btn-sm btn-outline-primary" (click)="clearGeneralLedgerAccountFilter()">
+      {{ 'REPORTS.GL_CLEAR_ACCOUNT_FILTER' | translate }}
+    </button>
+  </div>
+
+  <div class="ui-empty report-empty-state" *ngIf="emptyStateKey">
+    <span class="ui-empty__icon" aria-hidden="true"><i class="bi bi-inbox"></i></span>
+    <p class="ui-empty__title">{{ emptyStateKey | translate }}</p>
+    <p class="ui-empty__text">{{ 'REPORTS.EMPTY_HINT' | translate }}</p>
+  </div>
+
+  <div class="card border-0 shadow-sm report-results" *ngIf="!isLoading && rows.length">
+    <div class="report-results__header">
+      <div class="d-flex align-items-center gap-2 flex-wrap">
+        <span class="report-results__icon" aria-hidden="true"><i class="bi bi-table"></i></span>
+        <h2 class="h6 mb-0 fw-bold">{{ 'REPORTS.RESULTS_TITLE' | translate }}</h2>
+        <span class="report-results__count">
+          {{ 'REPORTS.ROWS_COUNT' | translate:{ count: totalRows } }}
+        </span>
+        <span class="export-email-only-badge" *ngIf="requiresEmailOrFilters">
+          <i class="bi bi-envelope" aria-hidden="true"></i>
+          {{ 'REPORTS.EXPORT_EMAIL_ONLY_BADGE' | translate }}
+        </span>
+      </div>
+      <button type="button" class="btn btn-sm btn-outline-primary" *ngIf="requiresEmailOrFilters && emailExportEnabled"
+              (click)="focusEmailExport()">
+        <i class="bi bi-envelope me-1" aria-hidden="true"></i>
+        {{ 'REPORTS.EXPORT_LIMIT_BANNER_CTA' | translate }}
+      </button>
+    </div>
+    <div class="table-responsive report-results__scroll ui-table-shell border-0 rounded-0">
+      <table class="table table-sm table-hover mb-0 report-results__table ui-result-table">
+        <thead>
+          <tr>
+            <th *ngFor="let col of columns; let i = index" [class]="headerCellClass(col, i)">{{ col.label }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let row of rows"
+              [class.report-account-row]="isReportRowClickable(row)"
+              [attr.role]="isReportRowClickable(row) ? 'button' : null"
+              [attr.tabindex]="isReportRowClickable(row) ? 0 : null"
+              (click)="onReportRowClick(row)"
+              (keydown.enter)="onReportRowClick(row, $event)"
+              (keydown.space)="onReportRowClick(row, $event)">
+            <td *ngFor="let col of columns; let i = index" [class]="bodyCellClass(col, i)">{{ formatCellValue(col, row) }}</td>
+          </tr>
+        </tbody>
+        <tfoot *ngIf="hasPageNumericTotals">
+          <tr>
+            <td *ngFor="let col of columns; let i = index" [class]="bodyCellClass(col, i)">
+              <ng-container *ngIf="i === 0">{{ 'REPORTS.PAGE_TOTALS' | translate }}</ng-container>
+              <ng-container *ngIf="i > 0 && isNumericColumn(col)">{{ formatPageTotal(col) }}</ng-container>
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <div class="card-footer bg-white border-top py-3 d-flex align-items-center justify-content-between flex-wrap gap-2"
+         *ngIf="totalRows > 0">
+      <div class="small text-muted">
+        {{ 'REPORTS.PAGINATION_SHOWING' | translate:{ from: paginationFrom, to: paginationTo, total: totalRows } }}
+      </div>
+      <nav aria-label="Page navigation" *ngIf="totalPages > 1">
+        <ul class="pagination pagination-sm mb-0">
+          <li class="page-item" [class.disabled]="currentPage === 1">
+            <button type="button" class="page-link" (click)="setPage(currentPage - 1)">{{ 'REPORTS.PREV_PAGE' | translate }}</button>
+          </li>
+          <li class="page-item" *ngFor="let page of pages"
+              [class.active]="page !== 'ellipsis' && currentPage === page"
+              [class.disabled]="page === 'ellipsis'">
+            <button type="button" class="page-link" (click)="setPage(page)" [disabled]="page === 'ellipsis'">
+              {{ page === 'ellipsis' ? '…' : page }}
+            </button>
+          </li>
+          <li class="page-item" [class.disabled]="currentPage === totalPages">
+            <button type="button" class="page-link" (click)="setPage(currentPage + 1)">{{ 'REPORTS.NEXT_PAGE' | translate }}</button>
+          </li>
+        </ul>
+      </nav>
+    </div>
+  </div>
+</div>

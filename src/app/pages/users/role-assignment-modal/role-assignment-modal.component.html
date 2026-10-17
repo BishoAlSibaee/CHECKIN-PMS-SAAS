@@ -1,0 +1,147 @@
+<div class="modal-backdrop" (click)="closeModal.emit()">
+  <div class="modal-content card bg-white" (click)="$event.stopPropagation()">
+    <div class="modal-header border-bottom-0 pb-0 px-3 pt-3">
+      <div class="d-flex align-items-center gap-3">
+        <div class="bg-primary bg-opacity-10 p-2 rounded-3">
+          <i class="bi bi-person-badge text-primary fs-4"></i>
+        </div>
+        <div>
+          <h6 class="mb-0">
+            {{ (mode === 'single' ? 'USERS.MODALS.ASSIGN_ROLE.TITLE_SINGLE' : 'USERS.MODALS.ASSIGN_ROLE.TITLE_BULK') | translate }}
+          </h6>
+          <p class="text-muted small mb-0">{{ 'USERS.MODALS.ASSIGN_ROLE.SELECT_ROLE' | translate }}</p>
+        </div>
+      </div>
+      <button type="button" class="btn-close" (click)="close()"></button>
+    </div>
+
+    <div class="modal-body py-3 px-3">
+      <div class="mb-3">
+        <label class="form-label small fw-medium text-uppercase text-muted ls-1 mb-2">
+          {{ 'USERS.MODALS.ASSIGN_ROLE.SELECTED_USERS' | translate }} ({{ selectedUserIds.length || selectedUsers.length }})
+        </label>
+        <div class="selected-users-list d-flex flex-wrap gap-2 p-3 bg-light rounded-3 border">
+          <ng-container *ngIf="selectedUsers.length > 0; else noUsers">
+            <div *ngFor="let user of selectedUsers" class="user-chip d-flex align-items-center gap-2 bg-white border px-2 py-1 rounded-2 shadow-sm">
+              <div class="avatar avatar-xs bg-soft-primary text-primary rounded-circle small fw-bold">
+                {{ user.name.substring(0, 1).toUpperCase() }}
+              </div>
+              <span class="small fw-medium">{{ user.name }}</span>
+              <span
+                *ngIf="user.roleId && currentRoleLabel(user)"
+                class="badge bg-soft-primary text-primary border small py-0 px-1"
+                [attr.title]="'USERS.MODALS.ASSIGN_ROLE.CURRENT_ROLE' | translate">
+                {{ currentRoleLabel(user) }}
+              </span>
+              <span
+                *ngIf="!user.roleId"
+                class="badge bg-light text-muted border small py-0 px-1">
+                {{ 'USERS.NONE' | translate }}
+              </span>
+            </div>
+          </ng-container>
+          <ng-template #noUsers>
+            <span class="text-muted small italic">{{ 'USERS.MODALS.ASSIGN_ROLE.NO_USERS' | translate }}</span>
+          </ng-template>
+        </div>
+      </div>
+
+      <div class="role-selection-area">
+        <label class="form-label small fw-medium text-uppercase text-muted ls-1 mb-2">
+          {{ 'USERS.MODALS.ASSIGN_ROLE.SELECT_ROLE' | translate }}
+        </label>
+
+        <div class="roles-container custom-scrollbar">
+          <div class="role-group mb-3" *ngIf="systemRoles.length">
+            <div class="d-flex align-items-center gap-2 mb-2">
+              <span class="badge bg-soft-info text-info rounded-pill px-2 py-1 small">
+                {{ 'USERS.MODALS.ASSIGN_ROLE.SYSTEM_ROLES' | translate }}
+              </span>
+            </div>
+            <div class="row g-2">
+              <div *ngFor="let role of systemRoles" class="col-12">
+                <div class="role-card p-3 border rounded-3 cursor-pointer transition-all"
+                     [class.border-primary]="selectedRoleId === role.id"
+                     [class.bg-primary-subtle]="selectedRoleId === role.id"
+                     (click)="selectRole(role.id)">
+                  <div class="d-flex align-items-center gap-3">
+                    <div class="form-check mb-0">
+                      <input class="form-check-input" type="radio"
+                             [checked]="selectedRoleId === role.id"
+                             (change)="selectRole(role.id)">
+                    </div>
+                    <div class="flex-grow-1">
+                      <div class="d-flex align-items-center gap-2">
+                        <h6 class="mb-0 fw-semibold">{{ currentLang === 'ar' ? (role.name_ar || role.name) : (role.name || role.name_ar) }}</h6>
+                        <span class="badge bg-soft-secondary text-secondary small py-0 px-1 border">
+                          {{ 'USERS.MODALS.ASSIGN_ROLE.SYSTEM' | translate }}
+                        </span>
+                      </div>
+                      <p class="text-muted small mb-0 text-truncate">
+                        {{ currentLang === 'ar' ? (role.description_ar || role.description) : (role.description || role.description_ar) }}
+                      </p>
+                    </div>
+                    <div class="role-stats text-end">
+                      <span class="d-block small fw-medium">{{ role.permissions.length }}</span>
+                      <span class="text-muted" style="font-size: 0.7rem;">{{ 'USERS.MODALS.CREATE_ROLE.PERMISSIONS' | translate }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="role-group" *ngIf="customRoles.length">
+            <div class="d-flex align-items-center gap-2 mb-2">
+              <span class="badge bg-soft-primary text-primary rounded-pill px-2 py-1 small">
+                {{ 'USERS.MODALS.ASSIGN_ROLE.CUSTOM_ROLES' | translate }}
+              </span>
+            </div>
+            <div class="row g-2">
+              <div *ngFor="let role of customRoles" class="col-12">
+                <div class="role-card p-3 border rounded-3 cursor-pointer transition-all"
+                     [class.border-primary]="selectedRoleId === role.id"
+                     [class.bg-primary-subtle]="selectedRoleId === role.id"
+                     (click)="selectRole(role.id)">
+                  <div class="d-flex align-items-center gap-3">
+                    <div class="form-check mb-0">
+                      <input class="form-check-input" type="radio"
+                             [checked]="selectedRoleId === role.id"
+                             (change)="selectRole(role.id)">
+                    </div>
+                    <div class="flex-grow-1">
+                      <div class="d-flex align-items-center gap-2">
+                        <h6 class="mb-0 fw-semibold">{{ currentLang === 'ar' ? (role.name_ar || role.name) : (role.name || role.name_ar) }}</h6>
+                        <span class="badge bg-soft-warning text-warning small py-0 px-1 border">
+                          {{ 'USERS.MODALS.ASSIGN_ROLE.CUSTOM' | translate }}
+                        </span>
+                      </div>
+                      <p class="text-muted small mb-0 text-truncate">
+                        {{ currentLang === 'ar' ? (role.description_ar || role.description) : (role.description || role.description_ar) }}
+                      </p>
+                    </div>
+                    <div class="role-stats text-end">
+                      <span class="d-block small fw-medium">{{ role.permissions.length }}</span>
+                      <span class="text-muted" style="font-size: 0.7rem;">{{ 'USERS.MODALS.CREATE_ROLE.PERMISSIONS' | translate }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-footer border-top gap-2 px-3 pb-3 pt-2">
+      <button type="button" class="btn btn-light px-4" (click)="close()">{{ 'COMMON.CANCEL' | translate }}</button>
+      <button type="button" class="btn btn-primary px-4 d-flex align-items-center gap-2"
+              [disabled]="!selectedRoleId || isAssigning"
+              (click)="assignRole()">
+        <span *ngIf="isAssigning" class="spinner-border spinner-border-sm"></span>
+        {{ (isAssigning ? 'USERS.MODALS.ASSIGN_ROLE.ASSIGNING' :
+            (mode === 'single' ? 'USERS.MODALS.ASSIGN_ROLE.ASSIGN_ROLE' : 'USERS.MODALS.ASSIGN_ROLE.ASSIGN_TO_USERS')) | translate:{count: selectedUserIds.length || selectedUsers.length} }}
+      </button>
+    </div>
+  </div>
+</div>

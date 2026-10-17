@@ -1,0 +1,578 @@
+<div class="pricing-page">
+  <section class="pricing-hero">
+    <div class="pricing-hero__copy">
+      <p class="pricing-hero__eyebrow">
+        <i class="bi bi-tags" aria-hidden="true"></i>
+        {{ 'PRICING.EYEBROW' | translate }}
+      </p>
+      <h1>{{ 'PRICING.TITLE' | translate }}</h1>
+      <p class="pricing-hero__subtitle">{{ 'PRICING.SUBTITLE' | translate }}</p>
+    </div>
+    <div class="pricing-hero__actions">
+      <button type="button" class="btn btn-outline-secondary" (click)="refresh()" [disabled]="isLoading"
+              [attr.aria-label]="'COMMON.REFRESH' | translate">
+        <i class="bi bi-arrow-clockwise" [class.spin]="isLoading" aria-hidden="true"></i>
+        <span>{{ 'COMMON.REFRESH' | translate }}</span>
+      </button>
+      <button type="button" *ngIf="canCreateOnActiveTab" class="btn btn-primary" (click)="openAddModal()">
+        <i class="bi bi-plus-lg" aria-hidden="true"></i>
+        <span>{{ primaryActionLabel | translate }}</span>
+      </button>
+    </div>
+  </section>
+
+  <div class="pricing-summary" role="group" [attr.aria-label]="'PRICING.SUMMARY_ARIA' | translate">
+    <ng-container *ngIf="isLoading">
+      <div class="pricing-stat" *ngFor="let i of [1,2,3,4]">
+        <div class="skeleton skeleton-text" style="width: 45%;"></div>
+        <div class="skeleton skeleton-text mt-2" style="width: 30%; height: 1.5rem;"></div>
+      </div>
+    </ng-container>
+    <ng-container *ngIf="!isLoading">
+      <button type="button" class="pricing-stat" [class.pricing-stat--active-tab]="activeTab === 'room-types'"
+              (click)="setTab('room-types')">
+        <span class="pricing-stat__label">{{ 'PRICING.STATS.ROOM_TYPES' | translate }}</span>
+        <span class="pricing-stat__value">{{ roomTypes.length }}</span>
+        <span class="pricing-stat__hint">{{ 'PRICING.STATS.CATEGORIES_CONFIGURED' | translate }}</span>
+      </button>
+      <button type="button" class="pricing-stat pricing-stat--plans" [class.pricing-stat--active-tab]="activeTab === 'plans'"
+              (click)="setTab('plans'); statusFilter = 'active'">
+        <span class="pricing-stat__label">{{ 'PRICING.STATS.ACTIVE_PLANS' | translate }}</span>
+        <span class="pricing-stat__value">{{ activePlansCount }}</span>
+        <span class="pricing-stat__hint">{{ 'PRICING.STATS.OFFERS_RUNNING' | translate }}</span>
+      </button>
+      <div class="pricing-stat pricing-stat--draft">
+        <span class="pricing-stat__label">{{ 'PRICING.STATS.DRAFT_EXPIRED' | translate }}</span>
+        <span class="pricing-stat__value">{{ draftPlansCount + expiredPlansCount }}</span>
+        <span class="pricing-stat__hint">{{ 'PRICING.STATS.DRAFT_EXPIRED_HINT' | translate:{ draft: draftPlansCount, expired: expiredPlansCount } }}</span>
+      </div>
+      <div class="pricing-stat pricing-stat--rate">
+        <span class="pricing-stat__label">{{ 'PRICING.STATS.AVG_BASE_RATE' | translate }}</span>
+        <span class="pricing-stat__value">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ avgBaseRate }}</span>
+        <span class="pricing-stat__hint">{{ 'PRICING.STATS.PER_NIGHT' | translate }}</span>
+      </div>
+    </ng-container>
+  </div>
+
+  <div class="pricing-tabs" role="tablist" [attr.aria-label]="'PRICING.TABS_ARIA' | translate">
+    <button type="button" role="tab" class="pricing-tab"
+            [class.pricing-tab--active]="activeTab === 'plans'"
+            [attr.aria-selected]="activeTab === 'plans'"
+            (click)="setTab('plans')">
+      <i class="bi bi-tag" aria-hidden="true"></i>
+      {{ 'PRICING.TABS.PRICING_PLANS' | translate }}
+    </button>
+    <button type="button" role="tab" class="pricing-tab"
+            [class.pricing-tab--active]="activeTab === 'room-types'"
+            [attr.aria-selected]="activeTab === 'room-types'"
+            (click)="setTab('room-types')">
+      <i class="bi bi-door-open" aria-hidden="true"></i>
+      {{ 'PRICING.TABS.ROOM_TYPES' | translate }}
+    </button>
+  </div>
+
+  <div class="pricing-toolbar card border-0 shadow-sm">
+    <div class="pricing-search flex-grow-1">
+      <i class="bi bi-search pricing-search__icon" aria-hidden="true"></i>
+      <label class="visually-hidden" for="pricingSearch">
+        {{ (activeTab === 'plans' ? 'PRICING.SEARCH.PLANS_PLACEHOLDER' : 'PRICING.SEARCH.TYPES_PLACEHOLDER') | translate }}
+      </label>
+      <input id="pricingSearch" type="search" class="form-control pricing-search__input"
+             [(ngModel)]="search"
+             [placeholder]="(activeTab === 'plans' ? 'PRICING.SEARCH.PLANS_PLACEHOLDER' : 'PRICING.SEARCH.TYPES_PLACEHOLDER') | translate" />
+    </div>
+    <div class="pricing-chip-group" *ngIf="activeTab === 'plans'" role="group"
+         [attr.aria-label]="'PRICING.STATUS_FILTER_ARIA' | translate">
+      <button type="button" class="pricing-chip"
+              [class.pricing-chip--active]="statusFilter === 'all'"
+              (click)="statusFilter = 'all'">{{ 'PRICING.FILTERS.ALL_STATUS' | translate }}</button>
+      <button type="button" class="pricing-chip"
+              [class.pricing-chip--active]="statusFilter === 'active'"
+              (click)="statusFilter = 'active'">{{ 'PRICING.FILTERS.ACTIVE' | translate }}</button>
+      <button type="button" class="pricing-chip"
+              [class.pricing-chip--active]="statusFilter === 'draft'"
+              (click)="statusFilter = 'draft'">{{ 'PRICING.FILTERS.DRAFT' | translate }}</button>
+      <button type="button" class="pricing-chip"
+              [class.pricing-chip--active]="statusFilter === 'expired'"
+              (click)="statusFilter = 'expired'">{{ 'PRICING.FILTERS.EXPIRED' | translate }}</button>
+    </div>
+  </div>
+
+  <div class="row g-3 pricing-main">
+    <div class="col-lg-8">
+      <ng-container *ngIf="isLoading">
+        <div *ngIf="activeTab === 'plans'" class="d-flex flex-column gap-3">
+          <div *ngFor="let i of [1,2,3]" class="card border-0 shadow-sm p-3">
+            <div class="d-flex align-items-start justify-content-between mb-2">
+              <div class="d-flex align-items-center gap-3">
+                <div class="skeleton" style="width: 2.5rem; height: 2.5rem; border-radius: 8px;"></div>
+                <div style="width: 200px;">
+                  <div class="skeleton skeleton-text" style="width: 60%;"></div>
+                  <div class="skeleton skeleton-text" style="width: 90%;"></div>
+                </div>
+              </div>
+              <div class="skeleton" style="width: 60px; height: 22px; border-radius: 999px;"></div>
+            </div>
+            <div class="skeleton skeleton-text" style="width: 150px;"></div>
+          </div>
+        </div>
+        <div *ngIf="activeTab === 'room-types'" class="row g-3">
+          <div *ngFor="let i of [1,2,3,4]" class="col-md-6">
+            <div class="card border-0 shadow-sm p-3">
+              <div class="d-flex justify-content-between">
+                <div class="d-flex gap-2">
+                  <div class="skeleton" style="width: 2.5rem; height: 2.5rem; border-radius: 8px;"></div>
+                  <div style="width: 100px;">
+                    <div class="skeleton skeleton-text" style="width: 80%;"></div>
+                    <div class="skeleton skeleton-text" style="width: 60%;"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </ng-container>
+
+      <ng-container *ngIf="!isLoading">
+        <div *ngIf="activeTab === 'plans'" class="d-flex flex-column gap-3">
+          <div *ngIf="filteredPlans.length === 0" class="card border-0 shadow-sm p-5 text-center">
+            <div class="pricing-empty">
+              <i class="bi bi-tag" aria-hidden="true"></i>
+              <p class="fw-semibold mb-1">
+                {{ (pricingPlans.length === 0 ? 'PRICING.NO_PLANS' : 'PRICING.NO_RESULTS') | translate }}
+              </p>
+              <p class="text-muted small mb-3">
+                {{ (pricingPlans.length === 0 ? 'PRICING.EMPTY_PLANS_HINT' : 'PRICING.NO_RESULTS_HINT') | translate }}
+              </p>
+              <button type="button" class="btn btn-primary btn-sm" *ngIf="pricingPlans.length === 0 && canManagePricingPlans"
+                      (click)="openAddModal()">
+                <i class="bi bi-plus-lg me-1" aria-hidden="true"></i>{{ 'PRICING.NEW_PRICING_PLAN' | translate }}
+              </button>
+              <button type="button" class="btn btn-outline-secondary btn-sm" *ngIf="pricingPlans.length > 0"
+                      (click)="clearFilters()">
+                {{ 'PRICING.CLEAR_FILTERS' | translate }}
+              </button>
+            </div>
+          </div>
+
+          <div *ngFor="let plan of filteredPlans"
+               class="card border-0 shadow-sm p-3 pricing-item"
+               [class.selected]="selectedPlan?.id === plan.id"
+               (click)="selectedPlan = plan; selectedType = null"
+               (keydown.enter)="selectedPlan = plan; selectedType = null"
+               tabindex="0"
+               role="button"
+               [attr.aria-pressed]="selectedPlan?.id === plan.id">
+            <div class="d-flex align-items-start justify-content-between mb-2 gap-2">
+              <div class="d-flex align-items-center gap-3 min-w-0">
+                <div class="p-2 rounded-lg icon-box flex-shrink-0"><i class="bi bi-tag text-primary" aria-hidden="true"></i></div>
+                <div class="min-w-0">
+                  <h6 class="mb-1 fw-bold text-truncate">{{ displayPlanName(plan) }}</h6>
+                  <p class="mb-0 text-muted small text-truncate">{{ plan.description || ('COMMON.NA' | translate) }}</p>
+                </div>
+              </div>
+              <div class="d-flex align-items-center gap-1 flex-shrink-0">
+                <button *ngIf="canManagePricingPlans && !isPlanExpired(plan)" type="button" class="btn btn-sm btn-light text-primary"
+                        (click)="openEditPricingPlan(plan); $event.stopPropagation()"
+                        [attr.aria-label]="'COMMON.EDIT' | translate">
+                  <i class="bi bi-pencil" aria-hidden="true"></i>
+                </button>
+                <span class="badge rounded-pill border" [ngClass]="getStatusBadgeClass(plan.status)">
+                  {{ statusLabelKey(plan.status) | translate }}
+                </span>
+              </div>
+            </div>
+            <div class="small text-muted mb-2">
+              <i class="bi bi-calendar3 me-1" aria-hidden="true"></i>{{ plan.startDate }} → {{ plan.endDate }}
+            </div>
+            <div class="d-flex flex-wrap gap-1">
+              <span *ngFor="let id of plan.linkedRoomTypes" class="badge rounded-pill border room-badge">
+                <span class="dot me-1" [style.background]="getRoomTypeById(id)?.color || '#94a3b8'"></span>
+                {{ displayTypeName(getRoomTypeById(id)) || ('COMMON.NA' | translate) }}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div *ngIf="activeTab === 'room-types'" class="row g-3">
+          <div *ngIf="filteredTypes.length === 0" class="col-12">
+            <div class="card border-0 shadow-sm p-5 text-center">
+              <div class="pricing-empty">
+                <i class="bi bi-door-open" aria-hidden="true"></i>
+                <p class="fw-semibold mb-1">
+                  {{ (roomTypes.length === 0 ? 'PRICING.NO_TYPES' : 'PRICING.NO_RESULTS') | translate }}
+                </p>
+                <p class="text-muted small mb-3">
+                  {{ (roomTypes.length === 0 ? 'PRICING.EMPTY_TYPES_HINT' : 'PRICING.NO_RESULTS_HINT') | translate }}
+                </p>
+                <button type="button" class="btn btn-primary btn-sm" *ngIf="roomTypes.length === 0 && canManageRoomTypes"
+                        (click)="openAddModal()">
+                  <i class="bi bi-plus-lg me-1" aria-hidden="true"></i>{{ 'PRICING.NEW_ROOM_TYPE' | translate }}
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" *ngIf="roomTypes.length > 0"
+                        (click)="clearFilters()">
+                  {{ 'PRICING.CLEAR_FILTERS' | translate }}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div *ngFor="let type of filteredTypes" class="col-md-6">
+            <div class="card border-0 shadow-sm p-3 pricing-item h-100"
+                 [class.selected]="selectedType?.id === type.id"
+                 (click)="selectRoomType(type)"
+                 (keydown.enter)="selectRoomType(type)"
+                 tabindex="0"
+                 role="button"
+                 [attr.aria-pressed]="selectedType?.id === type.id">
+              <div class="d-flex justify-content-between align-items-start gap-2">
+                <div class="d-flex gap-2 min-w-0">
+                  <div class="rounded-lg p-2 flex-shrink-0" [style.background]="(type.color || '#3b82f6') + '20'">
+                    <i class="bi bi-door-open" [style.color]="type.color || '#3b82f6'" aria-hidden="true"></i>
+                  </div>
+                  <div class="min-w-0">
+                    <h6 class="mb-1 fw-bold text-truncate">{{ displayTypeName(type) }}</h6>
+                    <small class="text-muted">{{ 'PRICING.GUESTS_UP_TO' | translate:{count: type.maxOccupancy} }}</small>
+                  </div>
+                </div>
+                <div class="text-end flex-shrink-0">
+                  <button *ngIf="canManageRoomTypes" type="button" class="btn btn-sm btn-light text-primary mb-1"
+                          (click)="openEditRoomType(type); $event.stopPropagation()"
+                          [attr.aria-label]="'COMMON.EDIT' | translate">
+                    <i class="bi bi-pencil" aria-hidden="true"></i>
+                  </button>
+                  <div class="fw-bold">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ getEffectiveRate(type.id).best }}</div>
+                  <small class="text-muted">/{{ 'PRICING.STATS.PER_NIGHT' | translate }}</small>
+                </div>
+              </div>
+              <p class="small text-muted mt-2 mb-0">{{ type.description || ('COMMON.NA' | translate) }}</p>
+            </div>
+          </div>
+        </div>
+      </ng-container>
+    </div>
+
+    <div class="col-lg-4">
+      <div class="card border-0 shadow-sm sticky-top detail-panel">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center border-bottom">
+          <h6 class="mb-0 fw-bold">
+            {{ (selectedPlan ? 'PRICING.DETAILS.PLAN_TITLE' : selectedType ? 'PRICING.DETAILS.TYPE_TITLE' : 'PRICING.DETAILS.TITLE') | translate }}
+          </h6>
+          <button type="button" *ngIf="selectedPlan || selectedType" class="btn btn-sm btn-light"
+                  (click)="selectedPlan = null; selectedType = null"
+                  [attr.aria-label]="'COMMON.CANCEL' | translate">
+            <i class="bi bi-x-lg" aria-hidden="true"></i>
+          </button>
+        </div>
+        <div class="card-body" *ngIf="selectedPlan">
+          <span class="badge rounded-pill border mb-3" [ngClass]="getStatusBadgeClass(selectedPlan.status)">
+            {{ statusLabelKey(selectedPlan.status) | translate }}
+          </span>
+          <h5 class="fw-bold">{{ displayPlanName(selectedPlan) }}</h5>
+          <p class="text-muted small">{{ selectedPlan.description || ('COMMON.NA' | translate) }}</p>
+          <div class="detail-facts small">
+            <div class="d-flex justify-content-between"><span class="text-muted">{{ 'PRICING.DETAILS.DAILY_PRICE' | translate }}</span><span class="fw-semibold">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ selectedPlan.dailyPrice }}</span></div>
+            <div class="d-flex justify-content-between"><span class="text-muted">{{ 'PRICING.DETAILS.MONTHLY_PRICE' | translate }}</span><span class="fw-semibold">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ selectedPlan.monthlyPrice }}</span></div>
+            <div class="d-flex justify-content-between"><span class="text-muted">{{ 'PRICING.DETAILS.START' | translate }}</span><span>{{ selectedPlan.startDate }}</span></div>
+            <div class="d-flex justify-content-between"><span class="text-muted">{{ 'PRICING.DETAILS.END' | translate }}</span><span>{{ selectedPlan.endDate }}</span></div>
+          </div>
+          <div *ngIf="isPlanExpired(selectedPlan)" class="alert alert-warning small py-2 px-3 mt-3 mb-0">
+            <i class="bi bi-lock me-1" aria-hidden="true"></i>{{ 'PRICING.MESSAGES.PLAN_EXPIRED_READONLY' | translate }}
+          </div>
+          <button type="button" *ngIf="canManagePricingPlans && !isPlanExpired(selectedPlan)"
+                  class="btn btn-outline-danger btn-sm w-100 mt-4"
+                  (click)="deletePricingPlan(selectedPlan.id)">
+            <i class="bi bi-trash me-1" aria-hidden="true"></i>{{ 'PRICING.DETAILS.DELETE_PLAN' | translate }}
+          </button>
+        </div>
+        <div class="card-body" *ngIf="selectedType">
+          <h5 class="fw-bold">{{ displayTypeName(selectedType) }}</h5>
+          <p class="text-muted small">{{ selectedType.description || ('COMMON.NA' | translate) }}</p>
+          <div class="detail-facts small">
+            <div class="d-flex justify-content-between"><span class="text-muted">{{ 'PRICING.DETAILS.BASE_RATE' | translate }}</span><span class="fw-semibold">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ selectedType.baseRate }}/{{ 'PRICING.STATS.PER_NIGHT' | translate }}</span></div>
+            <div class="d-flex justify-content-between"><span class="text-muted">{{ 'PRICING.DETAILS.DAILY_RANGE' | translate }}</span><span>{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ selectedType.minDailyRate }} – {{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ selectedType.maxDailyRate }}</span></div>
+            <div class="d-flex justify-content-between"><span class="text-muted">{{ 'PRICING.DETAILS.MONTHLY_RANGE' | translate }}</span><span>{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ selectedType.minMonthlyRate }} – {{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ selectedType.maxMonthlyRate }}</span></div>
+          </div>
+
+          <div *ngIf="selectedType.dynamic_pricing_enabled" class="mt-4 pt-3 border-top">
+            <h6 class="fw-bold small">{{ 'PRICING.DYNAMIC.TITLE' | translate }}</h6>
+
+            <div *ngIf="isLoadingDynamicRules" class="text-center py-2">
+              <div class="spinner-border spinner-border-sm text-primary"></div>
+            </div>
+
+            <ng-container *ngIf="!isLoadingDynamicRules">
+              <p class="small fw-semibold mb-1">{{ 'PRICING.DYNAMIC.OCCUPANCY_TITLE' | translate }}</p>
+              <div class="dynamic-rule-row small d-flex justify-content-between align-items-center py-1" *ngFor="let rule of rulesForMetric('occupancy')">
+                <span>{{ rule.range_from }}% – {{ rule.range_to != null ? rule.range_to + '%' : ('PRICING.DYNAMIC.AND_ABOVE' | translate) }}</span>
+                <span class="fw-semibold" [class.text-success]="rule.adjustment_percent >= 0" [class.text-danger]="rule.adjustment_percent < 0">
+                  {{ rule.adjustment_percent > 0 ? '+' : '' }}{{ rule.adjustment_percent }}%
+                </span>
+                <button *ngIf="canManagePricingPlans" type="button" class="btn btn-sm btn-link text-danger p-0" (click)="deleteDynamicRule(rule)">
+                  <i class="bi bi-x-lg" aria-hidden="true"></i>
+                </button>
+              </div>
+              <p class="small text-muted" *ngIf="rulesForMetric('occupancy').length === 0">{{ 'PRICING.DYNAMIC.NO_RULES' | translate }}</p>
+
+              <p class="small fw-semibold mb-1 mt-3">{{ 'PRICING.DYNAMIC.LEAD_TIME_TITLE' | translate }}</p>
+              <div class="dynamic-rule-row small d-flex justify-content-between align-items-center py-1" *ngFor="let rule of rulesForMetric('lead_time')">
+                <span>{{ rule.range_from }} – {{ rule.range_to != null ? rule.range_to : ('PRICING.DYNAMIC.AND_ABOVE' | translate) }} {{ 'PRICING.DYNAMIC.DAYS' | translate }}</span>
+                <span class="fw-semibold" [class.text-success]="rule.adjustment_percent >= 0" [class.text-danger]="rule.adjustment_percent < 0">
+                  {{ rule.adjustment_percent > 0 ? '+' : '' }}{{ rule.adjustment_percent }}%
+                </span>
+                <button *ngIf="canManagePricingPlans" type="button" class="btn btn-sm btn-link text-danger p-0" (click)="deleteDynamicRule(rule)">
+                  <i class="bi bi-x-lg" aria-hidden="true"></i>
+                </button>
+              </div>
+              <p class="small text-muted" *ngIf="rulesForMetric('lead_time').length === 0">{{ 'PRICING.DYNAMIC.NO_RULES' | translate }}</p>
+
+              <div *ngIf="canManagePricingPlans" class="row g-2 mt-2">
+                <div class="col-4">
+                  <select class="form-select form-select-sm" [(ngModel)]="newDynamicRule.metric" name="newRuleMetric">
+                    <option value="occupancy">{{ 'PRICING.DYNAMIC.OCCUPANCY_TITLE' | translate }}</option>
+                    <option value="lead_time">{{ 'PRICING.DYNAMIC.LEAD_TIME_TITLE' | translate }}</option>
+                  </select>
+                </div>
+                <div class="col-2">
+                  <input type="number" class="form-control form-control-sm" [(ngModel)]="newDynamicRule.range_from" name="newRuleFrom" [placeholder]="'PRICING.DYNAMIC.FROM' | translate">
+                </div>
+                <div class="col-2">
+                  <input type="number" class="form-control form-control-sm" [(ngModel)]="newDynamicRule.range_to" name="newRuleTo" [placeholder]="'PRICING.DYNAMIC.TO' | translate">
+                </div>
+                <div class="col-2">
+                  <input type="number" class="form-control form-control-sm" [(ngModel)]="newDynamicRule.adjustment_percent" name="newRulePercent" [placeholder]="'PRICING.DYNAMIC.PERCENT' | translate">
+                </div>
+                <div class="col-2">
+                  <button type="button" class="btn btn-sm btn-primary w-100" [disabled]="isSavingDynamicRule" (click)="addDynamicRule()">
+                    <i class="bi bi-plus-lg" aria-hidden="true"></i>
+                  </button>
+                </div>
+              </div>
+            </ng-container>
+          </div>
+
+          <button type="button" *ngIf="canManageRoomTypes" class="btn btn-outline-danger btn-sm w-100 mt-4"
+                  (click)="deleteRoomType(selectedType.id)">
+            <i class="bi bi-trash me-1" aria-hidden="true"></i>{{ 'PRICING.DETAILS.DELETE_TYPE' | translate }}
+          </button>
+        </div>
+        <div class="card-body text-center text-muted" *ngIf="!selectedPlan && !selectedType">
+          <div class="pricing-empty py-3">
+            <i class="bi bi-link-45deg" aria-hidden="true"></i>
+            <p class="small mb-0">
+              {{ 'PRICING.DETAILS.SELECT_PROMPT' | translate:{type: (activeTab === 'plans' ? ('PRICING.TABS.PRICING_PLANS' | translate) : ('PRICING.TABS.ROOM_TYPES' | translate))} }}
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Room Type Modal -->
+<div *ngIf="showRoomTypeModal" class="ui-modal-backdrop" (click)="closeRoomTypeModal()">
+  <div class="ui-modal ui-modal--lg" (click)="$event.stopPropagation()"
+       role="dialog" aria-modal="true" [attr.aria-labelledby]="'room-type-modal-title'">
+    <div class="ui-modal__header">
+      <div class="ui-modal__title-row">
+        <span class="ui-modal__icon" aria-hidden="true"><i class="bi bi-door-open"></i></span>
+        <div class="min-w-0">
+          <h3 class="ui-modal__title" id="room-type-modal-title">
+            {{ (isEditMode ? 'PRICING.MODALS.EDIT_TYPE' : 'PRICING.MODALS.ADD_TYPE') | translate }}
+          </h3>
+          <p class="ui-modal__subtitle">{{ 'PRICING.EYEBROW' | translate }}</p>
+        </div>
+      </div>
+      <button type="button" class="ui-modal__close" (click)="closeRoomTypeModal()"
+              [attr.aria-label]="'COMMON.CANCEL' | translate" [disabled]="isSaving">
+        <i class="bi bi-x-lg" aria-hidden="true"></i>
+      </button>
+    </div>
+    <form class="d-flex flex-column flex-grow-1 min-h-0" (ngSubmit)="saveRoomType()" novalidate>
+      <div class="ui-modal__body">
+      <div class="ui-error mb-3" *ngIf="roomTypeSubmitted && (roomTypeErrors | keyvalue).length" role="alert">
+        <span class="ui-error__icon" aria-hidden="true"><i class="bi bi-exclamation-triangle-fill"></i></span>
+        <div>
+          <p class="ui-error__title">{{ 'PRICING.VALIDATION.SUMMARY' | translate }}</p>
+        </div>
+      </div>
+      <div class="row g-3">
+        <div class="col-6">
+          <label class="form-label small fw-bold" for="rtNameEn">{{ 'PRICING.MODALS.NAME_EN' | translate }}</label>
+          <input id="rtNameEn" type="text" [(ngModel)]="newRoomType.name_en" name="room_type_name_en" class="form-control"
+                 [class.is-invalid]="roomTypeFieldInvalid('name_en')"
+                 (ngModelChange)="clearRoomTypeError('name_en')"
+                 [placeholder]="'PRICING.MODALS.NAME_EN_PLACEHOLDER' | translate">
+          <div class="invalid-feedback d-block" *ngIf="roomTypeFieldInvalid('name_en')">{{ roomTypeErrors['name_en'] }}</div>
+        </div>
+        <div class="col-6">
+          <label class="form-label small fw-bold" for="rtNameAr">{{ 'PRICING.MODALS.NAME_AR' | translate }}</label>
+          <input id="rtNameAr" type="text" [(ngModel)]="newRoomType.name_ar" name="room_type_name_ar" class="form-control" dir="rtl"
+                 [class.is-invalid]="roomTypeFieldInvalid('name_ar')"
+                 (ngModelChange)="clearRoomTypeError('name_ar')"
+                 [placeholder]="'PRICING.MODALS.NAME_AR_PLACEHOLDER' | translate">
+          <div class="invalid-feedback d-block" *ngIf="roomTypeFieldInvalid('name_ar')">{{ roomTypeErrors['name_ar'] }}</div>
+        </div>
+        <div class="col-12">
+          <label class="form-label small fw-bold" for="rtDesc">{{ 'PRICING.MODALS.DESCRIPTION' | translate }}</label>
+          <textarea id="rtDesc" [(ngModel)]="newRoomType.description" name="room_type_description" class="form-control" rows="2"
+                    [class.is-invalid]="roomTypeFieldInvalid('description')"
+                    (ngModelChange)="clearRoomTypeError('description')"></textarea>
+          <div class="invalid-feedback d-block" *ngIf="roomTypeFieldInvalid('description')">{{ roomTypeErrors['description'] }}</div>
+        </div>
+        <div class="col-6">
+          <label class="form-label small fw-bold" for="rtMinDaily">{{ 'PRICING.MODALS.MIN_DAILY' | translate }}</label>
+          <input id="rtMinDaily" type="number" min="1" [(ngModel)]="newRoomType.Min_daily_price" name="room_type_min_daily" class="form-control"
+                 [class.is-invalid]="roomTypeFieldInvalid('Min_daily_price')"
+                 (ngModelChange)="clearRoomTypeError('Min_daily_price')">
+          <div class="invalid-feedback d-block" *ngIf="roomTypeFieldInvalid('Min_daily_price')">{{ roomTypeErrors['Min_daily_price'] }}</div>
+        </div>
+        <div class="col-6" *ngIf="newRoomType.active_type !== 0">
+          <label class="form-label small fw-bold" for="rtMaxDaily">{{ 'PRICING.MODALS.MAX_DAILY' | translate }}</label>
+          <input id="rtMaxDaily" type="number" min="1" [(ngModel)]="newRoomType.Max_daily_price" name="room_type_max_daily" class="form-control"
+                 [class.is-invalid]="roomTypeFieldInvalid('Max_daily_price')"
+                 (ngModelChange)="clearRoomTypeError('Max_daily_price')">
+          <div class="invalid-feedback d-block" *ngIf="roomTypeFieldInvalid('Max_daily_price')">{{ roomTypeErrors['Max_daily_price'] }}</div>
+        </div>
+        <div class="col-6">
+          <label class="form-label small fw-bold" for="rtMinMonthly">{{ 'PRICING.MODALS.MIN_MONTHLY' | translate }}</label>
+          <input id="rtMinMonthly" type="number" min="1" [(ngModel)]="newRoomType.Min_monthly_price" name="room_type_min_monthly" class="form-control"
+                 [class.is-invalid]="roomTypeFieldInvalid('Min_monthly_price')"
+                 (ngModelChange)="clearRoomTypeError('Min_monthly_price')">
+          <div class="invalid-feedback d-block" *ngIf="roomTypeFieldInvalid('Min_monthly_price')">{{ roomTypeErrors['Min_monthly_price'] }}</div>
+        </div>
+        <div class="col-6" *ngIf="newRoomType.active_type !== 0">
+          <label class="form-label small fw-bold" for="rtMaxMonthly">{{ 'PRICING.MODALS.MAX_MONTHLY' | translate }}</label>
+          <input id="rtMaxMonthly" type="number" min="1" [(ngModel)]="newRoomType.Max_monthly_price" name="room_type_max_monthly" class="form-control"
+                 [class.is-invalid]="roomTypeFieldInvalid('Max_monthly_price')"
+                 (ngModelChange)="clearRoomTypeError('Max_monthly_price')">
+          <div class="invalid-feedback d-block" *ngIf="roomTypeFieldInvalid('Max_monthly_price')">{{ roomTypeErrors['Max_monthly_price'] }}</div>
+        </div>
+        <div class="col-12">
+          <label class="form-label small fw-bold" for="rtActiveType">{{ 'PRICING.MODALS.ACTIVE_TYPE' | translate }}</label>
+          <select id="rtActiveType" [(ngModel)]="newRoomType.active_type" name="room_type_active_type" class="form-select"
+                  (ngModelChange)="roomTypeSubmitted = false; roomTypeErrors = {}">
+            <option [ngValue]="0">{{ 'PRICING.MODALS.CONST_PRICE' | translate }}</option>
+            <option [ngValue]="1">{{ 'PRICING.MODALS.AS_PER_DAY' | translate }}</option>
+            <option [ngValue]="2">{{ 'PRICING.MODALS.MAX_PRICE' | translate }}</option>
+          </select>
+        </div>
+        <div class="col-12 form-check form-switch mt-2">
+          <input class="form-check-input" type="checkbox" id="rtDynamicPricing" name="dynamic_pricing_enabled"
+                 [(ngModel)]="newRoomType.dynamic_pricing_enabled">
+          <label class="form-check-label" for="rtDynamicPricing">{{ 'PRICING.MODALS.DYNAMIC_PRICING_ENABLED' | translate }}</label>
+          <p class="form-text text-muted mb-0">{{ 'PRICING.MODALS.DYNAMIC_PRICING_HINT' | translate }}</p>
+        </div>
+      </div>
+      </div>
+      <div class="ui-modal__footer">
+        <button type="button" class="btn btn-light" (click)="closeRoomTypeModal()" [disabled]="isSaving">{{ 'COMMON.CANCEL' | translate }}</button>
+        <button type="submit" class="btn btn-primary" [disabled]="isSaving">
+          <span *ngIf="isSaving" class="spinner-border spinner-border-sm me-1" role="status"></span>{{ 'PRICING.MODALS.SAVE_TYPE' | translate }}
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Pricing Plan Modal -->
+<div *ngIf="showPricingPlanModal" class="ui-modal-backdrop" (click)="closePricingPlanModal()">
+  <div class="ui-modal ui-modal--lg" (click)="$event.stopPropagation()"
+       role="dialog" aria-modal="true" [attr.aria-labelledby]="'pricing-plan-modal-title'">
+    <div class="ui-modal__header">
+      <div class="ui-modal__title-row">
+        <span class="ui-modal__icon" aria-hidden="true"><i class="bi bi-tags"></i></span>
+        <div class="min-w-0">
+          <h3 class="ui-modal__title" id="pricing-plan-modal-title">
+            {{ (isEditMode ? 'PRICING.MODALS.EDIT_PLAN' : 'PRICING.MODALS.ADD_PLAN') | translate }}
+          </h3>
+          <p class="ui-modal__subtitle">{{ 'PRICING.EYEBROW' | translate }}</p>
+        </div>
+      </div>
+      <button type="button" class="ui-modal__close" (click)="closePricingPlanModal()"
+              [attr.aria-label]="'COMMON.CANCEL' | translate" [disabled]="isSaving">
+        <i class="bi bi-x-lg" aria-hidden="true"></i>
+      </button>
+    </div>
+    <form class="d-flex flex-column flex-grow-1 min-h-0" (ngSubmit)="savePricingPlan()" novalidate>
+      <div class="ui-modal__body">
+      <div class="ui-error mb-3" *ngIf="pricingPlanSubmitted && pricingPlanErrors['_form']" role="alert">
+        <span class="ui-error__icon" aria-hidden="true"><i class="bi bi-exclamation-triangle-fill"></i></span>
+        <div>
+          <p class="ui-error__title">{{ pricingPlanErrors['_form'] }}</p>
+        </div>
+      </div>
+      <div class="ui-error mb-3" *ngIf="pricingPlanSubmitted && !pricingPlanErrors['_form'] && (pricingPlanErrors | keyvalue).length" role="alert">
+        <span class="ui-error__icon" aria-hidden="true"><i class="bi bi-exclamation-triangle-fill"></i></span>
+        <div>
+          <p class="ui-error__title">{{ 'PRICING.VALIDATION.SUMMARY' | translate }}</p>
+        </div>
+      </div>
+      <div class="row g-3">
+        <div class="col-6">
+          <label class="form-label small fw-bold" for="ppNameEn">{{ 'PRICING.MODALS.NAME_EN' | translate }}</label>
+          <input id="ppNameEn" type="text" [(ngModel)]="newPricingPlan.NameEn" name="plan_name_en" class="form-control"
+                 [class.is-invalid]="pricingPlanFieldInvalid('NameEn')"
+                 (ngModelChange)="clearPricingPlanError('NameEn')"
+                 [placeholder]="'PRICING.MODALS.PLAN_NAME_EN_PLACEHOLDER' | translate">
+          <div class="invalid-feedback d-block" *ngIf="pricingPlanFieldInvalid('NameEn')">{{ pricingPlanErrors['NameEn'] }}</div>
+        </div>
+        <div class="col-6">
+          <label class="form-label small fw-bold" for="ppNameAr">{{ 'PRICING.MODALS.NAME_AR' | translate }}</label>
+          <input id="ppNameAr" type="text" [(ngModel)]="newPricingPlan.NameAr" name="plan_name_ar" class="form-control" dir="rtl"
+                 [class.is-invalid]="pricingPlanFieldInvalid('NameAr')"
+                 (ngModelChange)="clearPricingPlanError('NameAr')"
+                 [placeholder]="'PRICING.MODALS.PLAN_NAME_AR_PLACEHOLDER' | translate">
+          <div class="invalid-feedback d-block" *ngIf="pricingPlanFieldInvalid('NameAr')">{{ pricingPlanErrors['NameAr'] }}</div>
+        </div>
+        <div class="col-6">
+          <label class="form-label small fw-bold" for="ppStart">{{ 'PRICING.MODALS.START_DATE' | translate }}</label>
+          <input id="ppStart" type="date" [(ngModel)]="newPricingPlan.StartDate" name="plan_start_date" class="form-control"
+                 [class.is-invalid]="pricingPlanFieldInvalid('StartDate')"
+                 [max]="pricingPlanStartDateMax || undefined"
+                 (ngModelChange)="onPricingPlanDateChange()">
+          <div class="invalid-feedback d-block" *ngIf="pricingPlanFieldInvalid('StartDate')">{{ pricingPlanErrors['StartDate'] }}</div>
+        </div>
+        <div class="col-6">
+          <label class="form-label small fw-bold" for="ppEnd">{{ 'PRICING.MODALS.END_DATE' | translate }}</label>
+          <input id="ppEnd" type="date" [(ngModel)]="newPricingPlan.EndDate" name="plan_end_date" class="form-control"
+                 [class.is-invalid]="pricingPlanFieldInvalid('EndDate')"
+                 [min]="pricingPlanEndDateMin || undefined"
+                 (ngModelChange)="onPricingPlanDateChange()">
+          <div class="invalid-feedback d-block" *ngIf="pricingPlanFieldInvalid('EndDate')">{{ pricingPlanErrors['EndDate'] }}</div>
+        </div>
+        <div class="col-12">
+          <label class="form-label small fw-bold" for="ppRoomType">{{ 'PRICING.TABS.ROOM_TYPES' | translate }}</label>
+          <select id="ppRoomType" [(ngModel)]="newPricingPlan.roomtype_id" name="plan_room_type" class="form-select"
+                  [class.is-invalid]="pricingPlanFieldInvalid('roomtype_id')"
+                  (ngModelChange)="clearPricingPlanError('roomtype_id'); clearPricingPlanError('_form')">
+            <option value="" disabled>{{ 'PRICING.VALIDATION.SELECT_ROOM_TYPE' | translate }}</option>
+            <option *ngFor="let type of roomTypes" [value]="type.id">{{ displayTypeName(type) }}</option>
+          </select>
+          <div class="invalid-feedback d-block" *ngIf="pricingPlanFieldInvalid('roomtype_id')">{{ pricingPlanErrors['roomtype_id'] }}</div>
+        </div>
+        <div class="col-6">
+          <label class="form-label small fw-bold" for="ppDaily">{{ 'PRICING.MODALS.DAILY_PRICE' | translate }}</label>
+          <input id="ppDaily" type="number" min="0" step="0.01" [(ngModel)]="newPricingPlan.DailyPrice" name="plan_daily_price" class="form-control"
+                 [class.is-invalid]="pricingPlanFieldInvalid('DailyPrice')"
+                 (ngModelChange)="clearPricingPlanError('DailyPrice')">
+          <div class="invalid-feedback d-block" *ngIf="pricingPlanFieldInvalid('DailyPrice')">{{ pricingPlanErrors['DailyPrice'] }}</div>
+        </div>
+        <div class="col-6">
+          <label class="form-label small fw-bold" for="ppMonthly">{{ 'PRICING.MODALS.MONTHLY_PRICE' | translate }}</label>
+          <input id="ppMonthly" type="number" min="0" step="0.01" [(ngModel)]="newPricingPlan.MonthlyPrice" name="plan_monthly_price" class="form-control"
+                 [class.is-invalid]="pricingPlanFieldInvalid('MonthlyPrice')"
+                 (ngModelChange)="clearPricingPlanError('MonthlyPrice')">
+          <div class="invalid-feedback d-block" *ngIf="pricingPlanFieldInvalid('MonthlyPrice')">{{ pricingPlanErrors['MonthlyPrice'] }}</div>
+        </div>
+      </div>
+      </div>
+      <div class="ui-modal__footer">
+        <button type="button" class="btn btn-light" (click)="closePricingPlanModal()" [disabled]="isSaving">{{ 'COMMON.CANCEL' | translate }}</button>
+        <button type="submit" class="btn btn-primary" [disabled]="isSaving">
+          <span *ngIf="isSaving" class="spinner-border spinner-border-sm me-1" role="status"></span>{{ 'PRICING.MODALS.SAVE_PLAN' | translate }}
+        </button>
+      </div>
+    </form>
+  </div>
+</div>

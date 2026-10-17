@@ -1,0 +1,94 @@
+<div class="hotels-page">
+  <section class="dept-hero">
+    <div class="dept-hero__copy">
+      <p class="dept-hero__eyebrow">
+        <i class="bi bi-plug" aria-hidden="true"></i>
+        {{ 'CHANNEX_CONNECTION.EYEBROW' | translate }}
+      </p>
+      <h1>{{ 'CHANNEX_CONNECTION.TITLE' | translate }}</h1>
+      <p class="dept-hero__subtitle">{{ 'CHANNEX_CONNECTION.SUBTITLE' | translate }}</p>
+    </div>
+    <div class="dept-hero__actions">
+      <button type="button" class="btn btn-outline-secondary" (click)="loadStatus()" [disabled]="isLoading">
+        <i class="bi bi-arrow-clockwise" [class.spin]="isLoading" aria-hidden="true"></i>
+        <span>{{ 'COMMON.REFRESH' | translate }}</span>
+      </button>
+      <button type="button" class="btn btn-primary" (click)="syncNow()" [disabled]="isSyncing || !status?.enabled">
+        <span class="spinner-border spinner-border-sm me-1" *ngIf="isSyncing" role="status"></span>
+        <i class="bi bi-arrow-repeat" *ngIf="!isSyncing" aria-hidden="true"></i>
+        <span>{{ 'CHANNEX_CONNECTION.SYNC_NOW' | translate }}</span>
+      </button>
+    </div>
+  </section>
+
+  <div *ngIf="isLoading" class="card border-0 shadow-sm dept-card p-4">
+    <div class="skeleton skeleton-text" style="width: 60%; height: 22px;"></div>
+    <div class="skeleton skeleton-text mt-2" style="width: 40%; height: 18px;"></div>
+  </div>
+
+  <ng-container *ngIf="!isLoading && status">
+    <div class="card border-0 shadow-sm dept-card status-card">
+      <div class="status-card__row">
+        <div class="status-card__item">
+          <span class="status-card__label">{{ 'CHANNEX_CONNECTION.ENABLED' | translate }}</span>
+          <span class="badge border-0" [ngClass]="status.enabled ? 'bg-success-subtle text-success' : 'bg-secondary-subtle text-secondary'">
+            <i class="bi" [ngClass]="status.enabled ? 'bi-check-circle-fill' : 'bi-dash-circle'" aria-hidden="true"></i>
+            {{ (status.enabled ? 'CHANNEX_CONNECTION.YES' : 'CHANNEX_CONNECTION.NO') | translate }}
+          </span>
+        </div>
+        <div class="status-card__item">
+          <span class="status-card__label">{{ 'CHANNEX_CONNECTION.ENVIRONMENT' | translate }}</span>
+          <span class="badge border-0" [ngClass]="status.environment === 'production' ? 'bg-danger-subtle text-danger' : 'bg-warning-subtle text-warning'">
+            {{ status.environment || '—' }}
+          </span>
+        </div>
+        <div class="status-card__item">
+          <span class="status-card__label">{{ 'CHANNEX_CONNECTION.PROPERTY' | translate }}</span>
+          <span *ngIf="status.property" class="badge border-0 bg-success-subtle text-success">
+            <i class="bi bi-check-circle-fill" aria-hidden="true"></i> {{ status.property.channex_property_id }}
+          </span>
+          <span *ngIf="!status.property" class="badge border-0 bg-secondary-subtle text-secondary">
+            {{ 'CHANNEX_CONNECTION.NOT_CONNECTED' | translate }}
+          </span>
+        </div>
+      </div>
+      <p *ngIf="!status.enabled" class="status-card__hint">
+        <i class="bi bi-info-circle me-1" aria-hidden="true"></i>{{ 'CHANNEX_CONNECTION.DISABLED_HINT' | translate }}
+      </p>
+      <p *ngIf="status.enabled && !status.property" class="status-card__hint">
+        <i class="bi bi-info-circle me-1" aria-hidden="true"></i>{{ 'CHANNEX_CONNECTION.NOT_CONNECTED_HINT' | translate }}
+      </p>
+    </div>
+
+    <div class="card border-0 shadow-sm dept-card">
+      <div class="card-header bg-white py-3 border-bottom">
+        <h2 class="h6 mb-0">{{ 'CHANNEX_CONNECTION.ROOM_TYPE_MAPPINGS' | translate }}</h2>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0 dept-table">
+          <thead>
+            <tr>
+              <th>{{ 'CHANNEX_CONNECTION.ROOM_TYPE' | translate }}</th>
+              <th>{{ 'CHANNEX_CONNECTION.CHANNEX_ROOM_TYPE_ID' | translate }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngIf="status.room_type_mappings.length === 0">
+              <td colspan="2" class="py-5 text-center">
+                <div class="dept-empty">
+                  <i class="bi bi-diagram-3" aria-hidden="true"></i>
+                  <p class="fw-semibold mb-1">{{ 'CHANNEX_CONNECTION.NO_MAPPINGS' | translate }}</p>
+                  <p class="text-muted small mb-0">{{ 'CHANNEX_CONNECTION.NO_MAPPINGS_HINT' | translate }}</p>
+                </div>
+              </td>
+            </tr>
+            <tr *ngFor="let mapping of status.room_type_mappings">
+              <td class="fw-semibold">{{ roomTypeName(mapping) }}</td>
+              <td><code>{{ mapping.channex_room_type_id }}</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </ng-container>
+</div>

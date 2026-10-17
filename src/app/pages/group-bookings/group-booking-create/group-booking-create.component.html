@@ -1,0 +1,126 @@
+<div class="hotels-page">
+  <section class="dept-hero">
+    <div class="dept-hero__copy">
+      <p class="dept-hero__eyebrow">
+        <i class="bi bi-people" aria-hidden="true"></i>
+        {{ 'GROUP_BOOKINGS.EYEBROW' | translate }}
+      </p>
+      <h1>{{ 'GROUP_BOOKINGS.NEW_GROUP' | translate }}</h1>
+    </div>
+  </section>
+
+  <div class="card border-0 shadow-sm dept-card p-4 mb-3">
+    <h2 class="section-title">{{ 'GROUP_BOOKINGS.GROUP_DETAILS' | translate }}</h2>
+    <div class="row g-3">
+      <div class="col-md-6">
+        <label class="form-label">{{ 'GROUP_BOOKINGS.NAME' | translate }} *</label>
+        <input type="text" class="form-control" [(ngModel)]="name" name="groupName">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">{{ 'GROUP_BOOKINGS.COMPANY' | translate }}</label>
+        <input type="text" class="form-control" [(ngModel)]="companyName" name="companyName">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">{{ 'GROUP_BOOKINGS.CONTACT_NAME' | translate }}</label>
+        <input type="text" class="form-control" [(ngModel)]="contactName" name="contactName">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">{{ 'GROUP_BOOKINGS.CONTACT_MOBILE' | translate }}</label>
+        <input type="text" class="form-control" [(ngModel)]="contactMobile" name="contactMobile">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">{{ 'GROUP_BOOKINGS.CONTACT_EMAIL' | translate }}</label>
+        <input type="email" class="form-control" [(ngModel)]="contactEmail" name="contactEmail">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">{{ 'GROUP_BOOKINGS.DISCOUNT_PERCENT' | translate }}</label>
+        <div class="input-group">
+          <input type="number" min="0" max="100" class="form-control" [(ngModel)]="groupDiscountPercent" name="discountPercent">
+          <span class="input-group-text">%</span>
+        </div>
+      </div>
+      <div class="col-12">
+        <label class="form-label">{{ 'GROUP_BOOKINGS.NOTES' | translate }}</label>
+        <textarea class="form-control" rows="2" [(ngModel)]="notes" name="notes"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <div class="card border-0 shadow-sm dept-card p-4 mb-3" *ngFor="let member of members; let i = index">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h2 class="section-title mb-0">{{ 'GROUP_BOOKINGS.MEMBER' | translate }} {{ i + 1 }}</h2>
+      <button type="button" class="btn btn-sm btn-outline-danger" (click)="removeMember(i)" [disabled]="members.length <= 1">
+        <i class="bi bi-trash" aria-hidden="true"></i>
+      </button>
+    </div>
+
+    <div class="row g-3">
+      <div class="col-md-4">
+        <label class="form-label">{{ 'GROUP_BOOKINGS.CLIENT' | translate }} *</label>
+        <select class="form-select" [(ngModel)]="member.client_id" [name]="'client_' + i">
+          <option [ngValue]="null">—</option>
+          <option *ngFor="let c of clients" [ngValue]="c.id">{{ c.first_name }} {{ c.last_name }}</option>
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">{{ 'GROUP_BOOKINGS.STAY_REASON' | translate }} *</label>
+        <select class="form-select" [(ngModel)]="member.stay_reason_id" [name]="'stayReason_' + i">
+          <option *ngFor="let s of stayReasons" [ngValue]="s.id">{{ s.name_ar || s.name_en }}</option>
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">{{ 'GROUP_BOOKINGS.SOURCE' | translate }} *</label>
+        <select class="form-select" [(ngModel)]="member.reservation_source_id" [name]="'source_' + i">
+          <option *ngFor="let s of reservationSources" [ngValue]="s.id">{{ s.name_ar || s.name_en }}</option>
+        </select>
+      </div>
+
+      <div class="col-md-3">
+        <label class="form-label">{{ 'GROUP_BOOKINGS.START_DATE' | translate }} *</label>
+        <input type="date" class="form-control" [(ngModel)]="member.start_date" [name]="'start_' + i" (change)="loadRoomsForMember(i)">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">{{ 'GROUP_BOOKINGS.END_DATE' | translate }} *</label>
+        <input type="date" class="form-control" [(ngModel)]="member.expire_date" [name]="'end_' + i" (change)="loadRoomsForMember(i)">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">{{ 'GROUP_BOOKINGS.BUILDING' | translate }} *</label>
+        <select class="form-select" [(ngModel)]="member.buildingId" [name]="'building_' + i" (change)="loadRoomsForMember(i)">
+          <option *ngFor="let b of buildings" [ngValue]="b.id">{{ b.name || b.number }}</option>
+        </select>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">{{ 'GROUP_BOOKINGS.ROOMS' | translate }} *</label>
+        <div class="skeleton skeleton-text" style="width: 100%; height: 40px;" *ngIf="member.isLoadingRooms"></div>
+        <div class="room-chip-list" *ngIf="!member.isLoadingRooms">
+          <button type="button" class="room-chip" *ngFor="let room of member.availableRooms"
+                  [class.room-chip--selected]="isRoomSelected(i, room.id)"
+                  (click)="toggleRoom(i, room.id)">
+            {{ room.number }} <span class="room-chip__type">{{ room.room_type?.name_ar || room.room_type?.name_en }}</span>
+          </button>
+          <p class="text-muted small mb-0" *ngIf="member.availableRooms.length === 0">
+            {{ 'GROUP_BOOKINGS.SELECT_DATES_FIRST' | translate }}
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <button type="button" class="btn btn-outline-primary" (click)="addMember()">
+      <i class="bi bi-plus-lg" aria-hidden="true"></i>
+      {{ 'GROUP_BOOKINGS.ADD_MEMBER' | translate }}
+    </button>
+  </div>
+
+  <div class="alert alert-danger" *ngIf="submitError">{{ submitError }}</div>
+
+  <div class="d-flex gap-2 justify-content-end mb-4">
+    <button type="button" class="btn btn-outline-secondary" (click)="cancel()">{{ 'COMMON.CANCEL' | translate }}</button>
+    <button type="button" class="btn btn-primary" (click)="submit()" [disabled]="!canSubmit || isSubmitting">
+      <span *ngIf="isSubmitting" class="spinner-border spinner-border-sm me-1" role="status"></span>
+      {{ 'GROUP_BOOKINGS.CREATE_GROUP' | translate }}
+    </button>
+  </div>
+</div>

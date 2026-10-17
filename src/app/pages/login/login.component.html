@@ -1,0 +1,187 @@
+<div class="login-page">
+  <div class="login-mobile-bg d-lg-none" aria-hidden="true">
+    <span class="login-mobile-bg__glow login-mobile-bg__glow--1"></span>
+    <span class="login-mobile-bg__glow login-mobile-bg__glow--2"></span>
+    <span class="login-mobile-bg__glow login-mobile-bg__glow--3"></span>
+    <span class="login-mobile-bg__mesh"></span>
+    <span class="login-mobile-bg__arc"></span>
+  </div>
+
+  <!-- Desktop brand panel -->
+  <aside class="login-left d-none d-lg-flex" aria-hidden="false">
+    <div class="login-left__scene" aria-hidden="true">
+      <span class="login-left__glow login-left__glow--1"></span>
+      <span class="login-left__glow login-left__glow--2"></span>
+      <span class="login-left__grid"></span>
+    </div>
+
+    <div class="login-left__inner">
+      <div class="login-left__brand">
+        <span class="login-left__monogram" aria-hidden="true">OS</span>
+        <div class="login-left__wordmark">
+          <span class="login-left__title">OSUS</span>
+          <span class="login-left__subtitle">Alalamiah</span>
+        </div>
+      </div>
+
+      <div class="login-left__hero">
+        <p class="login-left__eyebrow">{{ 'LOGIN.MOBILE_BADGE' | translate }}</p>
+        <h1 class="login-left__headline">{{ 'LOGIN.TITLE' | translate }}</h1>
+        <p class="login-left__lead">{{ 'LOGIN.SUBTITLE' | translate }}</p>
+
+        <ul class="login-left__features">
+          <li>
+            <span class="login-left__feature-icon" aria-hidden="true"><i class="bi bi-calendar-check"></i></span>
+            <span>{{ 'LOGIN.FEATURE_BOOKINGS' | translate }}</span>
+          </li>
+          <li>
+            <span class="login-left__feature-icon" aria-hidden="true"><i class="bi bi-door-open"></i></span>
+            <span>{{ 'LOGIN.FEATURE_OPS' | translate }}</span>
+          </li>
+          <li>
+            <span class="login-left__feature-icon" aria-hidden="true"><i class="bi bi-graph-up-arrow"></i></span>
+            <span>{{ 'LOGIN.FEATURE_REPORTS' | translate }}</span>
+          </li>
+        </ul>
+      </div>
+
+      <p class="login-left__footer">&copy; {{ currentYear }} OSUS Alalamiah. {{ 'LOGIN.ALL_RIGHTS' | translate }}</p>
+    </div>
+  </aside>
+
+  <!-- Form side -->
+  <div class="login-right-panel">
+    <header class="login-mobile-hero d-lg-none">
+      <div class="login-mobile-hero__scene" aria-hidden="true">
+        <span class="login-mobile-hero__aurora login-mobile-hero__aurora--1"></span>
+        <span class="login-mobile-hero__aurora login-mobile-hero__aurora--2"></span>
+        <span class="login-mobile-hero__mesh"></span>
+        <span class="login-mobile-hero__ring"></span>
+      </div>
+
+      <div class="login-mobile-hero__content">
+        <div class="login-mobile-hero__brand">
+          <div class="login-mobile-hero__logo-frame">
+            <span class="login-mobile-hero__monogram" aria-hidden="true">OS</span>
+          </div>
+          <div class="login-mobile-hero__brand-text">
+            <p class="login-mobile-hero__name">{{ 'LOGIN.MOBILE_BRAND_NAME' | translate }}</p>
+            <span class="login-mobile-hero__badge">{{ 'LOGIN.MOBILE_BADGE' | translate }}</span>
+          </div>
+        </div>
+
+        <div class="login-mobile-hero__copy">
+          <h1 class="login-mobile-hero__headline">{{ 'LOGIN.TITLE' | translate }}</h1>
+          <p class="login-mobile-hero__lead">{{ 'LOGIN.SUBTITLE' | translate }}</p>
+        </div>
+
+        <div class="login-mobile-hero__features" role="list">
+          <div class="login-mobile-feature" role="listitem">
+            <i class="bi bi-calendar-check" aria-hidden="true"></i>
+            <span>{{ 'LOGIN.FEATURE_BOOKINGS_SHORT' | translate }}</span>
+          </div>
+          <div class="login-mobile-feature" role="listitem">
+            <i class="bi bi-door-open" aria-hidden="true"></i>
+            <span>{{ 'LOGIN.FEATURE_OPS_SHORT' | translate }}</span>
+          </div>
+          <div class="login-mobile-feature" role="listitem">
+            <i class="bi bi-graph-up-arrow" aria-hidden="true"></i>
+            <span>{{ 'LOGIN.FEATURE_REPORTS_SHORT' | translate }}</span>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="login-form-scroll">
+      <div class="w-100 login-form-wrap">
+        <div class="login-form-card">
+          <div class="login-form-card__header">
+            <div class="login-form-card__titles min-w-0">
+              <h2 class="login-form-title">{{ 'LOGIN.WELCOME' | translate }}</h2>
+              <p class="login-form-subtitle">{{ 'LOGIN.SIGN_IN_SUBTITLE' | translate }}</p>
+            </div>
+            <button
+              type="button"
+              class="login-lang-btn"
+              (click)="switchLanguage()"
+              [attr.aria-label]="'SIDEBAR.LANGUAGE' | translate"
+              [attr.title]="currentLang === 'en' ? 'العربية' : 'English'">
+              <i class="bi bi-translate" aria-hidden="true"></i>
+              <span>{{ currentLang === 'en' ? 'العربية' : 'English' }}</span>
+            </button>
+          </div>
+
+          <form (ngSubmit)="onSubmit()" class="login-form" novalidate>
+            <div
+              *ngIf="error"
+              class="login-error"
+              role="alert">
+              <i class="bi bi-exclamation-circle flex-shrink-0" aria-hidden="true"></i>
+              <span>{{ error }}</span>
+            </div>
+
+            <div class="login-field-group">
+              <label class="login-label" for="login-job-number">{{ 'LOGIN.JOB_NUMBER' | translate }}</label>
+              <div class="login-field" [class.login-field--invalid]="!!error">
+                <i class="bi bi-person-badge login-field__icon" aria-hidden="true"></i>
+                <input
+                  id="login-job-number"
+                  type="text"
+                  name="job_number"
+                  class="form-control login-input login-input--numeric"
+                  [(ngModel)]="job_number"
+                  [placeholder]="'LOGIN.JOB_NUMBER_PLACEHOLDER' | translate"
+                  dir="ltr"
+                  inputmode="numeric"
+                  autocomplete="username"
+                  [disabled]="isSubmitting"
+                  autofocus
+                  required>
+              </div>
+            </div>
+
+            <div class="login-field-group">
+              <label class="login-label" for="login-password">{{ 'LOGIN.PASSWORD' | translate }}</label>
+              <div class="login-field login-field--password" [class.login-field--invalid]="!!error">
+                <i class="bi bi-lock login-field__icon" aria-hidden="true"></i>
+                <input
+                  id="login-password"
+                  [type]="showPassword ? 'text' : 'password'"
+                  name="password"
+                  class="form-control login-input"
+                  [(ngModel)]="password"
+                  [placeholder]="'LOGIN.PASSWORD_PLACEHOLDER' | translate"
+                  autocomplete="current-password"
+                  [disabled]="isSubmitting"
+                  required>
+                <button
+                  type="button"
+                  class="login-field__toggle"
+                  (click)="togglePassword()"
+                  [disabled]="isSubmitting"
+                  [attr.aria-label]="'LOGIN.TOGGLE_PASSWORD' | translate"
+                  [attr.aria-pressed]="showPassword">
+                  <i [class]="showPassword ? 'bi bi-eye-slash' : 'bi bi-eye'" aria-hidden="true"></i>
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              class="login-submit"
+              [disabled]="isSubmitting || !job_number.trim() || !password">
+              <span *ngIf="isSubmitting" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+              <span>{{ (isSubmitting ? 'LOGIN.SIGNING_IN' : 'LOGIN.SIGN_IN') | translate }}</span>
+              <i *ngIf="!isSubmitting" class="bi bi-arrow-right login-submit__icon" aria-hidden="true"></i>
+            </button>
+          </form>
+
+          <p class="login-secure-hint">
+            <i class="bi bi-shield-lock" aria-hidden="true"></i>
+            <span>{{ 'LOGIN.SECURE_HINT' | translate }}</span>
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

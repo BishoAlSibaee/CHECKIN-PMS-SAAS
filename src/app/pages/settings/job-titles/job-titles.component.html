@@ -1,0 +1,207 @@
+<div class="job-titles-page">
+  <section class="jt-hero">
+    <div class="jt-hero__copy">
+      <p class="jt-hero__eyebrow">
+        <i class="bi bi-briefcase" aria-hidden="true"></i>
+        {{ 'JOB_TITLES.EYEBROW' | translate }}
+      </p>
+      <h1>{{ 'JOB_TITLES.TITLE' | translate }}</h1>
+      <p class="jt-hero__subtitle">{{ 'JOB_TITLES.SUBTITLE' | translate }}</p>
+    </div>
+    <div class="jt-hero__actions">
+      <button type="button" class="btn btn-outline-secondary" (click)="refresh()" [disabled]="isLoading"
+              [attr.aria-label]="'COMMON.REFRESH' | translate">
+        <i class="bi bi-arrow-clockwise" [class.spin]="isLoading" aria-hidden="true"></i>
+        <span>{{ 'COMMON.REFRESH' | translate }}</span>
+      </button>
+      <button type="button" class="btn btn-primary" (click)="openAddModal()">
+        <i class="bi bi-plus-lg" aria-hidden="true"></i>
+        <span>{{ 'JOB_TITLES.ADD_NEW' | translate }}</span>
+      </button>
+    </div>
+  </section>
+
+  <div class="jt-summary" role="group" [attr.aria-label]="'JOB_TITLES.SUMMARY_ARIA' | translate">
+    <ng-container *ngIf="isLoading">
+      <div class="jt-stat" *ngFor="let i of [1,2,3]">
+        <div class="skeleton skeleton-text" style="width: 40%;"></div>
+        <div class="skeleton skeleton-text mt-2" style="width: 30%; height: 1.5rem;"></div>
+      </div>
+    </ng-container>
+    <ng-container *ngIf="!isLoading">
+      <div class="jt-stat">
+        <span class="jt-stat__label">{{ 'JOB_TITLES.STAT_TOTAL' | translate }}</span>
+        <span class="jt-stat__value">{{ jobTitles.length }}</span>
+      </div>
+      <div class="jt-stat jt-stat--depts">
+        <span class="jt-stat__label">{{ 'JOB_TITLES.STAT_DEPARTMENTS' | translate }}</span>
+        <span class="jt-stat__value">{{ departmentsWithJobs }}</span>
+      </div>
+      <div class="jt-stat jt-stat--available">
+        <span class="jt-stat__label">{{ 'JOB_TITLES.STAT_AVAILABLE_DEPTS' | translate }}</span>
+        <span class="jt-stat__value">{{ departments.length }}</span>
+      </div>
+    </ng-container>
+  </div>
+
+  <div class="card border-0 shadow-sm jt-card">
+    <div class="jt-toolbar">
+      <div class="ui-search jt-search flex-grow-1">
+        <i class="bi bi-search ui-search__icon" aria-hidden="true"></i>
+        <label class="visually-hidden" for="jobTitlesSearch">{{ 'JOB_TITLES.SEARCH' | translate }}</label>
+        <input id="jobTitlesSearch" type="search" class="form-control ui-search__input"
+               [(ngModel)]="searchTerm"
+               [placeholder]="'JOB_TITLES.SEARCH' | translate" />
+      </div>
+      <div class="jt-dept-filter" role="group" [attr.aria-label]="'JOB_TITLES.DEPT_FILTER_ARIA' | translate" *ngIf="departments.length > 0">
+        <button type="button" class="jt-chip"
+                [class.jt-chip--active]="departmentFilter === 'all'"
+                (click)="departmentFilter = 'all'">{{ 'JOB_TITLES.FILTER_ALL' | translate }}</button>
+        <button type="button" class="jt-chip" *ngFor="let dept of departments"
+                [class.jt-chip--active]="departmentFilter === (dept.id + '')"
+                (click)="departmentFilter = dept.id + ''">
+          {{ currentLang === 'ar' ? (dept.name_ar || dept.name_en) : (dept.name_en || dept.name_ar) }}
+        </button>
+      </div>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0 jt-table">
+        <thead>
+          <tr>
+            <th>{{ 'JOB_TITLES.NAME_EN' | translate }}</th>
+            <th>{{ 'JOB_TITLES.NAME_AR' | translate }}</th>
+            <th>{{ 'JOB_TITLES.DEPARTMENT' | translate }}</th>
+            <th>{{ 'JOB_TITLES.DESCRIPTION' | translate }}</th>
+            <th class="text-end">{{ 'COMMON.ACTIONS' | translate }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <ng-container *ngIf="isLoading">
+            <tr *ngFor="let i of [1,2,3,4,5]">
+              <td><div class="skeleton skeleton-text" style="width: 120px;"></div></td>
+              <td><div class="skeleton skeleton-text" style="width: 100px;"></div></td>
+              <td><div class="skeleton" style="width: 90px; height: 22px; border-radius: 999px;"></div></td>
+              <td><div class="skeleton skeleton-text" style="width: 160px;"></div></td>
+              <td class="text-end">
+                <div class="skeleton ms-auto" style="width: 72px; height: 32px; border-radius: 6px;"></div>
+              </td>
+            </tr>
+          </ng-container>
+
+          <tr *ngIf="!isLoading && filteredJobTitles.length === 0">
+            <td colspan="5" class="py-5 text-center">
+              <div class="jt-empty">
+                <i class="bi bi-briefcase" aria-hidden="true"></i>
+                <p class="fw-semibold mb-1">
+                  {{ (jobTitles.length === 0 ? 'JOB_TITLES.NO_JOB_TITLES' : 'JOB_TITLES.NO_RESULTS') | translate }}
+                </p>
+                <p class="text-muted small mb-3">
+                  {{ (jobTitles.length === 0 ? 'JOB_TITLES.EMPTY_HINT' : 'JOB_TITLES.NO_RESULTS_HINT') | translate }}
+                </p>
+                <button type="button" class="btn btn-primary btn-sm" *ngIf="jobTitles.length === 0" (click)="openAddModal()">
+                  <i class="bi bi-plus-lg me-1" aria-hidden="true"></i>{{ 'JOB_TITLES.ADD_NEW' | translate }}
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" *ngIf="jobTitles.length > 0"
+                        (click)="clearFilters()">
+                  {{ 'JOB_TITLES.CLEAR_FILTERS' | translate }}
+                </button>
+              </div>
+            </td>
+          </tr>
+
+          <tr *ngFor="let job of filteredJobTitles">
+            <td class="fw-semibold">{{ job.name_en }}</td>
+            <td dir="auto">{{ job.name_ar }}</td>
+            <td>
+              <span class="badge rounded-pill jt-badge--dept">
+                {{ getDepartmentName(job.department_id) }}
+              </span>
+            </td>
+            <td class="text-muted small">{{ job.description || ('COMMON.NA' | translate) }}</td>
+            <td class="text-end text-nowrap">
+              <button type="button" class="btn btn-sm btn-light text-primary me-1"
+                      (click)="openEditModal(job)"
+                      [attr.aria-label]="'COMMON.EDIT' | translate"
+                      [attr.title]="'COMMON.EDIT' | translate">
+                <i class="bi bi-pencil" aria-hidden="true"></i>
+              </button>
+              <button type="button" class="btn btn-sm btn-light text-danger"
+                      (click)="deleteJobTitle(job.id)"
+                      [attr.aria-label]="'COMMON.DELETE' | translate"
+                      [attr.title]="'COMMON.DELETE' | translate">
+                <i class="bi bi-trash" aria-hidden="true"></i>
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="jt-footer" *ngIf="!isLoading && filteredJobTitles.length > 0">
+      <span class="small text-muted">
+        {{ 'JOB_TITLES.SHOWING_COUNT' | translate:{ shown: filteredJobTitles.length, total: jobTitles.length } }}
+      </span>
+    </div>
+  </div>
+</div>
+
+<div *ngIf="showModal" class="modal-backdrop-custom" (click)="closeModal()">
+  <div class="modal-content-custom card border-0 shadow-lg"
+       (click)="$event.stopPropagation()"
+       role="dialog"
+       aria-modal="true"
+       [attr.aria-labelledby]="'job-title-modal-title'">
+    <div class="card-header bg-white py-3 border-bottom d-flex align-items-center justify-content-between">
+      <div>
+        <p class="small text-muted text-uppercase fw-semibold mb-1">{{ 'JOB_TITLES.EYEBROW' | translate }}</p>
+        <h2 class="h5 mb-0" id="job-title-modal-title">
+          {{ (isEditMode ? 'JOB_TITLES.EDIT' : 'JOB_TITLES.ADD_NEW') | translate }}
+        </h2>
+      </div>
+      <button type="button" class="btn btn-sm btn-light" (click)="closeModal()"
+              [attr.aria-label]="'COMMON.CANCEL' | translate" [disabled]="isSaving">
+        <i class="bi bi-x-lg" aria-hidden="true"></i>
+      </button>
+    </div>
+    <div class="card-body p-4">
+      <form (ngSubmit)="saveJobTitle()">
+        <div class="row g-3">
+          <div class="col-12">
+            <label class="form-label small fw-bold" for="jtDept">{{ 'JOB_TITLES.DEPARTMENT' | translate }}</label>
+            <select id="jtDept" [(ngModel)]="currentJobTitle.department_id" name="department_id" class="form-select" required>
+              <option *ngFor="let dept of departments" [value]="dept.id">
+                {{ currentLang === 'ar' ? (dept.name_ar || dept.name_en) : (dept.name_en || dept.name_ar) }}
+              </option>
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small fw-bold" for="jtNameEn">{{ 'JOB_TITLES.NAME_EN' | translate }}</label>
+            <input id="jtNameEn" type="text" [(ngModel)]="currentJobTitle.name_en" name="name_en"
+                   class="form-control" required autocomplete="off">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small fw-bold" for="jtNameAr">{{ 'JOB_TITLES.NAME_AR' | translate }}</label>
+            <input id="jtNameAr" type="text" [(ngModel)]="currentJobTitle.name_ar" name="name_ar"
+                   class="form-control" dir="rtl" required autocomplete="off">
+          </div>
+          <div class="col-12">
+            <label class="form-label small fw-bold" for="jtDesc">{{ 'JOB_TITLES.DESCRIPTION' | translate }}</label>
+            <textarea id="jtDesc" [(ngModel)]="currentJobTitle.description" name="description"
+                      class="form-control" rows="3"
+                      [placeholder]="'JOB_TITLES.DESCRIPTION_PLACEHOLDER' | translate"></textarea>
+          </div>
+        </div>
+        <div class="d-flex gap-2 mt-4">
+          <button type="button" class="btn btn-light flex-grow-1" (click)="closeModal()" [disabled]="isSaving">
+            {{ 'COMMON.CANCEL' | translate }}
+          </button>
+          <button type="submit" class="btn btn-primary flex-grow-1" [disabled]="isSaving">
+            <span *ngIf="isSaving" class="spinner-border spinner-border-sm me-2" role="status"></span>
+            {{ (isEditMode ? 'JOB_TITLES.UPDATE' : 'JOB_TITLES.SAVE') | translate }}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>

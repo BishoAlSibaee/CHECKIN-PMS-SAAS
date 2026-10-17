@@ -1,0 +1,604 @@
+<div class="property-page">
+  <section class="property-hero">
+    <div class="property-hero__copy">
+      <p class="property-hero__eyebrow">
+        <i class="bi bi-buildings" aria-hidden="true"></i>
+        {{ 'PROPERTY.EYEBROW' | translate }}
+      </p>
+      <h1>{{ 'PROPERTY.TITLE' | translate }}</h1>
+      <p class="property-hero__subtitle">{{ 'PROPERTY.SUBTITLE' | translate }}</p>
+    </div>
+    <div class="property-hero__actions">
+      <button *ngIf="canManageBuildings" type="button" class="btn btn-outline-secondary" (click)="openAddModal('building')">
+        <i class="bi bi-building" aria-hidden="true"></i><span>{{ 'PROPERTY.BUILDING' | translate }}</span>
+      </button>
+      <button *ngIf="canManageFloors" type="button" class="btn btn-outline-secondary" [disabled]="!currentBuilding" (click)="openAddModal('floor')">
+        <i class="bi bi-layers" aria-hidden="true"></i><span>{{ 'PROPERTY.FLOOR' | translate }}</span>
+      </button>
+      <button *ngIf="canManageSuites" type="button" class="btn btn-outline-secondary" [disabled]="!currentFloor" (click)="openAddModal('suite')">
+        <i class="bi bi-door-open" aria-hidden="true"></i><span>{{ 'PROPERTY.SUITE' | translate }}</span>
+      </button>
+      <button *ngIf="canManageRooms" type="button" class="btn btn-primary" [disabled]="!currentFloor" (click)="openAddModal('room')">
+        <i class="bi bi-plus-lg" aria-hidden="true"></i><span>{{ 'PROPERTY.ROOM' | translate }}</span>
+      </button>
+    </div>
+  </section>
+
+  <div class="property-summary" role="group" [attr.aria-label]="'PROPERTY.SUMMARY_ARIA' | translate">
+    <ng-container *ngIf="isLoading">
+      <div class="summary-pill" *ngFor="let i of [1,2,3,4]">
+        <div class="skeleton" style="width: 12px; height: 12px; border-radius: 50%;"></div>
+        <div class="skeleton skeleton-text" style="width: 1.5rem;"></div>
+        <div class="skeleton skeleton-text" style="width: 4rem;"></div>
+      </div>
+    </ng-container>
+    <ng-container *ngIf="!isLoading">
+      <div class="summary-pill summary-pill--total">
+        <span class="status-dot bg-secondary" aria-hidden="true"></span>
+        <span class="count">{{ totalRoomsCount }}</span>
+        <span class="label">{{ 'PROPERTY.TOTAL' | translate }}</span>
+      </div>
+      <div class="summary-pill summary-pill--available">
+        <span class="status-dot dot-available" aria-hidden="true"></span>
+        <span class="count">{{ availableRoomsCount }}</span>
+        <span class="label">{{ 'DASHBOARD.AVAILABLE' | translate }}</span>
+      </div>
+      <div class="summary-pill summary-pill--occupied">
+        <span class="status-dot dot-occupied" aria-hidden="true"></span>
+        <span class="count">{{ occupiedRoomsCount }}</span>
+        <span class="label">{{ 'DASHBOARD.OCCUPIED' | translate }}</span>
+      </div>
+      <div class="summary-pill summary-pill--maintenance">
+        <span class="status-dot dot-maintenance" aria-hidden="true"></span>
+        <span class="count">{{ maintenanceRoomsCount }}</span>
+        <span class="label">{{ 'DASHBOARD.MAINTENANCE' | translate }}</span>
+      </div>
+    </ng-container>
+  </div>
+
+  <div class="property-shell">
+    <div class="property-workspace">
+      <aside class="property-tree" [attr.aria-label]="'PROPERTY.STRUCTURE' | translate">
+        <div class="property-tree__head">
+          <span class="property-tree__title">
+            <i class="bi bi-diagram-3" aria-hidden="true"></i>
+            {{ 'PROPERTY.STRUCTURE' | translate }}
+          </span>
+          <span class="property-tree__count" *ngIf="!isLoading">{{ buildings.length }}</span>
+        </div>
+        <div class="p-2 tree-scroll">
+          <ng-container *ngIf="isLoading">
+            <div *ngFor="let i of [1,2,3]" class="mb-2">
+              <div class="d-flex align-items-center gap-2 p-2">
+                <div class="skeleton" style="width: 14px; height: 14px;"></div>
+                <div class="skeleton" style="width: 16px; height: 16px;"></div>
+                <div class="skeleton skeleton-text" style="width: 100px;"></div>
+              </div>
+            </div>
+          </ng-container>
+
+          <div *ngIf="!isLoading && buildings.length === 0" class="property-tree-empty text-center py-4 px-2">
+            <i class="bi bi-building d-block fs-3 mb-2 text-muted opacity-50" aria-hidden="true"></i>
+            <p class="small fw-semibold mb-1">{{ 'PROPERTY.EMPTY_BUILDINGS' | translate }}</p>
+            <button *ngIf="canManageBuildings" type="button" class="btn btn-sm btn-primary mt-1" (click)="openAddModal('building')">
+              {{ 'PROPERTY.BUILDING' | translate }}
+            </button>
+          </div>
+
+          <ng-container *ngIf="!isLoading">
+            <div *ngFor="let building of buildings" class="mb-1">
+              <button type="button" class="btn btn-sm w-100 text-start d-flex align-items-center gap-2 tree-item"
+                      [class.active-item]="selectedBuilding === building.id && !selectedFloor"
+                      (click)="selectBuilding(building)">
+                <i class="bi tree-chevron"
+                   [class.bi-chevron-down]="expandedBuildings.includes(building.id)"
+                   [class.bi-chevron-right]="!expandedBuildings.includes(building.id)"
+                   (click)="toggleBuilding(building.id, $event)"
+                   aria-hidden="true"></i>
+                <i class="bi bi-building text-primary" aria-hidden="true"></i>
+                <span class="flex-grow-1 text-truncate">{{ building.name }}</span>
+                <div class="spinner-border spinner-border-sm text-muted" *ngIf="isLoadingFloors && selectedBuilding === building.id" role="status"></div>
+              </button>
+
+              <div *ngIf="expandedBuildings.includes(building.id)" class="ms-3 mt-1">
+                <div *ngFor="let floor of building.floors" class="mb-1">
+                  <button type="button" class="btn btn-sm w-100 text-start d-flex align-items-center gap-2 tree-item"
+                          [class.active-item]="selectedFloor === floor.id && !selectedSuite"
+                          (click)="selectFloor(floor)">
+                    <i class="bi tree-chevron"
+                       [class.bi-chevron-down]="expandedFloors.includes(floor.id)"
+                       [class.bi-chevron-right]="!expandedFloors.includes(floor.id)"
+                       (click)="toggleFloor(floor.id, $event)"
+                       aria-hidden="true"></i>
+                    <i class="bi bi-layers text-info" aria-hidden="true"></i>
+                    <span class="flex-grow-1 text-truncate">{{ floor.name }}</span>
+                    <div class="spinner-border spinner-border-sm text-muted" *ngIf="isLoadingRooms && selectedFloor === floor.id" role="status"></div>
+                  </button>
+
+                  <div *ngIf="expandedFloors.includes(floor.id)">
+                    <button type="button" *ngFor="let suite of floor.suites"
+                            class="btn btn-sm w-100 text-start d-flex align-items-center gap-2 ms-3 tree-item tree-item--suite"
+                            [class.active-item]="selectedSuite === suite.id"
+                            (click)="selectSuite(suite)">
+                      <i class="bi bi-door-open text-purple" aria-hidden="true"></i>
+                      <span class="flex-grow-1 text-truncate">{{ suite.name }}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </ng-container>
+        </div>
+      </aside>
+
+      <div class="property-panel">
+      <div class="property-toolbar-card">
+        <div class="property-breadcrumb" *ngIf="breadcrumbParts.length; else emptyCrumb">
+          <i class="bi bi-geo-alt" aria-hidden="true"></i>
+          <span *ngFor="let part of breadcrumbParts; let last = last" class="property-breadcrumb__part">
+            {{ part }}<span *ngIf="!last" class="property-breadcrumb__sep" aria-hidden="true">/</span>
+          </span>
+        </div>
+        <ng-template #emptyCrumb>
+          <div class="property-breadcrumb text-muted">
+            <i class="bi bi-geo-alt" aria-hidden="true"></i>
+            {{ 'PROPERTY.SELECT_PROMPT_TITLE' | translate }}
+          </div>
+        </ng-template>
+        <div class="property-toolbar">
+          <div class="ui-search ui-search--sm search-container flex-grow-1">
+            <i class="bi bi-search ui-search__icon" aria-hidden="true"></i>
+            <label class="visually-hidden" for="propertyRoomSearch">{{ 'PROPERTY.SEARCH_ROOMS' | translate }}</label>
+            <input id="propertyRoomSearch" type="search" [(ngModel)]="search"
+                   class="form-control form-control-sm ui-search__input"
+                   [placeholder]="'PROPERTY.SEARCH_ROOMS' | translate" />
+          </div>
+          <label class="visually-hidden" for="propertyStatusFilter">{{ 'PROPERTY.STATUS_FILTER' | translate }}</label>
+          <select id="propertyStatusFilter" class="form-select form-select-sm status-filter" [(ngModel)]="filterStatus">
+            <option value="all">{{ 'PROPERTY.ALL' | translate }}</option>
+            <option value="available">{{ 'PROPERTY.STATUS.AVAILABLE' | translate }}</option>
+            <option value="occupied">{{ 'PROPERTY.STATUS.OCCUPIED' | translate }}</option>
+            <option value="preparation">{{ 'PROPERTY.STATUS.PREPARATION' | translate }}</option>
+            <option value="out_of_service">{{ 'PROPERTY.STATUS.OUT_OF_SERVICE' | translate }}</option>
+          </select>
+          <div class="btn-group btn-group-sm property-view-toggle" role="group" [attr.aria-label]="'PROPERTY.VIEW_MODE_ARIA' | translate">
+            <button type="button" class="btn"
+                    [class.btn-primary]="viewMode === 'grid'"
+                    [class.btn-outline-secondary]="viewMode !== 'grid'"
+                    (click)="viewMode = 'grid'"
+                    [attr.aria-pressed]="viewMode === 'grid'"
+                    [attr.title]="'PROPERTY.VIEW_GRID' | translate">
+              <i class="bi bi-grid-3x3-gap" aria-hidden="true"></i>
+            </button>
+            <button type="button" class="btn"
+                    [class.btn-primary]="viewMode === 'list'"
+                    [class.btn-outline-secondary]="viewMode !== 'list'"
+                    (click)="viewMode = 'list'"
+                    [attr.aria-pressed]="viewMode === 'list'"
+                    [attr.title]="'PROPERTY.VIEW_LIST' | translate">
+              <i class="bi bi-list-ul" aria-hidden="true"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="property-rooms-view overflow-auto min-h-0" *ngIf="viewMode === 'grid'">
+        <div *ngIf="!isLoading && !selectedFloor" class="property-select-prompt text-center py-5 px-3">
+          <i class="bi bi-building d-block fs-1 mb-3 text-muted opacity-40" aria-hidden="true"></i>
+          <p class="fw-semibold mb-1">{{ 'PROPERTY.SELECT_PROMPT_TITLE' | translate }}</p>
+          <p class="text-muted small mb-0">{{ 'PROPERTY.SELECT_PROMPT_HINT' | translate }}</p>
+        </div>
+        <ng-container *ngIf="isLoading || isLoadingFloors || isLoadingRooms">
+          <div class="mb-3">
+            <div class="skeleton skeleton-text" style="width: 100px; height: 14px; margin-bottom: 8px;"></div>
+            <div class="row g-3">
+              <div class="col-sm-6 col-xl-4" *ngFor="let i of [1,2,3]">
+                <div class="card p-3 w-100">
+                  <div class="skeleton skeleton-text" style="width: 60%; margin-bottom: 8px;"></div>
+                  <div class="skeleton skeleton-text" style="width: 80%;"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div>
+            <div class="skeleton skeleton-text" style="width: 150px; height: 14px; margin-bottom: 8px;"></div>
+            <div class="room-grid">
+              <div *ngFor="let i of [1,2,3,4,5,6]" class="card p-3">
+                <div class="d-flex justify-content-between mb-2">
+                  <div class="skeleton skeleton-text" style="width: 40px;"></div>
+                  <div class="skeleton" style="width: 12px; height: 12px; border-radius: 50%;"></div>
+                </div>
+                <div class="skeleton skeleton-text" style="width: 60px; margin-bottom: 8px;"></div>
+                <div class="skeleton skeleton-text" style="width: 80%;"></div>
+              </div>
+            </div>
+          </div>
+        </ng-container>
+
+        <ng-container *ngIf="!isLoading && !isLoadingFloors && !isLoadingRooms && selectedFloor">
+          <ng-container *ngTemplateOutlet="propertySuitesBlock"></ng-container>
+          <ng-container *ngTemplateOutlet="propertySuiteFilterBanner"></ng-container>
+
+          <div>
+            <small class="text-muted-foreground text-uppercase d-block mb-2" *ngIf="!selectedSuite">{{ 'PROPERTY.INDIVIDUAL_ROOMS' | translate }}</small>
+            <div class="room-grid">
+              <button type="button" *ngFor="let room of paginatedRooms"
+                      class="card p-3 text-start room-card" [class]="getStatusCardClass(room.status)"
+                      (click)="selectedRoom = room; selectedSuiteDrawer = null">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                  <span class="room-card__number">{{ room.number }}</span>
+                  <span class="status-dot" [class]="getStatusDotClass(room.status)" aria-hidden="true"></span>
+                </div>
+                <small class="text-muted-foreground">{{ room.type }}</small>
+                <small *ngIf="room.guest; else statusText" class="d-block mt-1 room-guest">{{ room.guest }}</small>
+                <ng-template #statusText>
+                  <small class="d-block mt-1" [class]="room.status === 'available' ? 'property-room-status--available' : 'text-muted-foreground'">
+                    {{ getStatusLabel(room.status) | translate }}
+                  </small>
+                </ng-template>
+              </button>
+            </div>
+
+            <div *ngIf="paginatedRooms.length === 0" class="property-empty text-center py-5">
+              <i class="bi bi-door-closed d-block fs-1 mb-2 text-muted opacity-40" aria-hidden="true"></i>
+              <p class="fw-semibold mb-0">{{ 'PROPERTY.NO_ROOMS_FOUND' | translate }}</p>
+            </div>
+          </div>
+        </ng-container>
+      </div>
+
+      <div class="property-rooms-view overflow-auto min-h-0" *ngIf="viewMode === 'list'">
+        <div *ngIf="!isLoading && !selectedFloor" class="property-select-prompt text-center py-5 px-3">
+          <i class="bi bi-building d-block fs-1 mb-3 text-muted opacity-40" aria-hidden="true"></i>
+          <p class="fw-semibold mb-1">{{ 'PROPERTY.SELECT_PROMPT_TITLE' | translate }}</p>
+          <p class="text-muted small mb-0">{{ 'PROPERTY.SELECT_PROMPT_HINT' | translate }}</p>
+        </div>
+        <ng-container *ngIf="isLoading || isLoadingFloors || isLoadingRooms">
+          <div class="table-responsive">
+          <table class="table mb-0">
+            <thead>
+              <tr><th>{{ 'PROPERTY.TABLE.ROOM' | translate }}</th><th>{{ 'PROPERTY.TABLE.TYPE' | translate }}</th><th>{{ 'PROPERTY.TABLE.STATUS' | translate }}</th><th>{{ 'PROPERTY.TABLE.GUEST' | translate }}</th><th>{{ 'PROPERTY.TABLE.BEDS' | translate }}</th><th>{{ 'PROPERTY.TABLE.RATE' | translate }}</th><th></th></tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let i of [1,2,3,4,5]">
+                <td><div class="skeleton skeleton-text" style="width: 40px;"></div></td>
+                <td><div class="skeleton skeleton-text" style="width: 60px;"></div></td>
+                <td><div class="skeleton" style="width: 80px; height: 20px; border-radius: 10px;"></div></td>
+                <td><div class="skeleton skeleton-text" style="width: 100px;"></div></td>
+                <td><div class="skeleton skeleton-text" style="width: 20px;"></div></td>
+                <td><div class="skeleton skeleton-text" style="width: 60px;"></div></td>
+                <td><div class="skeleton" style="width: 32px; height: 32px;"></div></td>
+              </tr>
+            </tbody>
+          </table>
+          </div>
+        </ng-container>
+
+        <ng-container *ngIf="!isLoading && !isLoadingFloors && !isLoadingRooms && selectedFloor">
+          <ng-container *ngTemplateOutlet="propertySuitesBlock"></ng-container>
+          <ng-container *ngTemplateOutlet="propertySuiteFilterBanner"></ng-container>
+
+          <small class="text-muted-foreground text-uppercase d-block mb-2" *ngIf="!selectedSuite">{{ 'PROPERTY.INDIVIDUAL_ROOMS' | translate }}</small>
+          <div class="table-responsive property-list-table-wrap">
+          <table class="table mb-0 property-list-table">
+            <thead>
+              <tr>
+                <th>{{ 'PROPERTY.TABLE.ROOM' | translate }}</th>
+                <th>{{ 'PROPERTY.TABLE.TYPE' | translate }}</th>
+                <th>{{ 'PROPERTY.TABLE.STATUS' | translate }}</th>
+                <th>{{ 'PROPERTY.TABLE.GUEST' | translate }}</th>
+                <th>{{ 'PROPERTY.TABLE.BEDS' | translate }}</th>
+                <th>{{ 'PROPERTY.TABLE.RATE' | translate }}</th>
+                <th class="text-end">{{ 'COMMON.ACTIONS' | translate }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let room of paginatedRooms" (click)="selectedRoom = room; selectedSuiteDrawer = null" class="row-clickable">
+                <td class="fw-semibold">{{ room.number }}</td>
+                <td>{{ room.type }}</td>
+                <td><span class="badge rounded-pill room-status-badge" [class]="getStatusCardClass(room.status)">{{ getStatusLabel(room.status) | translate }}</span></td>
+                <td>{{ room.guest || '—' }}</td>
+                <td>{{ room.beds }}</td>
+                <td class="text-nowrap">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ room.rate }} {{ 'PROPERTY.PER_NIGHT' | translate }}</td>
+                <td class="text-end">
+                  <button type="button" class="btn btn-sm btn-light"
+                          [attr.aria-label]="'PROPERTY.DRAWER.DETAILS' | translate"
+                          (click)="$event.stopPropagation(); selectedRoom = room">
+                    <i class="bi bi-eye" aria-hidden="true"></i>
+                  </button>
+                </td>
+              </tr>
+              <tr *ngIf="paginatedRooms.length === 0">
+                <td colspan="7" class="text-center py-5">
+                  <div class="property-empty">
+                    <i class="bi bi-door-closed d-block fs-1 mb-2 text-muted opacity-40" aria-hidden="true"></i>
+                    <p class="fw-semibold mb-0">{{ 'PROPERTY.NO_ROOMS_FOUND' | translate }}</p>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          </div>
+        </ng-container>
+      </div>
+
+      <ng-template #propertySuitesBlock>
+        <div *ngIf="!selectedSuite && suites.length" class="mb-3">
+          <small class="text-muted-foreground text-uppercase d-block mb-2">{{ 'PROPERTY.SUITES' | translate }}</small>
+          <div class="row g-3">
+            <div class="col-sm-6 col-xl-4" *ngFor="let suite of suites">
+              <button type="button" class="card p-3 w-100 text-start suite-card" (click)="selectSuite(suite)">
+                <div class="d-flex align-items-center gap-2 mb-1">
+                  <i class="bi bi-door-open text-purple" aria-hidden="true"></i>
+                  <span>{{ suite.name }}</span>
+                </div>
+                <small class="text-muted-foreground">
+                  {{ suite.rooms.length }} {{ 'PROPERTY.ROOMS' | translate }} ·
+                  {{ getOccupiedCountForSuite(suite) }} {{ 'PROPERTY.OCCUPIED_COUNT' | translate }}
+                </small>
+              </button>
+            </div>
+          </div>
+        </div>
+      </ng-template>
+
+      <ng-template #propertySuiteFilterBanner>
+        <div *ngIf="selectedSuite && currentSuite"
+             class="property-suite-filter alert alert-light border d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3 py-2">
+          <div class="small mb-0">
+            <i class="bi bi-door-open text-purple me-1" aria-hidden="true"></i>
+            {{ 'PROPERTY.SHOWING_SUITE' | translate:{ name: currentSuite.name } }}
+          </div>
+          <button type="button" class="btn btn-sm btn-outline-secondary" (click)="clearSuiteSelection()">
+            {{ 'PROPERTY.CLEAR_SUITE_FILTER' | translate }}
+          </button>
+        </div>
+      </ng-template>
+
+      <!-- Pagination -->
+      <div class="property-pagination" *ngIf="!isLoading && selectedFloor && totalPages > 1">
+        <div class="small text-muted">
+          {{ 'PROPERTY.PAGINATION_SHOWING' | translate:{ from: (currentPage - 1) * pageSize + 1, to: Math.min(currentPage * pageSize, filteredRooms.length), total: filteredRooms.length } }}
+        </div>
+        <nav [attr.aria-label]="'PROPERTY.PAGE_NAV_ARIA' | translate">
+          <ul class="pagination pagination-sm mb-0">
+            <li class="page-item" [class.disabled]="currentPage === 1">
+              <button type="button" class="page-link" (click)="setPage(currentPage - 1)" [attr.aria-label]="'COMMON.BACK' | translate">
+                <i class="bi bi-chevron-left pagination-chevron" aria-hidden="true"></i>
+              </button>
+            </li>
+            <li class="page-item" *ngFor="let page of pages" [class.active]="currentPage === page">
+              <button type="button" class="page-link" (click)="setPage(page)">{{ page }}</button>
+            </li>
+            <li class="page-item" [class.disabled]="currentPage === totalPages">
+              <button type="button" class="page-link" (click)="setPage(currentPage + 1)" [attr.aria-label]="'COMMON.NEXT' | translate">
+                <i class="bi bi-chevron-right pagination-chevron" aria-hidden="true"></i>
+              </button>
+            </li>
+          </ul>
+        </nav>
+      </div>
+      </div><!-- /.property-panel -->
+    </div><!-- /.property-workspace -->
+  </div><!-- /.property-shell -->
+</div>
+
+<div *ngIf="selectedSuiteDrawer" class="room-drawer-backdrop" (click)="closeSuiteDrawer()">
+  <div class="room-drawer bg-white" (click)="$event.stopPropagation()">
+    <div class="d-flex justify-content-between align-items-center px-4 py-3 border-bottom">
+      <h5 class="mb-0">{{ 'PROPERTY.SUITE_DRAWER.TITLE' | translate:{ name: selectedSuiteDrawer.name } }}</h5>
+      <button class="btn btn-sm btn-light" (click)="closeSuiteDrawer()"><i class="bi bi-x"></i></button>
+    </div>
+    <div class="p-4 space-y-4">
+      <div class="d-flex justify-content-between align-items-center">
+        <span class="badge rounded-pill bg-purple-subtle text-purple">
+          {{ 'PROPERTY.SUITE_DRAWER.ROOMS_COUNT' | translate:{ count: selectedSuiteDrawer.rooms.length } }}
+        </span>
+        <span class="small text-muted-foreground">
+          {{ getOccupiedCountForSuite(selectedSuiteDrawer) }} {{ 'PROPERTY.SUITE_DRAWER.OCCUPIED' | translate }}
+        </span>
+      </div>
+
+      <div>
+        <small class="text-muted-foreground text-uppercase d-block mb-2">{{ 'PROPERTY.SUITE_DRAWER.ROOMS_LIST' | translate }}</small>
+        <div class="d-flex flex-wrap gap-2">
+          <button
+            *ngFor="let room of selectedSuiteDrawer.rooms"
+            type="button"
+            class="btn btn-sm btn-outline-secondary"
+            (click)="selectedRoom = room; closeSuiteDrawer()">
+            {{ room.number }} · {{ room.type }}
+          </button>
+        </div>
+      </div>
+
+      <div class="d-grid gap-2 pt-2" *ngIf="canManageSuites">
+        <button class="btn btn-outline-primary" (click)="openEditSuiteModal()">
+          <i class="bi bi-pencil me-1"></i> {{ 'PROPERTY.SUITE_DRAWER.EDIT' | translate }}
+        </button>
+        <button class="btn btn-outline-warning" (click)="deactivateSuite()">
+          <i class="bi bi-slash-circle me-1"></i> {{ 'PROPERTY.SUITE_DRAWER.DEACTIVATE' | translate }}
+        </button>
+        <button class="btn btn-danger-subtle text-danger" (click)="deleteSuite()">
+          <i class="bi bi-trash me-1"></i> {{ 'PROPERTY.SUITE_DRAWER.DELETE' | translate }}
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div *ngIf="selectedRoom" class="room-drawer-backdrop" (click)="selectedRoom = null">
+  <div class="room-drawer bg-white" (click)="$event.stopPropagation()">
+    <div class="d-flex justify-content-between align-items-center px-4 py-3 border-bottom">
+      <h5 class="mb-0">{{ 'PROPERTY.DRAWER.ROOM_TITLE' | translate:{ room: selectedRoom.number } }}</h5>
+      <button class="btn btn-sm btn-light" (click)="selectedRoom = null"><i class="bi bi-x"></i></button>
+    </div>
+    <div class="p-4 space-y-4">
+      <div class="d-flex justify-content-between align-items-center">
+        <span class="badge rounded-pill room-status-badge" [class]="getStatusCardClass(selectedRoom.status)">{{ getStatusLabel(selectedRoom.status) | translate }}</span>
+        <div class="text-end">
+          <small class="text-muted-foreground d-block">{{ 'PROPERTY.DRAWER.TOTAL_REVENUE' | translate }}</small>
+          <span class="fw-bold text-success">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ getRoomRevenue(selectedRoom.number) }}</span>
+        </div>
+      </div>
+
+      <!-- Room Info -->
+      <div class="bg-muted rounded-lg p-3 small">
+        <div class="d-flex justify-content-between mb-1"><span class="text-muted-foreground">{{ 'PROPERTY.DRAWER.TYPE' | translate }}</span><span>{{ selectedRoom.type }}</span></div>
+        <div class="d-flex justify-content-between mb-1"><span class="text-muted-foreground">{{ 'PROPERTY.DRAWER.BEDS' | translate }}</span><span>{{ selectedRoom.beds }}</span></div>
+        <div class="d-flex justify-content-between mb-1"><span class="text-muted-foreground">{{ 'PROPERTY.DRAWER.RATE' | translate }}</span><span>{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ selectedRoom.rate }} {{ 'PROPERTY.PER_NIGHT' | translate }}</span></div>
+        <div class="d-flex justify-content-between"><span class="text-muted-foreground">{{ 'PROPERTY.DRAWER.CURRENT_GUEST' | translate }}</span><span>{{ selectedRoom.guest || '—' }}</span></div>
+      </div>
+
+      <!-- Active Reservation -->
+      <div *ngIf="getRoomBooking(selectedRoom.number) as booking" class="card border p-3">
+        <div class="d-flex justify-content-between align-items-start mb-3">
+          <div>
+            <small class="text-muted-foreground d-block mb-1">{{ 'PROPERTY.DRAWER.ACTIVE_RESERVATION' | translate }}</small>
+            <h6 class="mb-0">{{ booking.guest }}</h6>
+            <small class="text-muted">{{ booking.id }}</small>
+          </div>
+          <button class="btn btn-sm btn-outline-primary" (click)="viewBooking(booking.id)">
+            <i class="bi bi-eye me-1"></i> {{ 'PROPERTY.DRAWER.DETAILS' | translate }}
+          </button>
+        </div>
+
+        <div class="row g-2 text-center mb-3">
+          <div class="col-4">
+            <div class="p-2 bg-light rounded">
+              <small class="text-muted-foreground d-block">{{ 'PROPERTY.DRAWER.TOTAL' | translate }}</small>
+              <span class="fw-bold small">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ booking.amount }}</span>
+            </div>
+          </div>
+          <div class="col-4">
+            <div class="p-2 bg-light rounded">
+              <small class="text-muted-foreground d-block">{{ 'PROPERTY.DRAWER.PAID' | translate }}</small>
+              <span class="fw-bold small text-success">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ getBookingTotalPaid(booking) }}</span>
+            </div>
+          </div>
+          <div class="col-4">
+            <div class="p-2 bg-light rounded">
+              <small class="text-muted-foreground d-block">{{ 'PROPERTY.DRAWER.REMAINING' | translate }}</small>
+              <span class="fw-bold small text-danger">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ getBookingRemaining(booking) }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="small">
+          <div class="d-flex justify-content-between mb-1">
+            <span class="text-muted-foreground">{{ 'PROPERTY.DRAWER.CHECK_IN' | translate }}</span>
+            <span>{{ booking.checkIn }}</span>
+          </div>
+          <div class="d-flex justify-content-between">
+            <span class="text-muted-foreground">{{ 'PROPERTY.DRAWER.CHECK_OUT' | translate }}</span>
+            <span>{{ booking.checkOut }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div *ngIf="!getRoomBooking(selectedRoom.number)" class="text-center py-4 bg-light rounded-lg border border-dashed">
+        <i class="bi bi-calendar-x text-muted mb-2 fs-4 d-block"></i>
+        <small class="text-muted">{{ 'PROPERTY.DRAWER.NO_ACTIVE_RESERVATION' | translate }}</small>
+      </div>
+
+      <div class="d-grid gap-2 pt-2">
+        <button class="btn btn-outline-primary" (click)="viewRoomHistory(selectedRoom.number)">
+          <i class="bi bi-clock-history me-1"></i> {{ 'PROPERTY.DRAWER.VIEW_FULL_HISTORY' | translate }}
+        </button>
+        <button *ngIf="canManageRooms" class="btn btn-outline-secondary" (click)="openEditRoomModal()">{{ 'PROPERTY.DRAWER.EDIT_ROOM' | translate }}</button>
+        <button *ngIf="canManageRooms" class="btn btn-danger-subtle text-danger">{{ 'PROPERTY.DRAWER.DELETE_ROOM' | translate }}</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div *ngIf="modalType" class="room-drawer-backdrop modal-overlay-center" (click)="closeAddModal()">
+  <div class="card add-modal" (click)="$event.stopPropagation()" style="max-width: 450px; width: 100%;">
+    <div class="card-header d-flex align-items-center justify-content-between">
+      <h6 class="mb-0">
+        {{ modalType === 'room' ? (isEditMode ? ('PROPERTY.MODAL.EDIT_ROOM' | translate) : ('PROPERTY.MODAL.ADD_ROOM' | translate)) : modalType === 'suite' ? (isEditMode ? ('PROPERTY.MODAL.EDIT_SUITE' | translate) : ('PROPERTY.MODAL.ADD_SUITE' | translate)) : modalType === 'floor' ? ('PROPERTY.MODAL.ADD_FLOOR' | translate) : ('PROPERTY.MODAL.ADD_BUILDING' | translate) }}
+      </h6>
+      <button class="btn btn-sm btn-light" (click)="closeAddModal()"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="card-body space-y-3">
+      <!-- Add Building Modal -->
+      <div *ngIf="modalType === 'building'" class="space-y-3">
+        <div>
+          <label class="form-label small text-muted-foreground">{{ 'PROPERTY.MODAL.BUILDING_NAME' | translate }}</label>
+          <input class="form-control" [(ngModel)]="modalName" [placeholder]="'PROPERTY.MODAL.BUILDING_NAME_PLACEHOLDER' | translate" />
+        </div>
+        <div>
+          <label class="form-label small text-muted-foreground">{{ 'PROPERTY.MODAL.BUILDING_NUMBER' | translate }}</label>
+          <input class="form-control" [(ngModel)]="buildingNumber" [placeholder]="'PROPERTY.MODAL.BUILDING_NUMBER_PLACEHOLDER' | translate" />
+        </div>
+        <div>
+          <label class="form-label small text-muted-foreground">{{ 'PROPERTY.MODAL.NUMBER_OF_FLOORS' | translate }}</label>
+          <input type="number" min="1" class="form-control" [(ngModel)]="numberOfFloors" />
+        </div>
+      </div>
+
+      <!-- Add Floor Modal -->
+      <div *ngIf="modalType === 'floor'" class="space-y-3">
+        <div>
+          <label class="form-label small text-muted-foreground">{{ 'PROPERTY.MODAL.FLOOR_NUMBER' | translate }}</label>
+          <input class="form-control" [(ngModel)]="floorNumber" [placeholder]="'PROPERTY.MODAL.FLOOR_NUMBER_PLACEHOLDER' | translate" />
+        </div>
+      </div>
+
+      <!-- Add Room Modal -->
+      <div *ngIf="modalType === 'room'" class="space-y-3">
+        <div class="row g-3">
+          <div class="col-12">
+            <label class="form-label small text-muted-foreground">{{ 'PROPERTY.MODAL.ROOM_NUMBER' | translate }}</label>
+            <input class="form-control" [(ngModel)]="roomNumber" [placeholder]="'PROPERTY.MODAL.ROOM_NUMBER_PLACEHOLDER' | translate" />
+          </div>
+          <div class="col-12">
+            <label class="form-label small text-muted-foreground">{{ 'PROPERTY.MODAL.ROOM_TYPE' | translate }}</label>
+            <select class="form-select" [(ngModel)]="roomTypeId">
+              <option *ngFor="let type of roomtypeList" [value]="type.id">{{ type.name }}</option>
+            </select>
+          </div>
+          <div class="col-12">
+            <label class="form-label small text-muted-foreground">{{ 'PROPERTY.MODAL.CAPACITY_GUESTS' | translate }}</label>
+            <input type="number" min="1" class="form-control" [(ngModel)]="roomCapacity" />
+          </div>
+          <div class="col-12" *ngIf="isEditMode">
+            <label class="form-label small text-muted-foreground">{{ 'PROPERTY.MODAL.ROOM_STATUS' | translate }}</label>
+            <select class="form-select" [(ngModel)]="roomStatusCode">
+              <option *ngFor="let option of operationalStatusOptions" [ngValue]="option.value">{{ option.labelKey | translate }}</option>
+            </select>
+            <small class="text-muted d-block mt-1">{{ 'PROPERTY.MODAL.ROOM_STATUS_HINT' | translate }}</small>
+          </div>
+        </div>
+      </div>
+
+      <!-- Add Suite Modal -->
+      <div *ngIf="modalType === 'suite'" class="space-y-3">
+        <div >
+          <label class="form-label small text-muted-foreground">{{ 'PROPERTY.MODAL.SUITE_NAME_NUMBER' | translate }}</label>
+          <input class="form-control" [(ngModel)]="modalName" [placeholder]="'PROPERTY.MODAL.SUITE_NAME_PLACEHOLDER' | translate" />
+        </div>
+        <div>
+          <label class="form-label small text-muted-foreground">{{ 'PROPERTY.MODAL.SELECT_ROOMS' | translate }}</label>
+          <div class="border rounded p-2" style="max-height: 200px; overflow-y: auto;">
+            <div *ngFor="let room of (isEditMode && modalType === 'suite' ? getRoomsForSuiteModal() : getAvailableRoomsForFloor())" class="form-check">
+              <input class="form-check-input" type="checkbox" [id]="'room-' + room.id" [(ngModel)]="selectedRoomIds[room.id]" />
+              <label class="form-check-label small" [for]="'room-' + room.id">{{ room.number }} - {{ room.type }}</label>
+            </div>
+            <div *ngIf="getAvailableRoomsForFloor().length === 0" class="text-muted small">
+              {{ 'PROPERTY.MODAL.NO_AVAILABLE_ROOMS' | translate }}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="d-flex gap-2 pt-2">
+        <button class="btn btn-outline-secondary flex-grow-1" (click)="closeAddModal()">{{ 'COMMON.CANCEL' | translate }}</button>
+        <button class="btn btn-primary flex-grow-1" (click)="submitAddModal()">
+          {{ isEditMode ? ('COMMON.SAVE' | translate) : ('COMMON.ADD' | translate) }}
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+

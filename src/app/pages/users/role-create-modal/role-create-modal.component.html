@@ -1,0 +1,165 @@
+<div class="modal-backdrop" (click)="closeModal.emit()">
+  <div class="modal-content card" (click)="$event.stopPropagation()">
+    <div class="card-header d-flex align-items-center justify-content-between">
+      <h6 class="mb-0">{{ (roleToEdit ? 'USERS.MODALS.CREATE_ROLE.TITLE_EDIT' : 'USERS.MODALS.CREATE_ROLE.TITLE_CREATE') | translate }}</h6>
+      <button class="btn btn-sm btn-light" (click)="closeModal.emit()">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
+
+    <div class="card-body">
+      <form [formGroup]="roleForm" (ngSubmit)="onSubmit()">
+        <div class="mb-3">
+          <label class="form-label">{{ 'USERS.MODALS.CREATE_ROLE.NAME_EN' | translate }} <span class="text-danger">*</span></label>
+          <input
+            type="text"
+            class="form-control"
+            [class.is-invalid]="roleForm.get('name')?.invalid && roleForm.get('name')?.touched"
+            formControlName="name"
+            [placeholder]="'USERS.MODALS.CREATE_ROLE.NAME_PLACEHOLDER_EN' | translate">
+          <div class="invalid-feedback" *ngIf="roleForm.get('name')?.errors?.['required']">
+            {{ 'USERS.MODALS.CREATE_ROLE.NAME_REQUIRED' | translate }}
+          </div>
+          <div class="invalid-feedback" *ngIf="roleForm.get('name')?.errors?.['minlength']">
+            {{ 'USERS.MODALS.CREATE_ROLE.NAME_MIN' | translate }}
+          </div>
+          <div class="invalid-feedback" *ngIf="roleForm.get('name')?.errors?.['maxlength']">
+            {{ 'USERS.MODALS.CREATE_ROLE.NAME_MAX' | translate }}
+          </div>
+          <div class="invalid-feedback" *ngIf="roleForm.get('name')?.errors?.['duplicate']">
+            {{ 'USERS.MODALS.CREATE_ROLE.NAME_DUPLICATE' | translate }}
+          </div>
+        </div>
+
+        <!-- <div class="mb-3">
+          <label class="form-label">{{ 'USERS.MODALS.CREATE_ROLE.NAME_AR' | translate }} <span class="text-danger">*</span></label>
+          <input
+            type="text"
+            class="form-control text-end"
+            dir="rtl"
+            [class.is-invalid]="roleForm.get('name_ar')?.invalid && roleForm.get('name_ar')?.touched"
+            formControlName="name_ar"
+            [placeholder]="'USERS.MODALS.CREATE_ROLE.NAME_PLACEHOLDER_AR' | translate">
+          <div class="invalid-feedback" *ngIf="roleForm.get('name_ar')?.errors?.['required']">
+            {{ 'USERS.MODALS.CREATE_ROLE.NAME_AR_REQUIRED' | translate }}
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">{{ 'USERS.MODALS.CREATE_ROLE.DESC_LABEL' | translate }}</label>
+          <textarea
+            class="form-control"
+            formControlName="description"
+            rows="2"
+            [placeholder]="'USERS.MODALS.CREATE_ROLE.DESC_PLACEHOLDER' | translate">
+          </textarea>
+        </div> -->
+
+        <div class="mb-3">
+          <label class="form-label d-flex justify-content-between align-items-center">
+            <span>{{ 'USERS.MODALS.CREATE_ROLE.PERMISSIONS' | translate }}</span>
+            <button type="button" class="btn btn-sm btn-link p-0 ms-2" (click)="selectPropertyViewBundle()">
+              {{ 'USERS.MODALS.CREATE_ROLE.PROPERTY_VIEW_BUNDLE' | translate }}
+            </button>
+            <button type="button" class="btn btn-sm btn-link p-0 ms-2" (click)="selectAll()">
+              {{ 'USERS.MODALS.CREATE_ROLE.SELECT_ALL' | translate }}
+            </button>
+          </label>
+
+          <div class="validation-messages mt-2" *ngIf="validationResult">
+            <div class="alert alert-warning py-2 small mb-2" *ngIf="validationResult.warnings.length > 0">
+              <div *ngFor="let warning of validationResult.warnings">
+                <i class="bi bi-exclamation-triangle me-1"></i>{{ warning }}
+              </div>
+            </div>
+            <div class="alert alert-danger py-2 small mb-2" *ngIf="validationResult.errors.length > 0">
+              <div *ngFor="let error of validationResult.errors">
+                <i class="bi bi-x-circle me-1"></i>{{ error }}
+              </div>
+            </div>
+          </div>
+
+          <div class="permission-categories" *ngIf="!isLoadingPermissions">
+            <div class="permission-category mb-3" *ngFor="let category of categories">
+              <div class="category-header" (click)="toggleCategory(category.key)">
+                <div class="d-flex align-items-center gap-2">
+                  <i class="bi" [class]="category.icon"></i>
+                  <span>{{ 'PERMISSIONS_CATEGORIES.' + category.key | translate }}</span>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                  <span class="badge bg-secondary">{{ getCategorySelectedCount(category.key) }}/{{ getCategoryPermissionCount(category.key) }}</span>
+                  <i class="bi" [class.bi-chevron-down]="!isCategoryExpanded(category.key)" [class.bi-chevron-up]="isCategoryExpanded(category.key)"></i>
+                </div>
+              </div>
+
+              <div class="category-permissions" *ngIf="isCategoryExpanded(category.key)">
+                <div class="permission-item" *ngFor="let permission of getPermissionsByCategory(category.key)">
+                  <div class="form-check">
+                    <input
+                      type="checkbox"
+                      class="form-check-input"
+                      [id]="'perm-' + permission.key"
+                      [checked]="isPermissionSelected(permission.key)"
+                      [disabled]="permission.isImmutable"
+                      (change)="togglePermission(permission.key)">
+                    <label class="form-check-label d-flex justify-content-between w-100" [for]="'perm-' + permission.key">
+                      <span>{{ currentLang === 'ar' ? (permission.label_ar || permission.label) : (permission.label || permission.label_ar) }}</span>
+                      <span class="badge bg-info-subtle text-dark ms-2" *ngIf="permission.isImmutable">
+                        <i class="bi bi-lock me-1"></i>{{ 'USERS.MODALS.CREATE_ROLE.IMMUTABLE' | translate }}
+                      </span>
+                    </label>
+                  </div>
+                  <small class="text-muted d-block ms-4">{{ currentLang === 'ar' ? (permission.description_ar || permission.description) : (permission.description || permission.description_ar) }}</small>
+                  <small class="text-warning d-block ms-4" *ngIf="permission.dependencies?.length">
+                    <i class="bi bi-arrow-right me-1"></i>{{ 'USERS.MODALS.CREATE_ROLE.REQUIRES' | translate }}: {{ getDependencyLabels(permission.dependencies) }}
+                  </small>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="text-center py-4" *ngIf="isLoadingPermissions">
+            <div class="spinner-border text-primary" role="status">
+              <span class="visually-hidden">{{ 'USERS.MODALS.CREATE_ROLE.LOADING_PERMS' | translate }}</span>
+            </div>
+            <p class="mt-2 text-muted">{{ 'USERS.MODALS.CREATE_ROLE.LOADING_PERMS' | translate }}</p>
+          </div>
+
+          <div class="alert alert-info py-2 small" *ngIf="!isLoadingPermissions && categories.length === 0">
+            <i class="bi bi-info-circle me-1"></i> {{ 'USERS.MODALS.CREATE_ROLE.NO_PERMS_FOUND' | translate }}
+          </div>
+
+          <div class="selected-permissions-summary mt-3 p-2 bg-light rounded">
+            <div class="d-flex justify-content-between align-items-center">
+              <span>{{ 'USERS.MODALS.CREATE_ROLE.SELECTED_COUNT' | translate }}:</span>
+              <strong>{{ selectedPermissions.length }}</strong>
+            </div>
+            <div class="selected-permissions-list mt-2" *ngIf="selectedPermissions.length > 0">
+              <span class="badge bg-primary-subtle text-primary me-1 mb-1" *ngFor="let perm of selectedPermissions.slice(0, 10)">
+                {{ getPermissionLabel(perm) }}
+              </span>
+              <span class="badge bg-secondary ms-1" *ngIf="selectedPermissions.length > 10">
+                +{{ selectedPermissions.length - 10 }} {{ 'USERS.MODALS.ASSIGN_ROLE.MORE' | translate }}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div class="d-flex gap-2 mt-4">
+          <button type="button" class="btn btn-outline-secondary flex-grow-1" (click)="closeModal.emit()">
+            {{ 'COMMON.CANCEL' | translate }}
+          </button>
+          <button
+            type="submit"
+            class="btn btn-primary flex-grow-1"
+            [disabled]="roleForm.invalid || isSubmitting || (validationResult && !validationResult.isValid)">
+            <span *ngIf="!isSubmitting">{{ (roleToEdit ? 'COMMON.UPDATE' : 'COMMON.CREATE') | translate }}</span>
+            <span *ngIf="isSubmitting">
+              <i class="bi bi-hourglass-split me-1"></i>{{ (roleToEdit ? 'USERS.MODALS.CREATE_ROLE.UPDATING' : 'USERS.MODALS.CREATE_ROLE.CREATING') | translate }}
+            </span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>

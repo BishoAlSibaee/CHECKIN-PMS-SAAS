@@ -1,0 +1,118 @@
+<div class="ui-modal-backdrop" (click)="closeModal.emit()">
+  <div class="ui-modal ui-modal--lg" (click)="$event.stopPropagation()" role="dialog" aria-modal="true"
+       [attr.aria-labelledby]="'user-create-modal-title'">
+    <div class="ui-modal__header">
+      <div class="ui-modal__title-row">
+        <span class="ui-modal__icon" aria-hidden="true"><i class="bi bi-person-plus"></i></span>
+        <div class="min-w-0">
+          <h3 class="ui-modal__title" id="user-create-modal-title">{{ 'USERS.MODALS.CREATE_USER.TITLE' | translate }}</h3>
+          <p class="ui-modal__subtitle">{{ 'USERS.MODALS.CREATE_USER.FULL_NAME_PLACEHOLDER' | translate }}</p>
+        </div>
+      </div>
+      <button type="button" class="ui-modal__close" (click)="closeModal.emit()" [attr.aria-label]="'COMMON.CANCEL' | translate">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
+    <form [formGroup]="userForm" (ngSubmit)="onSubmit()" class="d-flex flex-column flex-grow-1 min-h-0">
+      <div class="ui-modal__body">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label small fw-medium">{{ 'USERS.MODALS.CREATE_USER.FULL_NAME' | translate }}</label>
+            <input type="text" formControlName="name" class="form-control" [placeholder]="'USERS.MODALS.CREATE_USER.FULL_NAME_PLACEHOLDER' | translate"
+                   [class.is-invalid]="userForm.get('name')?.invalid && userForm.get('name')?.touched">
+            <div class="invalid-feedback">{{ 'USERS.MODALS.CREATE_USER.NAME_ERROR' | translate }}</div>
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label small fw-medium">{{ 'USERS.MODALS.CREATE_USER.JOB_NUMBER' | translate }}</label>
+            <input type="text" formControlName="job_number" class="form-control" [placeholder]="'USERS.MODALS.CREATE_USER.JOB_NUMBER_PLACEHOLDER' | translate"
+                   [class.is-invalid]="userForm.get('job_number')?.invalid && userForm.get('job_number')?.touched">
+            <div class="invalid-feedback">{{ 'USERS.MODALS.CREATE_USER.JOB_ERROR' | translate }}</div>
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label small fw-medium">{{ 'USERS.MODALS.CREATE_USER.EMAIL' | translate }}</label>
+            <input type="email" formControlName="email" class="form-control" [placeholder]="'USERS.MODALS.CREATE_USER.EMAIL_PLACEHOLDER' | translate"
+                   [class.is-invalid]="userForm.get('email')?.invalid && userForm.get('email')?.touched">
+            <div class="invalid-feedback">{{ 'USERS.MODALS.CREATE_USER.EMAIL_ERROR' | translate }}</div>
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label small fw-medium">{{ 'USERS.MODALS.CREATE_USER.MOBILE' | translate }}</label>
+            <input type="text" formControlName="mobile" class="form-control" [placeholder]="'USERS.MODALS.CREATE_USER.MOBILE_PLACEHOLDER' | translate"
+                   [class.is-invalid]="userForm.get('mobile')?.invalid && userForm.get('mobile')?.touched">
+            <div class="invalid-feedback">{{ 'USERS.MODALS.CREATE_USER.MOBILE_ERROR' | translate }}</div>
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label small fw-medium">{{ 'USERS.MODALS.CREATE_USER.DEPARTMENT' | translate }}</label>
+            <select formControlName="department_id" class="form-select"
+                    [class.is-invalid]="userForm.get('department_id')?.invalid && userForm.get('department_id')?.touched">
+              <option value="">{{ 'USERS.MODALS.CREATE_USER.SELECT_DEPT' | translate }}</option>
+              <option *ngFor="let dept of departments" [value]="dept.id">
+                {{ currentLang === 'ar' ? (dept.name_ar || dept.name_en) : (dept.name_en || dept.name_ar) }}
+              </option>
+            </select>
+            <div class="invalid-feedback">{{ 'USERS.MODALS.CREATE_USER.DEPT_ERROR' | translate }}</div>
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label small fw-medium">{{ 'USERS.MODALS.CREATE_USER.JOB_TITLE' | translate }}</label>
+            <select formControlName="jobtitle_id" class="form-select"
+                    [class.is-invalid]="userForm.get('jobtitle_id')?.invalid && userForm.get('jobtitle_id')?.touched">
+              <option value="">{{ 'USERS.MODALS.CREATE_USER.SELECT_JOB' | translate }}</option>
+              <option *ngFor="let title of jobTitles" [value]="title.id">
+                {{ currentLang === 'ar' ? (title.name_ar || title.name_en) : (title.name_en || title.name_ar) }}
+              </option>
+            </select>
+            <div class="invalid-feedback">{{ 'USERS.MODALS.CREATE_USER.JOB_TITLE_ERROR' | translate }}</div>
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label small fw-medium">{{ 'USERS.MODALS.CREATE_USER.ASSIGN_ROLE' | translate }}</label>
+            <select formControlName="role_id" class="form-select"
+                    [class.is-invalid]="userForm.get('role_id')?.invalid && userForm.get('role_id')?.touched">
+              <option value="">{{ 'USERS.MODALS.CREATE_USER.SELECT_ROLE' | translate }}</option>
+              <option *ngFor="let role of roles" [value]="role.id">
+                {{ currentLang === 'ar' ? (role.name_ar || role.name) : (role.name || role.name_ar) }}
+              </option>
+            </select>
+            <div class="invalid-feedback">{{ 'USERS.MODALS.CREATE_USER.ROLE_ERROR' | translate }}</div>
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label small fw-medium">{{ 'USERS.MODALS.CREATE_USER.DISCOUNT_PERM' | translate }}</label>
+            <select formControlName="discount_id" class="form-select">
+              <option [value]="null">{{ 'USERS.MODALS.CREATE_USER.NO_DISCOUNT' | translate }}</option>
+              <option *ngFor="let discount of discounts" [value]="discount.id">
+                {{ currentLang === 'ar' ? (discount.name_ar || discount.name) : (discount.name || discount.name_ar) }}
+              </option>
+            </select>
+          </div>
+
+          <div class="col-12">
+            <label class="form-label small fw-medium">{{ 'USERS.MODALS.CREATE_USER.PASSWORD' | translate }}</label>
+            <input type="password" formControlName="password" class="form-control" [placeholder]="'USERS.MODALS.CREATE_USER.PASSWORD_PLACEHOLDER' | translate"
+                   [class.is-invalid]="userForm.get('password')?.invalid && userForm.get('password')?.touched">
+            <div class="invalid-feedback">{{ 'USERS.MODALS.CREATE_USER.PASS_ERROR' | translate }}</div>
+          </div>
+        </div>
+
+        <div class="ui-error mt-3" *ngIf="errorMessage" role="alert">
+          <span class="ui-error__icon" aria-hidden="true"><i class="bi bi-exclamation-triangle-fill"></i></span>
+          <div>
+            <p class="ui-error__title">{{ 'COMMON.ERROR' | translate }}</p>
+            <p class="ui-error__text">{{ errorMessage }}</p>
+          </div>
+        </div>
+      </div>
+      <div class="ui-modal__footer">
+        <button type="button" class="btn btn-light" (click)="closeModal.emit()" [disabled]="isSubmitting">{{ 'COMMON.CANCEL' | translate }}</button>
+        <button type="submit" class="btn btn-primary" [disabled]="isSubmitting">
+          <span class="spinner-border spinner-border-sm me-2" *ngIf="isSubmitting"></span>
+          {{ (isSubmitting ? 'USERS.MODALS.CREATE_USER.CREATING' : 'USERS.MODALS.CREATE_USER.CREATE_BTN') | translate }}
+        </button>
+      </div>
+    </form>
+  </div>
+</div>

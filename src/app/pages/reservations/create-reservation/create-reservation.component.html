@@ -1,0 +1,777 @@
+<div class="create-reservation-page container-fluid py-4" [class.is-rtl]="isRtl" [attr.dir]="isRtl ? 'rtl' : 'ltr'">
+  <span class="visually-hidden" aria-hidden="true">{{ langEpoch }}</span>
+
+  <section class="create-hero">
+    <div class="create-hero__start">
+      <button
+        type="button"
+        class="create-hero__back"
+        (click)="goBack()"
+        [attr.aria-label]="'COMMON.BACK' | translate">
+        <i class="bi" [ngClass]="isRtl ? 'bi-arrow-right' : 'bi-arrow-left'" aria-hidden="true"></i>
+      </button>
+      <div class="create-hero__copy min-w-0">
+        <p class="create-hero__eyebrow">
+          <i class="bi bi-calendar-plus" aria-hidden="true"></i>
+          {{ 'RESERVATIONS.CREATE_EYEBROW' | translate }}
+        </p>
+        <h1>{{ 'RESERVATIONS.NEW_BOOKING' | translate }}</h1>
+        <p class="create-hero__subtitle">{{ 'RESERVATIONS.NEW_BOOKING_SUBTITLE' | translate }}</p>
+      </div>
+    </div>
+    <div class="create-hero__meta">
+      <span class="create-hero__step-pill">
+        {{ 'RESERVATIONS.WIZARD_STEP_OF' | translate:{ current: wizardStep + 1, total: wizardSteps.length } }}
+      </span>
+    </div>
+  </section>
+
+  <nav class="create-steps" [attr.aria-label]="'RESERVATIONS.WIZARD_ARIA' | translate">
+    <ol class="create-steps__list">
+      <li *ngFor="let step of wizardSteps; let i = index" class="create-steps__item">
+        <button
+          type="button"
+          class="create-steps__btn"
+          [class.create-steps__btn--active]="wizardStep === i"
+          [class.create-steps__btn--done]="wizardStep > i"
+          (click)="goToWizardStep(i)">
+          <span class="create-steps__index" aria-hidden="true">
+            <i class="bi bi-check-lg" *ngIf="wizardStep > i; else stepNum"></i>
+            <ng-template #stepNum>{{ i + 1 }}</ng-template>
+          </span>
+          <span class="create-steps__label">{{ step.labelKey | translate }}</span>
+        </button>
+        <span class="create-steps__connector" *ngIf="i < wizardSteps.length - 1" aria-hidden="true"></span>
+      </li>
+    </ol>
+  </nav>
+
+  <div class="row g-4 create-reservation-layout">
+    <div class="col-lg-8 order-lg-1">
+      <div class="card border-0 shadow-sm rounded-xl overflow-hidden mb-4 create-form-card">
+        <form (ngSubmit)="onSubmit()" #reservationForm="ngForm">
+          <!-- Step 0: Guest -->
+          <section class="create-step-panel" [class.d-none]="wizardStep !== 0" aria-labelledby="create-step-guest-title">
+            <header class="create-step-panel__header">
+              <span class="create-step-panel__icon" aria-hidden="true"><i class="bi bi-person-badge"></i></span>
+              <div class="min-w-0">
+                <h2 class="create-step-panel__title" id="create-step-guest-title">{{ 'RESERVATIONS.WIZARD_STEP_GUEST' | translate }}</h2>
+                <p class="create-step-panel__hint">{{ 'RESERVATIONS.CLIENT_SEARCH_HINT' | translate }}</p>
+              </div>
+            </header>
+            <div class="create-step-panel__body">
+              <div class="row g-3">
+              <div class="col-12">
+                <label class="form-label small fw-bold text-muted-foreground">{{ 'CLIENTS.TABLE.CLIENT' | translate }}</label>
+                <div class="input-group client-search-group">
+                  <span class="input-group-text bg-light client-search-icon">
+                    <i class="bi bi-search" *ngIf="!isSearchingClients"></i>
+                    <span class="spinner-border spinner-border-sm text-primary" role="status" *ngIf="isSearchingClients"></span>
+                  </span>
+                  <input
+                    type="text"
+                    class="form-control client-search-input"
+                    [(ngModel)]="clientSearchText"
+                    name="client_search"
+                    [ngbTypeahead]="searchClients"
+                    [inputFormatter]="clientFormatter"
+                    [resultFormatter]="clientResultFormatter"
+                    (selectItem)="onClientSelect($event)"
+                    [placeholder]="'RESERVATIONS.CLIENT_SEARCH_PLACEHOLDER' | translate"
+                    autocomplete="off" />
+                </div>
+                <div class="client-preview mt-2 p-3 rounded-3 border bg-light small d-flex justify-content-between align-items-start gap-2" *ngIf="client">
+                  <div class="client-preview__body">
+                    <span class="fw-semibold">{{ client.first_name }} {{ client.last_name }}</span>
+                    <span class="text-muted client-preview__id" *ngIf="client.id">#{{ client.id }}</span>
+                    <div class="text-muted mt-1 client-preview__meta">
+                      <span *ngIf="client.mobile">{{ client.mobile }}</span>
+                      <span *ngIf="client.email">{{ client.email }}</span>
+                      <span *ngIf="client.IdNumber">{{ client.IdNumber }}</span>
+                    </div>
+                  </div>
+                  <button type="button" class="btn-close btn-sm" (click)="clearSelectedClient()" [attr.aria-label]="'COMMON.CANCEL' | translate"></button>
+                </div>
+                <div class="ui-empty ui-empty--compact mt-3" *ngIf="!client">
+                  <span class="ui-empty__icon" aria-hidden="true"><i class="bi bi-person-plus"></i></span>
+                  <p class="ui-empty__title">{{ 'RESERVATIONS.CLIENT_SEARCH_PLACEHOLDER' | translate }}</p>
+                  <p class="ui-empty__text">{{ 'RESERVATIONS.CLIENT_SEARCH_HINT' | translate }}</p>
+                </div>
+                <input type="hidden" [(ngModel)]="reservation.client_id" name="client_id" />
+
+                <div class="form-check form-switch mt-3" *ngIf="companies.length">
+                  <input class="form-check-input" type="checkbox" role="switch" id="billToCompanySwitch" [(ngModel)]="billToCompany" name="billToCompany">
+                  <label class="form-check-label small fw-semibold" for="billToCompanySwitch">
+                    {{ 'RESERVATIONS.BILL_TO_COMPANY' | translate }}
+                  </label>
+                </div>
+                <div class="mt-2" *ngIf="billToCompany">
+                  <select class="form-select" [(ngModel)]="selectedCompanyId" name="selectedCompanyId">
+                    <option [ngValue]="null">—</option>
+                    <option *ngFor="let c of companies" [ngValue]="c.id">{{ c.name }}</option>
+                  </select>
+                  <p class="text-muted small mt-1 mb-0" *ngIf="suggestedCompanyId">
+                    {{ 'RESERVATIONS.COMPANY_SUGGESTED_HINT' | translate }}
+                  </p>
+                </div>
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label small fw-bold text-muted-foreground">{{ 'PROPERTY.BUILDING' | translate }}</label>
+                <select class="form-select" [(ngModel)]="selectedBuildingId" name="building_id" (ngModelChange)="onBuildingChange()" required>
+                  <option *ngFor="let b of buildings" [ngValue]="b.id">{{ b.name || ('PROPERTY.BUILDING_FALLBACK' | translate:{ number: b.number }) }}</option>
+                </select>
+              </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Step 1: Dates & rooms -->
+          <section class="create-step-panel" [class.d-none]="wizardStep !== 1" aria-labelledby="create-step-dates-title">
+            <header class="create-step-panel__header">
+              <span class="create-step-panel__icon" aria-hidden="true"><i class="bi bi-calendar2-week"></i></span>
+              <div class="min-w-0">
+                <h2 class="create-step-panel__title" id="create-step-dates-title">{{ 'RESERVATIONS.WIZARD_STEP_DATES' | translate }}</h2>
+                <p class="create-step-panel__hint">{{ 'RESERVATIONS.ROOM_AVAILABILITY_HINT' | translate }}</p>
+              </div>
+            </header>
+            <div class="create-step-panel__body">
+              <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label small fw-bold text-muted-foreground">{{ 'RESERVATIONS.CHECK_IN' | translate }}</label>
+                <input
+                  type="date"
+                  [(ngModel)]="reservation.start_date"
+                  name="start_date"
+                  class="form-control"
+                  (ngModelChange)="onStartDateChange()"
+                  [min]="today"
+                  [max]="reservation.expire_date || null"
+                  required>
+                <small class="form-text date-field-hint">{{ 'RESERVATIONS.CHECK_IN_FROM_TODAY_HINT' | translate }}</small>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small fw-bold text-muted-foreground">{{ 'RESERVATIONS.CHECK_OUT' | translate }}</label>
+                <input
+                  type="date"
+                  [(ngModel)]="reservation.expire_date"
+                  name="expire_date"
+                  class="form-control"
+                  (ngModelChange)="onExpireDateChange()"
+                  [min]="minExpireDateForStay"
+                  [class.is-invalid]="dateRangeError || monthlyStayError"
+                  required>
+                <small class="form-text date-field-hint text-danger" *ngIf="dateRangeError">
+                  <i class="bi bi-exclamation-circle icon-inline-start"></i>{{ 'RESERVATIONS.DATE_RANGE_ERROR' | translate }}
+                </small>
+                <small class="form-text date-field-hint text-danger" *ngIf="monthlyStayError && !dateRangeError">
+                  <i class="bi bi-exclamation-circle icon-inline-start"></i>{{ 'RESERVATIONS.MONTHLY_MIN_STAY_ERROR' | translate:{ date: monthlyMinExpireLabel } }}
+                </small>
+                <small class="form-text date-field-hint" *ngIf="isMonthlyRent && !dateRangeError && !monthlyStayError">
+                  {{ 'RESERVATIONS.MONTHLY_STAY_HINT' | translate }}
+                </small>
+              </div>
+
+              <!-- Room availability (collapsible) -->
+              <div class="col-12 room-picker-section">
+                <button
+                  type="button"
+                  class="room-picker-collapse-header w-100"
+                  (click)="toggleRoomPicker()"
+                  [attr.aria-expanded]="roomPickerExpanded"
+                  aria-controls="room-picker-panel">
+                  <div class="room-picker-collapse-header__main">
+                    <div class="room-picker-collapse-header__text">
+                      <span class="room-picker-collapse-title">{{ 'RESERVATIONS.ROOM_AVAILABILITY_TITLE' | translate }}</span>
+                      <span class="text-muted small d-block room-picker-collapse-sub" *ngIf="roomPickerExpanded">{{ 'RESERVATIONS.ROOM_AVAILABILITY_HINT' | translate }}</span>
+                      <span class="text-muted small d-block room-picker-collapse-sub" *ngIf="!roomPickerExpanded && !selectedRooms.length">{{ 'RESERVATIONS.TAP_TO_EXPAND_ROOMS' | translate }}</span>
+                    </div>
+                    <div class="room-picker-collapse-header__meta d-flex flex-wrap align-items-center gap-2">
+                      <span class="badge rounded-pill bg-primary-subtle text-primary border" *ngIf="selectedRooms.length">
+                        {{ selectedRoomsLabel }}
+                      </span>
+                      <ng-container *ngIf="bookingRooms.length && !roomPickerExpanded">
+                        <span class="badge rounded-pill bg-success-subtle text-success border">
+                          {{ 'RESERVATIONS.AVAILABLE_COUNT' | translate:{ count: roomAvailabilitySummary.available } }}
+                        </span>
+                      </ng-container>
+                      <i class="bi room-picker-chevron" [ngClass]="roomPickerExpanded ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
+                    </div>
+                  </div>
+                </button>
+
+                <ul class="list-group list-group-flush border rounded mb-2 selected-rooms-list selected-rooms-list--compact" *ngIf="selectedRooms.length">
+                  <li class="list-group-item d-flex align-items-center justify-content-between py-2 gap-2"
+                      *ngFor="let r of selectedRooms"
+                      [class.selected-room-item--blocked]="isSelectedRoomUnavailable(r.id)">
+                    <span class="d-flex align-items-center gap-2">
+                      <i class="bi" [ngClass]="isSelectedRoomUnavailable(r.id) ? 'bi-exclamation-triangle text-warning' : 'bi-check2-circle text-primary'"></i>
+                      <strong>#{{ r.number }}</strong>
+                    </span>
+                    <button type="button" class="btn btn-sm btn-outline-danger selected-room-remove" (click)="removeRoom(r.id); $event.stopPropagation()">
+                      {{ 'RESERVATIONS.REMOVE_ROOM' | translate }}
+                    </button>
+                  </li>
+                </ul>
+
+                <div class="alert alert-warning py-2 px-3 mb-2 small selected-rooms-availability-warning"
+                     *ngIf="selectedRooms.length && selectedRoomsBlockedByAvailability"
+                     role="alert">
+                  <i class="bi bi-exclamation-triangle me-1"></i>
+                  {{ unavailableSelectedRoomsHint }}
+                </div>
+
+                <div id="room-picker-panel" class="room-picker-collapse-body" [class.is-collapsed]="!roomPickerExpanded" [attr.aria-hidden]="!roomPickerExpanded">
+                <div class="room-summary-pills d-flex flex-wrap gap-2 mb-3" *ngIf="bookingRooms.length && roomPickerExpanded">
+                  <span class="badge rounded-pill bg-success-subtle text-success border">
+                    {{ 'RESERVATIONS.AVAILABLE_COUNT' | translate:{ count: roomAvailabilitySummary.available } }}
+                  </span>
+                  <span class="badge rounded-pill bg-secondary-subtle text-secondary border">
+                    {{ 'RESERVATIONS.UNAVAILABLE_COUNT' | translate:{ count: roomAvailabilitySummary.unavailable } }}
+                  </span>
+                </div>
+
+                <div class="room-picker-toolbar d-flex flex-wrap gap-2 mb-3" *ngIf="datesValid && selectedBuildingId && roomPickerExpanded">
+                  <div class="btn-group btn-group-sm room-filter-group" role="group">
+                    <button type="button" class="btn" [class.btn-primary]="roomAvailabilityFilter === 'all'" [class.btn-outline-secondary]="roomAvailabilityFilter !== 'all'" (click)="roomAvailabilityFilter = 'all'">
+                      {{ 'RESERVATIONS.FILTER_ALL_ROOMS' | translate }}
+                    </button>
+                    <button type="button" class="btn" [class.btn-primary]="roomAvailabilityFilter === 'available'" [class.btn-outline-secondary]="roomAvailabilityFilter !== 'available'" (click)="roomAvailabilityFilter = 'available'">
+                      {{ 'RESERVATIONS.FILTER_AVAILABLE_ONLY' | translate }}
+                    </button>
+                    <button type="button" class="btn" [class.btn-primary]="roomAvailabilityFilter === 'unavailable'" [class.btn-outline-secondary]="roomAvailabilityFilter !== 'unavailable'" (click)="roomAvailabilityFilter = 'unavailable'">
+                      {{ 'RESERVATIONS.FILTER_UNAVAILABLE_ONLY' | translate }}
+                    </button>
+                  </div>
+                  <select class="form-select form-select-sm room-toolbar-select" [(ngModel)]="floorFilter" name="floor_filter" (ngModelChange)="onRoomFiltersChange()">
+                    <option [ngValue]="null">{{ 'RESERVATIONS.ALL_FLOORS' | translate }}</option>
+                    <option *ngFor="let f of floorsForBuilding" [ngValue]="f.id">{{ f.label }}</option>
+                  </select>
+                  <select class="form-select form-select-sm room-toolbar-select" [(ngModel)]="roomTypeFilter" name="room_type_filter" (ngModelChange)="onRoomFiltersChange()">
+                    <option [ngValue]="null">{{ 'RESERVATIONS.ALL_ROOM_TYPES' | translate }}</option>
+                    <option *ngFor="let t of roomTypes" [ngValue]="t.id">{{ localizedName(t) }}</option>
+                  </select>
+                  <input type="search" class="form-control form-control-sm room-toolbar-search" [(ngModel)]="roomSearch" name="room_search" [placeholder]="'RESERVATIONS.SEARCH_ROOM_NUMBER' | translate" />
+                </div>
+
+                <div class="room-picker-legend d-flex flex-wrap gap-3 small text-muted mb-3" *ngIf="bookingRooms.length && roomPickerExpanded">
+                  <span><span class="legend-swatch legend-available"></span>{{ 'RESERVATIONS.LEGEND_AVAILABLE' | translate }}</span>
+                  <span><span class="legend-swatch legend-booked"></span>{{ 'RESERVATIONS.LEGEND_BOOKED' | translate }}</span>
+                  <span><span class="legend-swatch legend-unavailable"></span>{{ 'RESERVATIONS.LEGEND_BLOCKED' | translate }}</span>
+                  <span><span class="legend-swatch legend-selected"></span>{{ 'RESERVATIONS.LEGEND_SELECTED' | translate }}</span>
+                </div>
+
+                <div *ngIf="isLoadingRooms && roomPickerExpanded" class="ui-loading">
+                  <span class="spinner-border text-primary" role="status" aria-hidden="true"></span>
+                  <p class="ui-loading__text">{{ 'COMMON.LOADING' | translate }}</p>
+                </div>
+
+                <div *ngIf="!isLoadingRooms && !datesValid && roomPickerExpanded" class="ui-empty">
+                  <span class="ui-empty__icon" aria-hidden="true"><i class="bi bi-calendar-x"></i></span>
+                  <p class="ui-empty__title">{{ 'RESERVATIONS.FIX_DATES_TO_SEE_ROOMS' | translate }}</p>
+                  <p class="ui-empty__text">
+                    <span *ngIf="startBeforeTodayError">{{ 'RESERVATIONS.START_BEFORE_TODAY' | translate }}</span>
+                    <span *ngIf="!startBeforeTodayError && dateRangeError">{{ 'RESERVATIONS.DATE_RANGE_ERROR' | translate }}</span>
+                    <span *ngIf="!startBeforeTodayError && !dateRangeError && monthlyStayError">{{ 'RESERVATIONS.MONTHLY_MIN_STAY_ERROR' | translate:{ date: monthlyMinExpireLabel } }}</span>
+                    <span *ngIf="!startBeforeTodayError && !dateRangeError && !monthlyStayError">{{ 'RESERVATIONS.FIX_DATES_TO_SEE_ROOMS' | translate }}</span>
+                  </p>
+                </div>
+
+                <div *ngIf="!isLoadingRooms && datesValid && !selectedBuildingId && roomPickerExpanded" class="ui-empty">
+                  <span class="ui-empty__icon" aria-hidden="true"><i class="bi bi-building"></i></span>
+                  <p class="ui-empty__title">{{ 'RESERVATIONS.SELECT_BUILDING_FIRST' | translate }}</p>
+                </div>
+
+                <ng-container *ngIf="!isLoadingRooms && datesValid && selectedBuildingId && roomPickerExpanded">
+                  <div *ngFor="let floor of bookingRoomsByFloor" class="room-floor-group mb-4">
+                    <h3 class="h6 room-floor-title mb-3">{{ floor.label }}</h3>
+
+                    <div *ngIf="floor.suites.length" class="suites-section mb-3">
+                      <small class="suites-section__label text-muted d-block mb-2">{{ 'PROPERTY.SUITES' | translate }}</small>
+                      <div class="row g-2 suite-cards-row">
+                        <div class="col-6 col-md-4 col-xl-3" *ngFor="let suite of floor.suites">
+                          <button
+                            type="button"
+                            class="suite-picker-card w-100 h-100"
+                            [ngClass]="suiteCardClass(suite)"
+                            [disabled]="!isSuiteAvailable(suite) && !isSuiteSelected(suite)"
+                            (click)="toggleSuiteSelection(suite)">
+                            <div class="suite-picker-card__header">
+                              <div class="suite-picker-card__title">
+                                <i class="bi bi-door-open text-purple"></i>
+                                <span class="text-truncate">{{ suite.suiteName }}</span>
+                              </div>
+                              <i class="bi suite-picker-card__check" [class.bi-check-circle-fill]="isSuiteSelected(suite)" [class.bi-circle]="!isSuiteSelected(suite)"></i>
+                            </div>
+                            <small class="suite-picker-card__meta text-muted">
+                              {{ 'RESERVATIONS.SUITE_ROOMS_COUNT' | translate:{ count: suite.rooms.length } }}
+                            </small>
+                            <small class="suite-picker-card__hint text-muted">
+                              {{ (isSuiteSelected(suite) ? 'RESERVATIONS.SUITE_SELECTED' : 'RESERVATIONS.SUITE_SELECT_HINT') | translate }}
+                            </small>
+                            <div class="suite-picker-card__rooms">
+                              <span
+                                class="suite-room-chip"
+                                *ngFor="let room of suite.rooms"
+                                [class.suite-room-chip--selected]="isRoomSelected(room.id)"
+                                [class.suite-room-chip--unavailable]="!room.available_for_period && !isRoomSelected(room.id)"
+                                (click)="onSuiteRoomChipClick($event, room)">
+                                #{{ room.number }}
+                              </span>
+                            </div>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div *ngIf="floor.standaloneRooms.length" class="standalone-rooms-block mt-2">
+                      <p class="standalone-rooms-label small text-muted mb-2" *ngIf="floor.suites.length">
+                        {{ 'PROPERTY.STANDALONE_ROOMS' | translate }}
+                      </p>
+                      <div class="room-availability-grid">
+                        <ng-container *ngFor="let room of floor.standaloneRooms">
+                          <ng-container *ngTemplateOutlet="roomAvailabilityCard; context: { room: room }"></ng-container>
+                        </ng-container>
+                      </div>
+                    </div>
+                  </div>
+
+                  <ng-template #roomAvailabilityCard let-room="room">
+                    <button
+                      type="button"
+                      class="room-availability-card"
+                      [ngClass]="roomCardClass(room)"
+                      [disabled]="!room.available_for_period && !isRoomSelected(room.id)"
+                      (click)="toggleRoomSelection(room); $event.stopPropagation()"
+                      [attr.aria-pressed]="isRoomSelected(room.id)">
+                      <div class="d-flex justify-content-between align-items-start gap-1">
+                        <span class="room-availability-card__number">#{{ room.number }}</span>
+                        <i class="bi" [ngClass]="isRoomSelected(room.id) ? 'bi-check-circle-fill text-primary' : (room.available_for_period ? 'bi-door-open' : 'bi-x-circle')"></i>
+                      </div>
+                      <small class="room-availability-card__type text-muted d-block text-truncate">{{ localizedName(room.room_type) }}</small>
+                      <span class="room-status-pill" [ngClass]="roomStatusPillClass(room)">{{ roomStatusLabel(room) | translate }}</span>
+                      <small class="room-availability-card__conflict text-muted d-block mt-1" *ngIf="room.conflict">
+                        <ng-container *ngIf="room.unavailable_reason === 'still_checked_in' || room.unavailable_reason === 'occupied'; else dateConflict">
+                          {{ 'RESERVATIONS.ROOM_STILL_CHECKED_IN_DETAIL' | translate:{
+                            reservationId: room.conflict.reservation_id,
+                            guest: room.conflict.client_name || ('COMMON.UNKNOWN' | translate)
+                          } }}
+                        </ng-container>
+                        <ng-template #dateConflict>
+                          {{ room.conflict.start_date }} → {{ room.conflict.expire_date }}
+                          <span *ngIf="room.conflict.client_name"> · {{ room.conflict.client_name }}</span>
+                        </ng-template>
+                      </small>
+                    </button>
+                  </ng-template>
+
+                  <div class="ui-empty" *ngIf="bookingRooms.length && filteredBookingRooms.length === 0">
+                    <span class="ui-empty__icon" aria-hidden="true"><i class="bi bi-funnel"></i></span>
+                    <p class="ui-empty__title">{{ 'RESERVATIONS.NO_ROOMS_MATCH_FILTER' | translate }}</p>
+                  </div>
+                  <div class="ui-empty" *ngIf="!bookingRooms.length">
+                    <span class="ui-empty__icon" aria-hidden="true"><i class="bi bi-door-closed"></i></span>
+                    <p class="ui-empty__title">{{ 'RESERVATIONS.NO_ROOMS_IN_BUILDING' | translate }}</p>
+                  </div>
+                </ng-container>
+
+                <p class="text-muted small mt-2 mb-0" *ngIf="roomPickerExpanded && !selectedRooms.length && !isLoadingRooms && bookingRooms.length">
+                  {{ 'RESERVATIONS.TAP_AVAILABLE_ROOM' | translate }}
+                </p>
+                </div>
+              </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Step 2: Options -->
+          <section class="create-step-panel" [class.d-none]="wizardStep !== 2" aria-labelledby="create-step-options-title">
+            <header class="create-step-panel__header">
+              <span class="create-step-panel__icon" aria-hidden="true"><i class="bi bi-sliders"></i></span>
+              <div class="min-w-0">
+                <h2 class="create-step-panel__title" id="create-step-options-title">{{ 'RESERVATIONS.WIZARD_STEP_OPTIONS' | translate }}</h2>
+                <p class="create-step-panel__hint">{{ 'RESERVATIONS.PRICE_MODE_HINT' | translate }}</p>
+              </div>
+            </header>
+            <div class="create-step-panel__body">
+              <div class="row g-3">
+              <div class="col-md-6">
+                <div class="booking-option-card h-100">
+                  <div class="booking-option-card__body">
+                    <div class="booking-option-card__text">
+                      <span class="booking-option-card__label">{{ 'RESERVATIONS.RENT_TYPE' | translate }}</span>
+                      <span class="booking-option-card__value">
+                        {{ (isMonthlyRent ? 'RESERVATIONS.RENT_MONTHLY' : 'RESERVATIONS.RENT_DAILY') | translate }}
+                      </span>
+                    </div>
+                    <div class="form-check form-switch booking-switch mb-0">
+                      <input
+                        class="form-check-input"
+                        type="checkbox"
+                        id="rentMonthlySwitch"
+                        role="switch"
+                        [checked]="isMonthlyRent"
+                        (change)="onRentTypeSwitch($event)">
+                      <label class="form-check-label visually-hidden" for="rentMonthlySwitch">
+                        {{ 'RESERVATIONS.RENT_MONTHLY' | translate }}
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="col-md-6">
+                <div class="booking-option-card h-100" [class.booking-option-card--disabled]="!checkInTodayAllowed">
+                  <div class="booking-option-card__body">
+                    <div class="booking-option-card__text">
+                      <span class="booking-option-card__label">{{ 'RESERVATIONS.CHECK_IN_NOW' | translate }}</span>
+                      <span class="booking-option-card__value text-muted">
+                        {{ (checkInTodayAllowed ? 'RESERVATIONS.CHECK_IN_NOW_HINT' : 'RESERVATIONS.CHECK_IN_NOW_TODAY_ONLY') | translate }}
+                      </span>
+                    </div>
+                    <div class="form-check form-switch booking-switch mb-0">
+                      <input
+                        class="form-check-input"
+                        type="checkbox"
+                        id="checkInNowSwitch"
+                        role="switch"
+                        [checked]="reservation.logedin === 1"
+                        [disabled]="!checkInTodayAllowed || isSaving"
+                        (change)="onCheckInNowSwitch($event)">
+                      <label class="form-check-label visually-hidden" for="checkInNowSwitch">
+                        {{ 'RESERVATIONS.CHECK_IN_NOW' | translate }}
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="col-12">
+                <label class="form-label small fw-bold text-muted-foreground d-block">{{ 'RESERVATIONS.PRICE_CALCULATION_MODE' | translate }}</label>
+                <div class="btn-group w-100 price-mode-segment" role="group" [attr.aria-label]="'RESERVATIONS.PRICE_CALCULATION_MODE' | translate">
+                  <button
+                    type="button"
+                    class="btn btn-sm"
+                    [class.btn-primary]="reservation.price_calculation_mode === 0"
+                    [class.btn-outline-secondary]="reservation.price_calculation_mode !== 0"
+                    (click)="setPriceCalculationMode(0)">
+                    {{ 'RESERVATIONS.PRICE_MODE_MIXED_SHORT' | translate }}
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-sm"
+                    [class.btn-primary]="reservation.price_calculation_mode === 1"
+                    [class.btn-outline-secondary]="reservation.price_calculation_mode !== 1"
+                    (click)="setPriceCalculationMode(1)">
+                    {{ 'RESERVATIONS.PRICE_MODE_PLAN_SHORT' | translate }}
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-sm"
+                    [class.btn-primary]="reservation.price_calculation_mode === 2"
+                    [class.btn-outline-secondary]="reservation.price_calculation_mode !== 2"
+                    (click)="setPriceCalculationMode(2)">
+                    {{ 'RESERVATIONS.PRICE_MODE_ROOM_TYPE_SHORT' | translate }}
+                  </button>
+                </div>
+                <small class="form-text date-field-hint">{{ 'RESERVATIONS.PRICE_MODE_HINT' | translate }}</small>
+                <small class="form-text date-field-hint d-block mt-1" *ngIf="appliedPlanHint && reservation.price_calculation_mode === 0">
+                  {{ appliedPlanHint }}
+                </small>
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label small fw-bold text-muted-foreground">{{ 'RESERVATIONS.STAY_REASON' | translate }}</label>
+                <select [(ngModel)]="reservation.stay_reason_id" name="stay_reason_id" class="form-select">
+                  <option *ngFor="let reason of stayReasons" [value]="reason.id">
+                    {{ localizedName(reason) }}
+                  </option>
+                </select>
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label small fw-bold text-muted-foreground">{{ 'RESERVATIONS.RESERVATION_SOURCE' | translate }}</label>
+                <select [(ngModel)]="reservation.reservation_source_id" name="reservation_source_id" class="form-select">
+                  <option *ngFor="let source of reservationSources" [value]="source.id">
+                    {{ localizedName(source) }}
+                  </option>
+                </select>
+              </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Step 3: Payment -->
+          <section class="create-step-panel" [class.d-none]="wizardStep !== 3" aria-labelledby="create-step-payment-title">
+            <header class="create-step-panel__header">
+              <span class="create-step-panel__icon" aria-hidden="true"><i class="bi bi-wallet2"></i></span>
+              <div class="min-w-0">
+                <h2 class="create-step-panel__title" id="create-step-payment-title">{{ 'RESERVATIONS.WIZARD_STEP_PAYMENT' | translate }}</h2>
+                <p class="create-step-panel__hint">{{ 'RESERVATIONS.PAY_AMOUNT_HINT' | translate }}</p>
+              </div>
+            </header>
+            <div class="create-step-panel__body">
+              <div class="row g-3">
+              <div class="col-12" *ngIf="guestClassificationLabel">
+                <label class="form-label small fw-bold text-muted-foreground">{{ 'RESERVATIONS.CLASSIFICATION_DISCOUNT' | translate }}</label>
+                <div class="alert alert-light border mb-0 py-2 px-3">
+                  <div class="d-flex justify-content-between align-items-center gap-2">
+                    <span>{{ guestClassificationLabel }}</span>
+                    <span class="text-danger fw-semibold">
+                      <ng-container *ngIf="classificationDiscountAmount > 0">
+                        -{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ classificationDiscountAmount | number:'1.2-2' }}
+                      </ng-container>
+                      <ng-container *ngIf="classificationDiscountAmount <= 0">
+                        {{ classificationDiscountRuleLabel() || ('RESERVATIONS.CLASSIFICATION_DISCOUNT_AWAITING_PRICE' | translate) }}
+                      </ng-container>
+                    </span>
+                  </div>
+                  <small class="text-muted d-block mt-1">{{ 'RESERVATIONS.CLASSIFICATION_DISCOUNT_HINT' | translate }}</small>
+                </div>
+              </div>
+
+              <div class="col-12">
+                <label class="form-label small fw-bold text-muted-foreground">{{ 'RESERVATIONS.ADDITIONAL_DISCOUNT' | translate }}</label>
+                <select
+                  class="form-select mb-2"
+                  [ngModel]="discountPresetId ?? ''"
+                  (ngModelChange)="onDiscountPresetChange($event)"
+                  name="discount_preset">
+                  <option value="">{{ 'RESERVATIONS.DISCOUNT_MANUAL' | translate }}</option>
+                  <option *ngFor="let preset of activeDiscounts" [ngValue]="preset.id">
+                    {{ discountPresetLabel(preset) }}
+                  </option>
+                </select>
+                <div class="row g-2">
+                  <div class="col-md-5">
+                    <select
+                      class="form-select"
+                      [(ngModel)]="discountType"
+                      (ngModelChange)="onDiscountTypeChange()"
+                      name="discount_type"
+                      [disabled]="isDiscountInputDisabled">
+                      <option value="fixed">{{ 'RESERVATIONS.DISCOUNT_TYPE_FIXED' | translate }}</option>
+                      <option value="percent">{{ 'RESERVATIONS.DISCOUNT_TYPE_PERCENT' | translate }}</option>
+                    </select>
+                  </div>
+                  <div class="col-md-7">
+                    <div class="input-group">
+                      <span class="input-group-text" *ngIf="discountType === 'fixed'">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}</span>
+                      <input
+                        type="number"
+                        [(ngModel)]="discountValue"
+                        name="discount_value"
+                        class="form-control"
+                        min="0"
+                        [max]="discountType === 'percent' ? 100 : null"
+                        [disabled]="isDiscountInputDisabled">
+                      <span class="input-group-text" *ngIf="discountType === 'percent'">%</span>
+                    </div>
+                  </div>
+                </div>
+                <small class="text-muted d-block mt-1" *ngIf="discountSummaryHint()">{{ discountSummaryHint() }}</small>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small fw-bold text-muted-foreground">{{ 'RESERVATIONS.EXTRAS' | translate }}</label>
+                <div class="input-group">
+                  <span class="input-group-text">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}</span>
+                  <input type="number" [(ngModel)]="reservation.extras" name="extras" class="form-control" min="0">
+                </div>
+              </div>
+              <div class="col-md-6" *ngIf="!billToCompany">
+                <label class="form-label small fw-bold text-muted-foreground">{{ 'RESERVATIONS.PAY_AMOUNT' | translate }}</label>
+                <div class="input-group">
+                  <span class="input-group-text">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}</span>
+                  <input
+                    type="number"
+                    [(ngModel)]="reservation.pay_amount"
+                    name="pay_amount"
+                    class="form-control"
+                    min="0"
+                    [max]="maxPayAmount"
+                    step="0.01"
+                    (ngModelChange)="onPayAmountChange()">
+                  <button
+                    type="button"
+                    class="btn btn-outline-primary"
+                    (click)="setFullPayAmount()"
+                    [disabled]="grandTotal <= 0 || isSaving">
+                    {{ 'RESERVATIONS.PAY_FULL_BALANCE' | translate }}
+                  </button>
+                </div>
+                <small class="text-danger d-block mt-1" *ngIf="payAmountError">
+                  {{ 'RESERVATIONS.PAYMENT_AMOUNT_EXCEEDS_TOTAL' | translate:{ max: (grandTotal | number:'1.2-2') } }}
+                </small>
+                <small class="text-muted d-block mt-1" *ngIf="!payAmountError && grandTotal > 0">
+                  {{ 'RESERVATIONS.PAYMENT_AMOUNT_HINT' | translate:{ max: (grandTotal | number:'1.2-2') } }}
+                </small>
+                <small class="text-muted d-block mt-1" *ngIf="!payAmountError && grandTotal <= 0">
+                  {{ 'RESERVATIONS.PAY_AMOUNT_HINT' | translate }}
+                </small>
+              </div>
+              <div class="col-md-6" *ngIf="billToCompany">
+                <div class="alert alert-info small mb-0">
+                  <i class="bi bi-building me-1" aria-hidden="true"></i>
+                  {{ 'RESERVATIONS.BILL_TO_COMPANY_NOTE' | translate }}
+                </div>
+              </div>
+
+              </div>
+            </div>
+          </section>
+
+          <div class="create-sticky-cta">
+            <div class="create-sticky-cta__total d-lg-none">
+              <span class="create-sticky-cta__label">{{ 'RESERVATIONS.TOTAL_INCL_TAX' | translate }}</span>
+              <strong class="create-sticky-cta__amount">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ grandTotal | number:'1.2-2' }}</strong>
+            </div>
+            <div class="create-sticky-cta__actions">
+              <div class="d-flex flex-wrap gap-2">
+                <button type="button" class="btn btn-light border" *ngIf="wizardStep > 0" (click)="prevWizardStep()">
+                  {{ 'COMMON.BACK' | translate }}
+                </button>
+                <button type="button" class="btn btn-light border d-none d-sm-inline-flex" (click)="goBack()">{{ 'COMMON.CANCEL' | translate }}</button>
+              </div>
+              <div class="d-flex flex-wrap gap-2 ms-auto">
+                <button type="button" class="btn btn-primary" *ngIf="wizardStep < wizardSteps.length - 1"
+                        (click)="nextWizardStep()">
+                  {{ 'COMMON.NEXT' | translate }}
+                </button>
+                <button type="submit" class="btn btn-primary" *ngIf="wizardStep === wizardSteps.length - 1"
+                        [disabled]="!canSubmit">
+                  {{ 'RESERVATIONS.NEW_BOOKING' | translate }}
+                  <span *ngIf="isSaving" class="spinner-border spinner-border-sm icon-inline-start" role="status" aria-hidden="true"></span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="col-lg-4 order-lg-2">
+      <div class="card border-0 shadow-sm rounded-xl overflow-hidden price-summary-card position-sticky">
+        <div class="create-step-panel__header border-0">
+          <span class="create-step-panel__icon" aria-hidden="true"><i class="bi bi-receipt"></i></span>
+          <div class="min-w-0">
+            <h2 class="create-step-panel__title">{{ 'RESERVATIONS.PRICE_SUMMARY' | translate }}</h2>
+          </div>
+        </div>
+        <div class="card-body p-4 pt-0">
+          <div class="summary-row d-flex justify-content-between align-items-center gap-2 mb-2">
+            <span class="text-muted">{{ 'RESERVATIONS.BASE_PRICE' | translate }}</span>
+            <span class="fw-bold summary-value">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ calculatedPrice | number:'1.2-2' }}</span>
+          </div>
+          <div class="summary-row d-flex justify-content-between align-items-center gap-2 mb-2" *ngIf="hasClassificationDiscount">
+            <span class="text-muted">
+              {{ 'RESERVATIONS.CLASSIFICATION_DISCOUNT' | translate }}
+              <small class="d-block fw-normal" *ngIf="guestClassificationLabel">{{ guestClassificationLabel }}</small>
+            </span>
+            <span class="text-danger summary-value text-end">
+              <ng-container *ngIf="classificationDiscountAmount > 0">
+                -{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ classificationDiscountAmount | number:'1.2-2' }}
+              </ng-container>
+              <ng-container *ngIf="classificationDiscountAmount <= 0">
+                {{ classificationDiscountRuleLabel() || ('RESERVATIONS.CLASSIFICATION_DISCOUNT_AWAITING_PRICE' | translate) }}
+              </ng-container>
+              <small class="d-block text-muted fw-normal" *ngIf="classificationDiscountAmount > 0 && classificationDiscountRuleLabel()">
+                {{ classificationDiscountRuleLabel() }}
+              </small>
+            </span>
+          </div>
+          <div class="summary-row d-flex justify-content-between align-items-center gap-2 mb-2" *ngIf="manualDiscountAmount > 0">
+            <span class="text-muted">{{ 'RESERVATIONS.ADDITIONAL_DISCOUNT' | translate }}</span>
+            <span class="text-danger summary-value">
+              -{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ manualDiscountAmount | number:'1.2-2' }}
+              <small class="d-block text-muted fw-normal" *ngIf="discountSummaryHint()">{{ discountSummaryHint() }}</small>
+            </span>
+          </div>
+          <div class="summary-row d-flex justify-content-between align-items-center gap-2 mb-2" *ngIf="totalDiscountAmount > 0 && hasClassificationDiscount && manualDiscountAmount > 0">
+            <span class="text-muted">{{ 'RESERVATIONS.TOTAL_DISCOUNT' | translate }}</span>
+            <span class="text-danger summary-value">
+              -{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ totalDiscountAmount | number:'1.2-2' }}
+            </span>
+          </div>
+          <div class="summary-row d-flex justify-content-between align-items-center gap-2 mb-2">
+            <span class="text-muted">{{ 'RESERVATIONS.EXTRAS' | translate }}</span>
+            <span class="text-success summary-value">+{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ reservation.extras | number:'1.2-2' }}</span>
+          </div>
+          <div class="summary-row d-flex justify-content-between align-items-center gap-2 mb-2">
+            <span class="text-muted">{{ 'RESERVATIONS.SUBTOTAL' | translate }}</span>
+            <span class="fw-semibold summary-value">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ subtotalAmount | number:'1.2-2' }}</span>
+          </div>
+          <div class="summary-row d-flex justify-content-between align-items-center gap-2 mb-2">
+            <span class="text-muted">{{ 'RESERVATIONS.TAX_VAT' | translate }}</span>
+            <span class="summary-value">+{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ taxAmount | number:'1.2-2' }}</span>
+          </div>
+          <hr class="summary-divider">
+          <div class="summary-row d-flex justify-content-between align-items-center gap-2 mb-0">
+            <span class="h5 mb-0">{{ 'RESERVATIONS.TOTAL_INCL_TAX' | translate }}</span>
+            <span class="h5 mb-0 fw-bold text-primary summary-value">
+              {{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ grandTotal | number:'1.2-2' }}
+            </span>
+          </div>
+          <div class="ui-loading ui-loading--compact mt-2" *ngIf="isPriceCalculating">
+            <span class="spinner-border spinner-border-sm text-primary" role="status" aria-hidden="true"></span>
+            <p class="ui-loading__text">{{ 'RESERVATIONS.PRICE_CALCULATING' | translate }}</p>
+          </div>
+          <div class="ui-error mt-2" *ngIf="priceCalcError && !isPriceCalculating" role="alert">
+            <span class="ui-error__icon" aria-hidden="true"><i class="bi bi-exclamation-triangle-fill"></i></span>
+            <div>
+              <p class="ui-error__title">{{ 'COMMON.ERROR' | translate }}</p>
+              <p class="ui-error__text">{{ priceCalcError }}</p>
+            </div>
+          </div>
+          <div class="ui-empty ui-empty--compact mt-2" *ngIf="!selectedRooms.length && !isPriceCalculating && !priceCalcError">
+            <span class="ui-empty__icon" aria-hidden="true"><i class="bi bi-door-open"></i></span>
+            <p class="ui-empty__text">{{ 'RESERVATIONS.SELECT_ROOM_FOR_PRICE' | translate }}</p>
+          </div>
+
+          <div class="price-breakdown mt-3" *ngIf="priceBreakdownLines.length">
+            <h3 class="h6 small text-muted text-uppercase mb-2">{{ 'RESERVATIONS.PRICE_BREAKDOWN' | translate }}</h3>
+            <div
+              class="summary-row d-flex justify-content-between align-items-start gap-2 mb-2 price-breakdown-row"
+              *ngFor="let row of priceBreakdownLines">
+              <span class="price-breakdown-row__label">
+                {{ formatBreakdownLabel(row) }}
+                <small class="text-muted d-block" *ngIf="row.nights > 1">{{ 'RESERVATIONS.NIGHTS_COUNT' | translate:{ count: row.nights } }}</small>
+              </span>
+              <span class="fw-semibold summary-value text-nowrap">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ breakdownRowDisplayAmount(row) | number:'1.2-2' }}</span>
+            </div>
+          </div>
+
+          <details class="daily-rates-details mt-2" *ngIf="dailyPriceLines.length > 1 && priceBreakdownLines.length">
+            <summary class="small text-muted">{{ 'RESERVATIONS.DAILY_BREAKDOWN_TOGGLE' | translate }}</summary>
+            <div class="daily-rates-table mt-2">
+              <table class="table table-sm mb-0">
+                <tbody>
+                  <tr *ngFor="let line of dailyPriceLines">
+                    <td>{{ formatDailyDate(line.date) }}</td>
+                    <td class="text-end summary-amount-col">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ line.amount | number:'1.2-2' }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </details>
+
+          <div class="daily-rates-table mt-3" *ngIf="dailyPriceLines.length && !priceBreakdownLines.length">
+            <table class="table table-sm mb-0">
+              <thead>
+                <tr>
+                  <th>{{ 'RESERVATIONS.DAILY_DATE' | translate }}</th>
+                  <th class="text-end summary-amount-col">{{ 'RESERVATIONS.DAILY_RATE' | translate }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let line of dailyPriceLines">
+                  <td>{{ formatDailyDate(line.date) }}</td>
+                  <td class="text-end summary-amount-col">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ line.amount | number:'1.2-2' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

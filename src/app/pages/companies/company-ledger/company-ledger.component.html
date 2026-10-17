@@ -1,0 +1,123 @@
+<div class="hotels-page">
+  <section class="dept-hero">
+    <div class="dept-hero__copy">
+      <p class="dept-hero__eyebrow">
+        <i class="bi bi-journal-text" aria-hidden="true"></i>
+        {{ 'COMPANY_LEDGER.EYEBROW' | translate }}
+      </p>
+      <h1>{{ 'COMPANY_LEDGER.TITLE' | translate }}</h1>
+      <p class="dept-hero__subtitle">{{ 'COMPANY_LEDGER.SUBTITLE' | translate }}</p>
+    </div>
+    <div class="dept-hero__actions">
+      <button type="button" class="btn btn-outline-secondary" (click)="loadCompanies()" [disabled]="isLoading">
+        <i class="bi bi-arrow-clockwise" [class.spin]="isLoading" aria-hidden="true"></i>
+        <span>{{ 'COMMON.REFRESH' | translate }}</span>
+      </button>
+    </div>
+  </section>
+
+  <div class="card border-0 shadow-sm dept-card">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th>{{ 'COMPANY_LEDGER.COMPANY' | translate }}</th>
+            <th>{{ 'COMPANY_LEDGER.TOTAL_BILLED' | translate }}</th>
+            <th>{{ 'COMPANY_LEDGER.TOTAL_SETTLED' | translate }}</th>
+            <th>{{ 'COMPANY_LEDGER.OUTSTANDING' | translate }}</th>
+            <th class="text-end">{{ 'COMMON.ACTIONS' | translate }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <ng-container *ngIf="isLoading">
+            <tr *ngFor="let i of [1,2]">
+              <td colspan="5"><div class="skeleton skeleton-text" style="width: 100%; height: 22px;"></div></td>
+            </tr>
+          </ng-container>
+
+          <tr *ngIf="!isLoading && companies.length === 0">
+            <td colspan="5" class="py-5 text-center">
+              <div class="dept-empty">
+                <i class="bi bi-journal-text" aria-hidden="true"></i>
+                <p class="fw-semibold mb-1">{{ 'COMPANY_LEDGER.NO_COMPANIES' | translate }}</p>
+              </div>
+            </td>
+          </tr>
+
+          <tr *ngFor="let company of companies">
+            <td class="fw-semibold">{{ company.name }}</td>
+            <td>{{ company.total_debit | number:'1.2-2' }}</td>
+            <td>{{ company.total_credit | number:'1.2-2' }}</td>
+            <td>
+              <span class="badge border-0" [ngClass]="company.balance > 0.005 ? 'bg-warning-subtle text-warning' : 'bg-success-subtle text-success'">
+                {{ company.balance | number:'1.2-2' }}
+              </span>
+            </td>
+            <td class="text-end">
+              <button type="button" class="btn btn-sm btn-light text-primary" (click)="openStatement(company)">
+                <i class="bi bi-list-ul me-1" aria-hidden="true"></i>{{ 'COMPANY_LEDGER.VIEW_STATEMENT' | translate }}
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div *ngIf="selectedCompany" class="modal-backdrop-custom" (click)="closeStatement()">
+  <div class="modal-content-custom card border-0 shadow-lg" (click)="$event.stopPropagation()" role="dialog" aria-modal="true" style="max-width: 46rem;">
+    <div class="card-header bg-white py-3 border-bottom d-flex align-items-center justify-content-between">
+      <div>
+        <p class="small text-muted text-uppercase fw-semibold mb-1">{{ 'COMPANY_LEDGER.EYEBROW' | translate }}</p>
+        <h2 class="h5 mb-0">{{ selectedCompany.name }}</h2>
+      </div>
+      <button type="button" class="btn btn-sm btn-light" (click)="closeStatement()">
+        <i class="bi bi-x-lg" aria-hidden="true"></i>
+      </button>
+    </div>
+    <div class="card-body p-4">
+      <div *ngIf="isLoadingStatement" class="text-center py-4">
+        <div class="spinner-border spinner-border-sm" role="status"></div>
+      </div>
+
+      <div *ngIf="!isLoadingStatement && statement">
+        <table class="table table-sm">
+          <thead>
+            <tr>
+              <th>{{ 'COMPANY_LEDGER.DATE' | translate }}</th>
+              <th>{{ 'COMPANY_LEDGER.DESCRIPTION' | translate }}</th>
+              <th>{{ 'COMPANY_LEDGER.BILLED' | translate }}</th>
+              <th>{{ 'COMPANY_LEDGER.SETTLED' | translate }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let line of statement.lines">
+              <td>{{ line.entry_date }}</td>
+              <td>{{ line.description }}</td>
+              <td>{{ line.debit > 0 ? (line.debit | number:'1.2-2') : '—' }}</td>
+              <td>{{ line.credit > 0 ? (line.credit | number:'1.2-2') : '—' }}</td>
+            </tr>
+            <tr *ngIf="statement.lines.length === 0">
+              <td colspan="4" class="text-center text-muted small py-3">{{ 'COMPANY_LEDGER.NO_ENTRIES' | translate }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="d-flex justify-content-end gap-4 mt-2 mb-4 fw-semibold">
+          <span>{{ 'COMPANY_LEDGER.OUTSTANDING' | translate }}: {{ statement.balance | number:'1.2-2' }}</span>
+        </div>
+
+        <div class="settlement-form" *ngIf="statement.balance > 0.005">
+          <label class="form-label small fw-semibold">{{ 'COMPANY_LEDGER.RECORD_SETTLEMENT' | translate }}</label>
+          <div class="input-group">
+            <input type="number" min="0.01" [max]="statement.balance" class="form-control" [(ngModel)]="settleAmount" name="settleAmount">
+            <button type="button" class="btn btn-primary" (click)="recordSettlement()" [disabled]="!settleAmount || settleAmount <= 0 || isSettling">
+              <span *ngIf="isSettling" class="spinner-border spinner-border-sm me-1" role="status"></span>
+              {{ 'COMPANY_LEDGER.SETTLE' | translate }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

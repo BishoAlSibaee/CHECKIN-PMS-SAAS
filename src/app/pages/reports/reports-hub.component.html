@@ -1,0 +1,134 @@
+<div class="reports-hub">
+  <section class="reports-hub__hero">
+    <div class="reports-hub__hero-copy">
+      <p class="reports-hub__eyebrow">
+        <i class="bi bi-bar-chart-line" aria-hidden="true"></i>
+        {{ 'REPORTS.HUB_EYEBROW' | translate }}
+      </p>
+      <h1>{{ 'REPORTS.HUB_TITLE' | translate }}</h1>
+      <p class="reports-hub__subtitle">{{ 'REPORTS.HUB_SUBTITLE' | translate }}</p>
+      <div class="reports-hub__stats">
+        <span class="reports-hub__stat">
+          <strong>{{ totalVisibleCount }}</strong>
+          {{ 'REPORTS.HUB_AVAILABLE' | translate }}
+        </span>
+        <span class="reports-hub__stat" *ngIf="resultCount !== totalVisibleCount || search || activeCategory !== 'all'">
+          <strong>{{ resultCount }}</strong>
+          {{ 'REPORTS.HUB_SHOWING' | translate }}
+        </span>
+      </div>
+    </div>
+    <div class="reports-hub__hero-actions">
+      <a routerLink="/financials" class="btn reports-hub__finance-link">
+        <i class="bi bi-graph-up-arrow" aria-hidden="true"></i>
+        {{ 'REPORTS.HUB_FINANCIALS_LINK' | translate }}
+      </a>
+    </div>
+  </section>
+
+  <section class="reports-hub__toolbar card border-0 shadow-sm">
+    <div class="card-body p-3">
+      <div class="row g-3 align-items-center">
+        <div class="col-lg-5">
+          <label class="visually-hidden" for="reportsHubSearch">{{ 'REPORTS.SEARCH' | translate }}</label>
+          <div class="reports-hub__search input-group">
+            <span class="input-group-text"><i class="bi bi-search" aria-hidden="true"></i></span>
+            <input id="reportsHubSearch" type="search" class="form-control"
+                   [(ngModel)]="search"
+                   [placeholder]="'REPORTS.SEARCH' | translate">
+            <button type="button" class="btn btn-outline-secondary" *ngIf="search"
+                    (click)="search = ''" [attr.aria-label]="'REPORTS.HUB_CLEAR_SEARCH' | translate">
+              <i class="bi bi-x-lg" aria-hidden="true"></i>
+            </button>
+          </div>
+        </div>
+        <div class="col-lg-7">
+          <div class="reports-hub__cats" role="tablist" [attr.aria-label]="'REPORTS.HUB_CATEGORIES' | translate">
+            <button type="button" *ngFor="let cat of categories"
+                    class="reports-hub__cat"
+                    role="tab"
+                    [attr.aria-selected]="activeCategory === cat.key"
+                    [class.reports-hub__cat--active]="activeCategory === cat.key"
+                    (click)="setCategory(cat.key)">
+              <i class="bi" [ngClass]="cat.icon" aria-hidden="true"></i>
+              {{ cat.labelKey | translate }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="reports-hub__popular" *ngIf="showPopular">
+    <div class="reports-hub__section-head">
+      <div>
+        <div class="reports-hub__section-title">
+          <i class="bi bi-lightning-charge-fill" aria-hidden="true"></i>
+          {{ 'REPORTS.HUB_POPULAR' | translate }}
+        </div>
+        <p class="reports-hub__section-desc mb-0">{{ 'REPORTS.HUB_POPULAR_DESC' | translate }}</p>
+      </div>
+    </div>
+    <div class="reports-hub__popular-grid">
+      <a *ngFor="let item of popularReports" class="reports-hub__featured" [routerLink]="item.route">
+        <span class="reports-hub__featured-icon" aria-hidden="true">
+          <i class="bi" [ngClass]="item.icon"></i>
+        </span>
+        <span class="reports-hub__featured-copy">
+          <span class="reports-hub__featured-title">{{ item.titleKey | translate }}</span>
+          <span class="reports-hub__featured-desc">{{ item.descKey | translate }}</span>
+        </span>
+        <i class="bi bi-arrow-right reports-hub__featured-arrow" aria-hidden="true"></i>
+      </a>
+    </div>
+  </section>
+
+  <section class="reports-hub__catalog" *ngIf="filteredReports.length">
+    <div class="reports-hub__section-head">
+      <div class="reports-hub__section-title">
+        <i class="bi bi-collection" aria-hidden="true"></i>
+        {{ 'REPORTS.HUB_ALL_REPORTS' | translate }}
+      </div>
+      <span class="reports-hub__count-badge">{{ 'REPORTS.HUB_COUNT' | translate:{ count: resultCount } }}</span>
+    </div>
+
+    <div class="row g-3">
+      <div class="col-md-6 col-xl-4" *ngFor="let item of filteredReports">
+        <a class="report-card card h-100 border-0 shadow-sm text-decoration-none" [routerLink]="item.route">
+          <div class="card-body p-3 d-flex flex-column">
+            <div class="d-flex align-items-start gap-3 mb-3">
+              <div class="report-card__icon" aria-hidden="true">
+                <i class="bi" [ngClass]="item.icon"></i>
+              </div>
+              <div class="flex-grow-1 min-w-0">
+                <div class="report-card__cat">
+                  <i class="bi" [ngClass]="categoryIcon(item.category)" aria-hidden="true"></i>
+                  {{ categoryLabelKey(item.category) | translate }}
+                </div>
+                <h2 class="report-card__title">{{ item.titleKey | translate }}</h2>
+                <p class="report-card__desc">{{ item.descKey | translate }}</p>
+              </div>
+            </div>
+            <div class="report-card__footer mt-auto">
+              <span class="report-card__cta">
+                {{ 'REPORTS.OPEN' | translate }}
+                <i class="bi bi-arrow-right" aria-hidden="true"></i>
+              </span>
+            </div>
+          </div>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <div class="reports-hub__empty" *ngIf="filteredReports.length === 0">
+    <div class="reports-hub__empty-icon" aria-hidden="true">
+      <i class="bi bi-search"></i>
+    </div>
+    <h2 class="h6 fw-bold mb-1">{{ 'REPORTS.EMPTY' | translate }}</h2>
+    <p class="small text-muted mb-3">{{ 'REPORTS.HUB_EMPTY_HINT' | translate }}</p>
+    <button type="button" class="btn btn-outline-primary btn-sm" (click)="clearFilters()">
+      {{ 'REPORTS.HUB_RESET_FILTERS' | translate }}
+    </button>
+  </div>
+</div>
