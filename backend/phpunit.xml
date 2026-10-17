@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true"
+>
+    <testsuites>
+        <testsuite name="Unit">
+            <directory>tests/Unit</directory>
+        </testsuite>
+        <testsuite name="Feature">
+            <directory>tests/Feature</directory>
+        </testsuite>
+        <testsuite name="Auth">
+            <directory>tests/Feature/Auth</directory>
+        </testsuite>
+        <testsuite name="Property">
+            <directory>tests/Feature/Property</directory>
+        </testsuite>
+        <testsuite name="Security">
+            <directory>tests/Feature/Security</directory>
+        </testsuite>
+        <testsuite name="Finance">
+            <directory>tests/Feature/Finance</directory>
+        </testsuite>
+        <testsuite name="Reservation">
+            <directory>tests/Feature/Reservation</directory>
+        </testsuite>
+    </testsuites>
+    <source>
+        <include>
+            <directory>app</directory>
+        </include>
+    </source>
+    <php>
+        <env name="APP_ENV" value="testing"/>
+        <env name="APP_KEY" value="base64:2fl+Ktvk6VDYqJyW5uGBxVxLN2ZPoY6kii2JNNPdvg8="/>
+        <env name="BCRYPT_ROUNDS" value="4"/>
+        <env name="BROADCAST_DRIVER" value="log"/>
+        <env name="REVERB_APP_ID" value="hotel-test"/>
+        <env name="REVERB_APP_KEY" value="hotel-test-key"/>
+        <env name="REVERB_APP_SECRET" value="hotel-test-secret"/>
+        <env name="REVERB_HOST" value="127.0.0.1"/>
+        <env name="REVERB_PORT" value="8080"/>
+        <env name="REVERB_SCHEME" value="http"/>
+        <env name="CACHE_DRIVER" value="array"/>
+        <env name="DB_DATABASE" value="checkinbooking_test"/>
+        <env name="DB2_DATABASE" value="clientCheckinBooking"/>
+        <env name="DB2_USERNAME" value="root"/>
+        <env name="DB2_PASSWORD" value="root"/>
+        <env name="ALLOW_RESERVATION_SEED_PURGE" value="true"/>
+        <env name="MAIL_MAILER" value="array"/>
+        <env name="PULSE_ENABLED" value="false"/>
+        <env name="QUEUE_CONNECTION" value="sync"/>
+        <env name="SESSION_DRIVER" value="array"/>
+        <env name="TELESCOPE_ENABLED" value="false"/>
+        <env name="RESERVATION_DEMO_YEAR" value="2026"/>
+        <env name="ZATCA_ENABLED" value="false"/>
+        <env name="ZATCA_AUTO_REPORT_ON_CHECKOUT" value="false"/>
+    </php>
+</phpunit>

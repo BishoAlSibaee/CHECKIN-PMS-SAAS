@@ -1,0 +1,36 @@
+<IfModule mod_rewrite.c>
+    <IfModule mod_negotiation.c>
+        Options -MultiViews -Indexes
+    </IfModule>
+
+    RewriteEngine On
+
+    # Handle Authorization Header
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+    # Preflight OPTIONS — respond before PHP (shared hosting / LiteSpeed)
+    RewriteCond %{REQUEST_METHOD} =OPTIONS
+    RewriteRule ^ - [R=204,L]
+
+    # Redirect Trailing Slashes If Not A Folder...
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_URI} (.+)/$
+    RewriteRule ^ %1 [L,R=301]
+
+    # Send Requests To Front Controller...
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteRule ^ index.php [L]
+</IfModule>
+
+# CORS for Angular app on hotelsystem.osus.network
+<IfModule mod_headers.c>
+    SetEnvIf Origin "^https://hotelsystem\.osus\.network$" cors_origin=$0
+    SetEnvIf Origin "^https://hotelsystemback\.osus\.network$" cors_origin=$0
+    Header always set Access-Control-Allow-Origin "%{cors_origin}e" env=cors_origin
+    Header always set Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS" env=cors_origin
+    Header always set Access-Control-Allow-Headers "Content-Type, Authorization, Accept, X-Requested-With, X-XSRF-TOKEN" env=cors_origin
+    Header always set Access-Control-Max-Age "86400" env=cors_origin
+    Header always set Vary "Origin" env=cors_origin
+</IfModule>

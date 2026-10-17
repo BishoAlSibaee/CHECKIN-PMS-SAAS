@@ -1,0 +1,40 @@
+<?php
+
+namespace App\Http\Requests\RoomType;
+
+use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Http\Exceptions\HttpResponseException;
+use Illuminate\Contracts\Validation\Validator;
+
+class AddRoomtypePricingRequest extends FormRequest
+{
+    public function authorize(): bool
+    {
+        return true;
+    }
+
+    public function rules(): array
+    {
+        return [
+'roomtype_id' => 'required|exists:room_types,id',
+            'NameAr' => 'required|string|max:255',
+            'NameEn' => 'required|string|max:255',
+            'StartDate' => 'required|date',
+            'EndDate' => 'required|date|after_or_equal:StartDate',
+            'ActiveType' => 'required|integer|in:0,1,2',
+            'DailyPrice' => 'required|numeric|min:0',
+            'MonthlyPrice' => 'required|numeric|min:0',
+        ];
+    }
+
+    protected function failedValidation(Validator $validator)
+    {
+        $response = response()->json([
+            'success' => false,
+            'message' => $validator->errors()->first(),
+            'code' => 422,
+            'data' => null
+        ], 422);
+        throw new HttpResponseException($response);
+    }
+}

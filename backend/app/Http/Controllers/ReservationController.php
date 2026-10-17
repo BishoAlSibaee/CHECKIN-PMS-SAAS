@@ -1,0 +1,2191 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Exceptions\RefundNotAllowedException;
+use App\Http\Requests\GetByClientIdRequest;
+use App\Http\Requests\Reservation\AddReservationPaymentRequest;
+use App\Http\Requests\Reservation\BookingRoomAvailabilityRequest;
+use App\Http\Requests\Reservation\CancelReservationRequest;
+use App\Http\Requests\Reservation\CheckReservationRequest;
+use App\Http\Requests\Reservation\ExtendReservationRequest;
+use App\Http\Requests\Reservation\GetReservationByDateRequest;
+use App\Http\Requests\Reservation\GetRoomPriceRequest;
+use App\Http\Requests\Reservation\MakeReservationRequest;
+use App\Http\Requests\Reservation\PreviewDateChangeRequest;
+use App\Http\Requests\Reservation\RedeemLoyaltyPointsRequest;
+use App\Http\Requests\Reservation\RefundRequest;
+use App\Http\Requests\Reservation\ShortenReservationRequest;
+use App\Http\Requests\Reservation\UpdateReservationRequest;
+use App\Models\PeakDay;
+use App\Models\PeakMonth;
+use App\Models\Reservation;
+use App\Models\ReservationDailyCharge;
+use App\Models\ReservationPay;
+use App\Models\ReservationRoom;
+use App\Models\Room;
+use App\Models\RoomPrice;
+use App\Models\RoomPriceMaxDay;
+use App\Models\RoomPriceMaxMonth;
+use App\Models\RoomType;
+use App\Models\RoomtypePricingplan;
+use App\Models\Suite;
+use App\Services\Accounting\AccountingPostingService;
+use App\Jobs\ReportZatcaCheckoutInvoiceJob;
+use App\Jobs\SyncReservationToGrmsJob;
+use App\Services\GuestClassificationDiscountService;
+use App\Services\HotelLivePublisher;
+use App\Services\LoyaltyPointsService;
+use App\Services\PricingEngine;
+use App\Services\RefundPolicyService;
+use App\Services\ReservationChangeLogService;
+use App\Services\ReservationDateChangePreviewService;
+use App\Services\ReservationFinancialService;
+use App\Services\ReservationRoomStatusService;
+use App\Services\ReservationShortenService;
+use App\Services\RevenueAccrualService;
+use App\Services\Zatca\ZatcaCheckoutReportingService;
+use Carbon\Carbon;
+use Carbon\CarbonPeriod;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
+
+class ReservationController extends Controller
+{
+    public function __construct(
+        private PricingEngine $pricingEngine,
+        private RevenueAccrualService $revenueAccrualService,
+        private ReservationRoomStatusService $roomStatusService,
+        private AccountingPostingService $accountingPostingService,
+        private ReservationFinancialService $reservationFinancialService,
+        private RefundPolicyService $refundPolicyService,
+        private ReservationShortenService $shortenService,
+        private HotelLivePublisher $livePublisher,
+        private ReservationChangeLogService $changeLogService,
+        private GuestClassificationDiscountService $guestClassificationDiscountService,
+        private ReservationDateChangePreviewService $dateChangePreviewService,
+        private ZatcaCheckoutReportingService $zatcaCheckoutReportingService,
+        private LoyaltyPointsService $loyaltyPointsService,
+    ) {}
+
+    private function notifyReservationLive(int $reservationId, string $action, bool $affectsInventory = false): void
+    {
+        try {
+            $scopes = [
+                HotelLivePublisher::SCOPE_RESERVATIONS,
+                HotelLivePublisher::SCOPE_RESERVATION_DETAIL,
+                HotelLivePublisher::SCOPE_COLLECTIONS,
+            ];
+
+            if ($affectsInventory) {
+                $scopes = array_merge($scopes, [
+                    HotelLivePublisher::SCOPE_OCCUPANCY_BOARD,
+                    HotelLivePublisher::SCOPE_PROPERTY,
+                    HotelLivePublisher::SCOPE_DASHBOARD,
+                ]);
+            }
+
+            $this->livePublisher->publish(array_values(array_unique($scopes)), $action, [
+                'type' => 'reservation',
+                'id' => $reservationId,
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        try {
+            SyncReservationToGrmsJob::dispatch($reservationId, $action);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        // Anything that changes room inventory (new/cancelled/extended/shortened
+        // booking, check-in/out) must tell Channex the new availability for
+        // every OTA channel it's connected to — same "never block the booking
+        // flow" resilience as the GRMS sync above.
+        if ($affectsInventory) {
+            try {
+                $this->pushChannexAvailabilityForReservation($reservationId);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+    }
+
+    /** @param  int  $reservationId */
+    private function pushChannexAvailabilityForReservation($reservationId): void
+    {
+        $roomTypeIds = ReservationRoom::query()
+            ->join('rooms', 'rooms.id', '=', 'reservation_rooms.room_id')
+            ->join('buildings', 'buildings.id', '=', 'rooms.building_id')
+            ->where('reservation_rooms.reservation_id', $reservationId)
+            ->select('buildings.hotel_id', 'rooms.room_type_id')
+            ->distinct()
+            ->get();
+
+        foreach ($roomTypeIds as $row) {
+            \App\Jobs\Channex\PushRoomTypeAvailabilityJob::dispatchDebounced(
+                (int) $row->hotel_id,
+                (int) $row->room_type_id
+            );
+        }
+    }
+
+    /**
+     * Kiosk-specific: mark the guest checked in immediately once their kiosk payment
+     * is confirmed. The self-service flow has no separate staff check-in step — a
+     * guest who paid and is collecting their key card at the kiosk has, for every
+     * practical purpose, already started their stay. Best-effort: a failure here
+     * (e.g. the room somehow isn't ready) must never fail the payment confirmation
+     * itself — it just leaves the guest not-checked-in for staff to handle manually,
+     * same as any other kiosk hardware/edge-case fallback.
+     */
+    public function checkInFromKiosk(int $reservationId): void
+    {
+        try {
+            $reservation = Reservation::with('reservationRooms.room')->find($reservationId);
+
+            if ($reservation === null || (int) $reservation->logedin === Reservation::LOGEDIN_IN_HOUSE) {
+                return;
+            }
+
+            foreach ($reservation->reservationRooms as $resRoom) {
+                if ($resRoom->room) {
+                    $this->roomStatusService->assertRoomReadyForCheckIn($resRoom->room, $reservation->id);
+                }
+            }
+
+            $reservation->logedin = Reservation::LOGEDIN_IN_HOUSE;
+            $reservation->login_time = $reservation->login_time ?: Carbon::today()->toDateString();
+            $reservation->save();
+
+            $this->roomStatusService->syncForReservation($reservation->fresh(['reservationRooms']));
+
+            $this->notifyReservationLive($reservationId, 'checked_in', true);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+
+    /**
+     * Roll back an open transaction and return a failed API response.
+     */
+    private function failedTransaction(string $message, int $status = 500)
+    {
+        if (DB::transactionLevel() > 0) {
+            DB::rollBack();
+        }
+
+        return \Failed($message, $status);
+    }
+
+    public function index(Request $request)
+    {
+        try {
+            $perPage = \returnPerPage();
+            $query = Reservation::with(['client', 'reservationRooms.room.roomType', 'payments'])
+                ->excludingCancelled();
+
+            if ($request->boolean('pending_checkout')) {
+                $today = Carbon::today()->toDateString();
+                $query->where('reservation_status', Reservation::STATUS_CONFIRMED)
+                    ->where('logedin', Reservation::LOGEDIN_IN_HOUSE)
+                    ->where('expire_date', '<=', $today);
+            } elseif ($request->boolean('checkout_today')) {
+                $today = Carbon::today()->toDateString();
+                $query->where('reservation_status', Reservation::STATUS_CONFIRMED)
+                    ->where('logedin', Reservation::LOGEDIN_IN_HOUSE)
+                    ->whereDate('expire_date', $today);
+            } else {
+                if ($request->filled('date_from')) {
+                    $query->where('expire_date', '>=', $request->date_from);
+                }
+                if ($request->filled('date_to')) {
+                    $query->where('start_date', '<=', $request->date_to);
+                }
+            }
+
+            if ($request->filled('reservation_status')) {
+                $query->where('reservation_status', (int) $request->reservation_status);
+            }
+            if ($request->filled('client_id')) {
+                $query->where('client_id', (int) $request->client_id);
+            }
+            if ($request->filled('search')) {
+                $term = trim($request->search);
+                $query->where(function ($q) use ($term) {
+                    if (preg_match('/^\d+$/', $term)) {
+                        $q->where('reservations.id', (int) $term);
+                    }
+                    $q->orWhereHas('client', function ($clientQuery) use ($term) {
+                        $clientQuery->where('first_name', 'like', "%{$term}%")
+                            ->orWhere('last_name', 'like', "%{$term}%")
+                            ->orWhere('mobile', 'like', "%{$term}%")
+                            ->orWhere('email', 'like', "%{$term}%");
+                    });
+                    $q->orWhereHas('reservationRooms.room', function ($roomQuery) use ($term) {
+                        $roomQuery->where('number', 'like', "%{$term}%");
+                    });
+                });
+            }
+            if ($request->filled('room_number')) {
+                $roomNumber = trim($request->room_number);
+                $query->whereHas('reservationRooms.room', function ($roomQuery) use ($roomNumber) {
+                    $roomQuery->where('number', $roomNumber);
+                });
+            }
+
+            if ($request->boolean('has_balance_due')) {
+                $query->withPositiveBalance();
+            }
+
+            if ($request->input('sort') === 'balance_due') {
+                $paymentType = \App\Models\ReservationPay::TYPE_PAYMENT;
+                $companyBilledType = \App\Models\ReservationPay::TYPE_BILLED_TO_COMPANY;
+                $refundType = \App\Models\ReservationPay::TYPE_REFUND;
+                $query->orderByRaw(
+                    '(reservations.total - COALESCE((
+                        SELECT SUM(CASE WHEN rp.type IN (?, ?) THEN rp.pay WHEN rp.type = ? THEN -rp.pay ELSE 0 END)
+                        FROM reservation_pay rp WHERE rp.reservation_id = reservations.id
+                    ), 0)) DESC',
+                    [$paymentType, $companyBilledType, $refundType]
+                )->orderByDesc('id');
+            } else {
+                $query->orderByDesc('start_date')->orderByDesc('id');
+            }
+
+            $reservations = $query->paginate($perPage);
+
+            return \Pagination($reservations);
+        } catch (\Exception $e) {
+            return \Failed($e->getMessage());
+        }
+    }
+
+    public function show(int $id)
+    {
+        try {
+            $reservation = Reservation::with([
+                'client',
+                'reservationRooms.room.roomType',
+                'reservationRooms.room.building',
+                'reservationRooms.room.floor',
+                'payments.voucher',
+                'user',
+            ])->findOrFail($id);
+
+            return \SuccessData('Reservation retrieved', $this->reservationDetailPayload($reservation));
+        } catch (ModelNotFoundException) {
+            return \Failed('Reservation not found', 404);
+        } catch (\Exception $e) {
+            return \Failed($e->getMessage());
+        }
+    }
+
+    /**
+     * Guest folio — the full itemized statement of a stay (daily charges, every
+     * payment/refund with its voucher number, and any invoices/credit notes),
+     * distinct from the summarized tax invoice returned by show()/printInvoice.
+     */
+    public function folio(int $id)
+    {
+        try {
+            $reservation = Reservation::with([
+                'client',
+                'reservationRooms.room.roomType',
+                'payments.voucher',
+                'payments.user',
+            ])->findOrFail($id);
+
+            $dailyCharges = ReservationDailyCharge::where('reservation_id', $id)
+                ->orderBy('charge_date')
+                ->get(['charge_date', 'base_amount']);
+
+            $transactions = $reservation->payments
+                ->sortBy('created_at')
+                ->values()
+                ->map(fn ($payment) => [
+                    'date' => optional($payment->created_at)->toIso8601String(),
+                    'type' => (int) $payment->type === \App\Models\ReservationPay::TYPE_REFUND ? 'refund' : 'payment',
+                    'amount' => (float) $payment->pay,
+                    'voucher_number' => $payment->voucher?->voucher_number,
+                    'method' => $payment->payment_source,
+                    'note' => $payment->note,
+                    'recorded_by' => $payment->user?->name,
+                ]);
+
+            $taxInvoice = \App\Models\Invoice::query()
+                ->where('reservation_id', $id)
+                ->where('type', \App\Models\Invoice::TYPE_TAX_INVOICE)
+                ->first();
+            $creditNotes = $taxInvoice
+                ? \App\Models\Invoice::query()->where('related_invoice_id', $taxInvoice->id)->orderBy('id')->get()
+                : collect();
+
+            $invoices = $taxInvoice
+                ? collect([$taxInvoice])->concat($creditNotes)->map(fn ($inv) => [
+                    'invoice_number' => $inv->invoice_number,
+                    'type' => $inv->type,
+                    'total' => (float) $inv->total,
+                    'issued_at' => optional($inv->issued_at)->toIso8601String(),
+                ])
+                : collect();
+
+            $roomNumbers = $reservation->reservationRooms
+                ->map(fn ($row) => $row->room?->number)
+                ->filter(fn ($n) => $n !== null && $n !== '')
+                ->values()
+                ->all();
+
+            return \SuccessData('Reservation folio', [
+                'reservation_id' => $reservation->id,
+                'confirmation_code' => $reservation->confirmation_code,
+                'guest_name' => $reservation->guestDisplayName(),
+                'guest_phone' => $reservation->client?->mobile,
+                'guest_email' => $reservation->client?->email,
+                'rooms' => $roomNumbers,
+                'check_in' => $reservation->start_date,
+                'check_out' => $reservation->expire_date,
+                'nights' => $reservation->nights,
+                'daily_charges' => $dailyCharges,
+                'transactions' => $transactions,
+                'invoices' => $invoices,
+                'subtotal' => (float) $reservation->subtotal,
+                'tax' => (float) $reservation->taxes,
+                'discount' => (float) $reservation->discount,
+                'total' => (float) $reservation->total,
+                'paid' => $reservation->paidNetAmount(),
+                'balance_due' => $reservation->balanceDue(),
+            ]);
+        } catch (ModelNotFoundException) {
+            return \Failed('Reservation not found', 404);
+        } catch (\Exception $e) {
+            return \Failed($e->getMessage());
+        }
+    }
+
+    public function previewDateChange(PreviewDateChangeRequest $request, int $id)
+    {
+        try {
+            $reservation = Reservation::with(['payments', 'reservationRooms.room'])->findOrFail($id);
+
+            if (Reservation::isCancelled((int) $reservation->reservation_status)) {
+                return \Failed('Cannot preview dates for a cancelled reservation.', 422);
+            }
+
+            $today = Carbon::today()->toDateString();
+            if ($reservation->expire_date < $today) {
+                return \Failed('Cannot preview dates for a completed stay.', 422);
+            }
+
+            if ($request->expire_date < $today) {
+                return \Failed('Checkout date cannot be before today.', 422);
+            }
+
+            if ((int) $reservation->logedin === 1 && $request->start_date !== $reservation->start_date) {
+                return \Failed('Cannot change check-in date while the guest is checked in.', 422);
+            }
+
+            $preview = $this->dateChangePreviewService->preview(
+                $reservation,
+                $request->start_date,
+                $request->expire_date
+            );
+
+            return \SuccessData('Date change preview', $preview);
+        } catch (ModelNotFoundException) {
+            return \Failed('Reservation not found', 404);
+        } catch (\Exception $e) {
+            return \Failed($e->getMessage());
+        }
+    }
+
+    public function update(UpdateReservationRequest $request, int $id)
+    {
+        try {
+            DB::beginTransaction();
+
+            $reservation = Reservation::with(['reservationRooms.room', 'payments'])->findOrFail($id);
+
+            $beforeSnapshot = $this->changeLogService->snapshot($reservation);
+
+            $today = Carbon::today()->toDateString();
+            $isCheckingOut = false;
+            $pendingLogedin = null;
+            $willCheckOut = $request->has('logedin')
+                && (int) $request->logedin === Reservation::LOGEDIN_NOT_IN_HOUSE
+                && (int) $reservation->logedin === Reservation::LOGEDIN_IN_HOUSE;
+
+            $removedNightsContext = null;
+            if ($request->filled('start_date') || $request->filled('expire_date')) {
+                if (Reservation::isCancelled((int) $reservation->reservation_status)) {
+                    return $this->failedTransaction('Cannot modify dates of a cancelled reservation.');
+                }
+
+                if ($reservation->expire_date < $today && ! $willCheckOut) {
+                    return $this->failedTransaction('Cannot modify dates of a completed stay.');
+                }
+
+                if ((int) $reservation->logedin === 1 && $request->filled('start_date')) {
+                    return $this->failedTransaction('Cannot change check-in date while the guest is checked in.');
+                }
+
+                $oldStart = $reservation->start_date;
+                $oldExpire = $reservation->expire_date;
+
+                $newStart = $request->filled('start_date')
+                    ? $request->start_date
+                    : $reservation->start_date;
+                $newExpire = $request->filled('expire_date')
+                    ? $request->expire_date
+                    : $reservation->expire_date;
+
+                if ($newExpire < $today) {
+                    return $this->failedTransaction('Checkout date cannot be before today.');
+                }
+
+                if ($newExpire <= $newStart) {
+                    return $this->failedTransaction('Checkout date must be after check-in date.');
+                }
+
+                if ($oldStart !== $newStart || $oldExpire !== $newExpire) {
+                    $removedNightsContext = $this->refundPolicyService->removedNightsContextForDateChange(
+                        (int) $reservation->id,
+                        (string) $oldStart,
+                        (string) $oldExpire,
+                        (string) $newStart,
+                        (string) $newExpire
+                    );
+                }
+
+                $reservation->start_date = $newStart;
+                $reservation->expire_date = $newExpire;
+            }
+
+            if ($request->has('reservation_status')) {
+                $reservation->reservation_status = (int) $request->reservation_status;
+            }
+            if ($request->has('logedin')) {
+                $expireDate = $reservation->expire_date;
+                $newLogedin = (int) $request->logedin;
+
+                if (Reservation::isCancelled((int) $reservation->reservation_status)) {
+                    return $this->failedTransaction('Cannot change check-in status of a cancelled reservation.');
+                }
+
+                if ($expireDate < $today) {
+                    if ($newLogedin === Reservation::LOGEDIN_IN_HOUSE) {
+                        return $this->failedTransaction('Check-in is not allowed after the scheduled departure date.');
+                    }
+                    if ((int) $reservation->logedin !== Reservation::LOGEDIN_IN_HOUSE) {
+                        return $this->failedTransaction('This stay has already ended.');
+                    }
+                }
+
+                if ($newLogedin === 1 && $reservation->start_date > $today) {
+                    return $this->failedTransaction('Check-in is not allowed before the arrival date.');
+                }
+
+                if ($newLogedin === 1) {
+                    try {
+                        $this->roomStatusService->assertRoomsReadyForCheckIn($reservation);
+                    } catch (\RuntimeException $e) {
+                        return $this->failedTransaction($e->getMessage());
+                    }
+                }
+
+                $isCheckingOut = $newLogedin === 0 && (int) $reservation->logedin === 1;
+                $pendingLogedin = $newLogedin;
+            }
+
+            if ($request->has('discount')) {
+                $reservation->discount = (float) $request->discount;
+            }
+            if ($request->has('extras')) {
+                $reservation->extras = (float) $request->extras;
+            }
+            if ($request->has('penalties')) {
+                $reservation->penalties = (float) $request->penalties;
+            }
+
+            if ($this->reservationFinancialService->requestNeedsPricingRecalculation($request, $reservation)) {
+                $this->recalculateReservationPricing($reservation);
+                if ($removedNightsContext !== null) {
+                    $this->refundOverpaymentAfterDateChange($reservation, $removedNightsContext, $id);
+                }
+            }
+
+            if ($isCheckingOut) {
+                $balance = $reservation->balanceDue();
+                if ($balance > 0.005) {
+                    return $this->failedTransaction(
+                        'Outstanding balance must be paid before check-out. Remaining: '.number_format($balance, 2, '.', ''),
+                        422
+                    );
+                }
+            }
+
+            if ($pendingLogedin !== null) {
+                $reservation->logedin = $pendingLogedin;
+            }
+
+            if ($request->filled('login_time')) {
+                $reservation->login_time = $request->login_time;
+            } elseif ($pendingLogedin === 1 && ! $reservation->login_time) {
+                $reservation->login_time = Carbon::today()->toDateString();
+            }
+
+            $reservation->save();
+
+            if ($request->has('logedin')
+                && (int) $request->logedin === 0
+                && $isCheckingOut) {
+                foreach ($reservation->reservationRooms as $resRoom) {
+                    if ($resRoom->room_id) {
+                        $this->roomStatusService->markNeedsPreparation($resRoom->room_id);
+                    }
+                }
+            }
+
+            $this->roomStatusService->syncForReservation($reservation->fresh(['reservationRooms']));
+
+            $logAction = 'updated';
+            if ($pendingLogedin === Reservation::LOGEDIN_IN_HOUSE) {
+                $logAction = 'checked_in';
+            } elseif ($isCheckingOut) {
+                $logAction = 'checked_out';
+            }
+            $afterSnapshot = $this->changeLogService->snapshot(
+                $reservation->fresh(['reservationRooms.room', 'payments'])
+            );
+            $this->changeLogService->recordIfChanged($id, $logAction, $beforeSnapshot, $afterSnapshot);
+
+            DB::commit();
+
+            $action = 'reservation_updated';
+            if ($pendingLogedin === Reservation::LOGEDIN_IN_HOUSE) {
+                $action = 'checked_in';
+            } elseif ($isCheckingOut) {
+                $action = 'checked_out';
+            }
+            $affectsInventory = $pendingLogedin !== null
+                || $request->filled('start_date')
+                || $request->filled('expire_date');
+            $this->notifyReservationLive($id, $action, $affectsInventory);
+
+            // Report synchronously so reservation show / invoice print include the tax QR.
+            if ($isCheckingOut && $this->zatcaCheckoutReportingService->shouldReportOnCheckout()) {
+                try {
+                    $this->zatcaCheckoutReportingService->reportReservationCheckout($id);
+                } catch (\Throwable $e) {
+                    report($e);
+                    ReportZatcaCheckoutInvoiceJob::dispatchAfterResponse($id);
+                }
+            }
+
+            return $this->show($id);
+        } catch (\Exception $e) {
+            if (DB::transactionLevel() > 0) {
+                DB::rollBack();
+            }
+
+            return \Failed($e->getMessage());
+        }
+    }
+
+    public function calendar(Request $request)
+    {
+        try {
+            $from = $request->input('date_from', Carbon::today()->startOfMonth()->toDateString());
+            $to = $request->input('date_to', Carbon::today()->endOfMonth()->toDateString());
+
+            $query = Reservation::with(['client', 'reservationRooms.room', 'payments'])
+                ->excludingCancelled()
+                ->where('start_date', '<=', $to)
+                ->where('expire_date', '>=', $from);
+
+            if ($request->filled('client_id')) {
+                $query->where('client_id', (int) $request->client_id);
+            }
+
+            $events = $query->orderBy('start_date')->get()->map(function (Reservation $r) {
+                $room = $r->reservationRooms->first()?->room;
+                $paid = (float) $r->payments
+                    ->where('type', ReservationPay::TYPE_PAYMENT)
+                    ->sum('pay');
+                $refunded = (float) $r->payments
+                    ->where('type', ReservationPay::TYPE_REFUND)
+                    ->sum('pay');
+                $paidNet = round($paid - $refunded, 2);
+                $balanceDue = round(max(0, (float) $r->total - $paidNet), 2);
+
+                return [
+                    'id' => $r->id,
+                    'title' => trim(($r->client->first_name ?? '').' '.($r->client->last_name ?? ''))
+                        .' · '.($room?->number ?? '—'),
+                    'start' => $r->start_date,
+                    'end' => $r->expire_date,
+                    'status' => (int) $r->reservation_status,
+                    'logedin' => (int) $r->logedin,
+                    'calendar_state' => $this->resolveCalendarState($r, $paidNet, $balanceDue),
+                    'paid_amount' => $paidNet,
+                    'balance_due' => $balanceDue,
+                    'room' => $room?->number,
+                    'guest' => trim(($r->client->first_name ?? '').' '.($r->client->last_name ?? '')),
+                    'total' => round((float) $r->total, 2),
+                ];
+            });
+
+            return \SuccessData('Reservation calendar', [
+                'date_from' => $from,
+                'date_to' => $to,
+                'events' => $events,
+            ]);
+        } catch (\Exception $e) {
+            return \Failed($e->getMessage());
+        }
+    }
+
+    public function cancel(CancelReservationRequest $request, int $id)
+    {
+        try {
+            DB::beginTransaction();
+
+            $reservation = Reservation::with('reservationRooms')->findOrFail($id);
+
+            $beforeSnapshot = $this->changeLogService->snapshot($reservation);
+
+            if (Reservation::isCancelled((int) $reservation->reservation_status)) {
+                return $this->failedTransaction('Reservation is already cancelled');
+            }
+
+            $today = Carbon::today()->toDateString();
+
+            if ($reservation->expire_date < $today) {
+                return $this->failedTransaction('Cannot cancel a completed stay.');
+            }
+
+            if ((int) $reservation->logedin === 1) {
+                return $this->failedTransaction('Cannot cancel while the guest is checked in. Use check-out instead.');
+            }
+
+            $reservation->reservation_status = Reservation::STATUS_CANCELLED;
+            $reservation->logedin = Reservation::LOGEDIN_NOT_IN_HOUSE;
+            $reservation->save();
+
+            $this->roomStatusService->syncForReservation($reservation);
+
+            // A company-billed reservation never held real cash — reversing
+            // it here (rather than through the normal cash-refund flow,
+            // which unconditionally credits real Cash) keeps the corporate
+            // ledger correct without fabricating a cash movement.
+            if ($reservation->company_id !== null) {
+                $this->accountingPostingService->reverseCompanyBillingRecognition($reservation);
+            }
+
+            $afterSnapshot = $this->changeLogService->snapshot($reservation->fresh(['reservationRooms.room', 'payments']));
+            $this->changeLogService->recordIfChanged($id, 'cancelled', $beforeSnapshot, $afterSnapshot);
+
+            DB::commit();
+
+            $this->notifyReservationLive($id, 'reservation_cancelled', true);
+
+            return $this->show($id);
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            return \Failed($e->getMessage());
+        }
+    }
+
+    /**
+     * Cancels ONE room within a still-active multi-room reservation, leaving
+     * the other rooms (and the reservation itself) untouched — until now,
+     * cancellation was all-or-nothing at the whole-reservation level.
+     *
+     * KNOWN LIMITATION (deliberate, not an oversight): `logedin` is tracked
+     * only at the whole-reservation level, not per room, so this refuses
+     * entirely while the reservation is checked in — even if the guest never
+     * actually occupied the specific room being dropped. Building true
+     * per-room check-in tracking is a separate feature nobody has asked for;
+     * this restriction keeps that scope out.
+     */
+    public function cancelRoom(CancelReservationRequest $request, int $id, int $roomId)
+    {
+        try {
+            DB::beginTransaction();
+
+            $reservation = Reservation::with('reservationRooms.room')->findOrFail($id);
+            $beforeSnapshot = $this->changeLogService->snapshot($reservation);
+
+            if (Reservation::isCancelled((int) $reservation->reservation_status)) {
+                return $this->failedTransaction('Reservation is already cancelled — cancel the whole reservation instead.');
+            }
+
+            $resRoom = $reservation->reservationRooms->firstWhere('id', $roomId);
+            if ($resRoom === null || ReservationRoom::isCancelled((int) $resRoom->status)) {
+                return $this->failedTransaction('This room is not part of the reservation or is already cancelled.', 404);
+            }
+
+            if ((int) $reservation->logedin === Reservation::LOGEDIN_IN_HOUSE) {
+                return $this->failedTransaction('Cannot cancel a room while the reservation is checked in. Check out or cancel the whole reservation instead.');
+            }
+
+            $activeRoomCount = $reservation->reservationRooms
+                ->filter(fn ($r) => ! ReservationRoom::isCancelled((int) $r->status))
+                ->count();
+            if ($activeRoomCount <= 1) {
+                return $this->failedTransaction('Cannot cancel the last active room — cancel the whole reservation instead.');
+            }
+
+            $today = Carbon::today()->toDateString();
+            if ($reservation->expire_date < $today) {
+                return $this->failedTransaction('Cannot cancel a room on a completed stay.');
+            }
+
+            $resRoom->status = ReservationRoom::STATUS_CANCELLED;
+            $resRoom->save();
+
+            // persistDailyCharges() deletes-then-inserts by reservation_room_id —
+            // an empty $lines array cleanly wipes this room's remaining daily
+            // charges with no separate "void" method needed.
+            $this->revenueAccrualService->persistDailyCharges($reservation->id, $resRoom->id, (int) $resRoom->room_id, 0, []);
+
+            if ($resRoom->room_id) {
+                $this->roomStatusService->setAvailableIfNoActiveStay((int) $resRoom->room_id, $reservation->id);
+            }
+
+            $remainingBase = (float) ReservationDailyCharge::where('reservation_id', $reservation->id)->sum('base_amount');
+            $this->guestClassificationDiscountService->applyFinancialsAfterRecalculation($reservation, $remainingBase);
+            $reservation->save();
+
+            $this->accountingPostingService->syncAccrualForReservation($reservation->id);
+
+            $afterSnapshot = $this->changeLogService->snapshot($reservation->fresh(['reservationRooms.room', 'payments']));
+            $this->changeLogService->recordIfChanged($id, 'room_cancelled', $beforeSnapshot, $afterSnapshot);
+
+            DB::commit();
+
+            $this->notifyReservationLive($id, 'reservation_room_cancelled', true);
+
+            return $this->show($id);
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            return \Failed($e->getMessage());
+        }
+    }
+
+    /**
+     * Kiosk self-service cancel — used only for a reservation the guest just created
+     * moments earlier and never actually paid for (the payment terminal declined the
+     * card). Deliberately narrower than the staff-facing cancel() above: refuses if the
+     * reservation has ANY payment recorded, so an unauthenticated kiosk session can never
+     * cancel a reservation that's actually been paid for. No refund logic is needed here
+     * for the same reason — cancel() itself never has any either (refunding is a fully
+     * separate, staff-only action), and this path guarantees zero payments exist anyway.
+     */
+    public function cancelKioskReservation(int $id)
+    {
+        try {
+            DB::beginTransaction();
+
+            $reservation = Reservation::with(['reservationRooms', 'payments'])->findOrFail($id);
+
+            if (Reservation::isCancelled((int) $reservation->reservation_status)) {
+                return $this->failedTransaction('Reservation is already cancelled', 422);
+            }
+
+            if ($reservation->payments->isNotEmpty()) {
+                return $this->failedTransaction('Cannot self-cancel a reservation that has a payment recorded — please see the front desk.', 422);
+            }
+
+            $reservation->reservation_status = Reservation::STATUS_CANCELLED;
+            $reservation->logedin = Reservation::LOGEDIN_NOT_IN_HOUSE;
+            $reservation->save();
+
+            $this->roomStatusService->syncForReservation($reservation);
+
+            DB::commit();
+
+            $this->notifyReservationLive($id, 'reservation_cancelled', true);
+
+            // SuccessData, not Success — the kiosk client's envelope unwrapping treats a
+            // null "data" as a failure even when success:true, so a plain confirmation
+            // object is returned rather than null.
+            return \SuccessData('Reservation cancelled', ['cancelled' => true]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            return \Failed($e->getMessage());
+        }
+    }
+
+    public function extend(ExtendReservationRequest $request, int $id)
+    {
+        try {
+            DB::beginTransaction();
+
+            $reservation = Reservation::with('reservationRooms.room')->findOrFail($id);
+
+            $beforeSnapshot = $this->changeLogService->snapshot($reservation);
+
+            if (Reservation::isCancelled((int) $reservation->reservation_status)) {
+                return $this->failedTransaction('Cannot extend a cancelled reservation');
+            }
+
+            if ($reservation->guestHasCheckedOut()) {
+                return $this->failedTransaction('Cannot extend after check-out.');
+            }
+
+            $today = Carbon::today()->startOfDay();
+            $oldExpire = Carbon::parse($reservation->expire_date)->startOfDay();
+            $newExpire = Carbon::parse($request->expire_date)->startOfDay();
+
+            if ($newExpire->lte($oldExpire)) {
+                return $this->failedTransaction('New checkout must be after the previous checkout date');
+            }
+
+            if ($newExpire->lt($today)) {
+                return $this->failedTransaction('New checkout date cannot be before today.');
+            }
+
+            $startDate = Carbon::parse($reservation->start_date)->startOfDay();
+
+            if ($newExpire->lte($startDate)) {
+                return $this->failedTransaction('New checkout must be after check-in date');
+            }
+
+            foreach ($reservation->reservationRooms as $resRoom) {
+                if ($resRoom->room_id && ! $this->isRoomAvailable(
+                    $resRoom->room_id,
+                    $startDate->toDateString(),
+                    $newExpire->toDateString(),
+                    $reservation->id
+                )) {
+                    return $this->failedTransaction('Room is not available for the extended period');
+                }
+            }
+
+            $reservation->expire_date = $newExpire->toDateString();
+            $reservation->nights = $startDate->diffInDays($newExpire);
+
+            $priceMode = 0;
+            $totalBase = 0.0;
+            foreach ($reservation->reservationRooms as $resRoom) {
+                if (! $resRoom->room) {
+                    continue;
+                }
+                $lines = $this->pricingEngine->buildDailyBreakdown(
+                    $resRoom->room,
+                    $startDate->toDateString(),
+                    $newExpire->toDateString(),
+                    (int) $reservation->rent_type,
+                    $priceMode
+                );
+                $roomBase = $this->pricingEngine->sumBaseAmount($lines);
+                $totalBase += $roomBase;
+
+                $this->revenueAccrualService->persistDailyCharges(
+                    $reservation->id,
+                    $resRoom->id,
+                    $resRoom->room_id,
+                    (int) $reservation->rent_type,
+                    $lines
+                );
+            }
+
+            $this->accountingPostingService->syncAccrualForReservation($reservation->id);
+
+            $reservation->base_price = round($totalBase, 2);
+            $this->guestClassificationDiscountService->applyFinancialsAfterRecalculation($reservation, $totalBase);
+            $reservation->save();
+            $this->roomStatusService->syncForReservation($reservation->fresh(['reservationRooms']));
+
+            $afterSnapshot = $this->changeLogService->snapshot($reservation->fresh(['reservationRooms.room', 'payments']));
+            $this->changeLogService->recordIfChanged($id, 'extended', $beforeSnapshot, $afterSnapshot);
+
+            DB::commit();
+
+            $this->notifyReservationLive($id, 'reservation_extended', true);
+
+            return $this->show($id);
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            return \Failed($e->getMessage());
+        }
+    }
+
+    public function shorten(ShortenReservationRequest $request, int $id)
+    {
+        try {
+            $reservation = Reservation::with(['reservationRooms.room', 'payments'])->findOrFail($id);
+            $beforeSnapshot = $this->changeLogService->snapshot($reservation);
+
+            $this->shortenService->applyShorten(
+                $reservation,
+                Carbon::parse($request->expire_date)->startOfDay()
+            );
+
+            $afterSnapshot = $this->changeLogService->snapshot($reservation->fresh(['reservationRooms.room', 'payments']));
+            $this->changeLogService->recordIfChanged($id, 'shortened', $beforeSnapshot, $afterSnapshot);
+
+            $this->notifyReservationLive($id, 'reservation_shortened', true);
+
+            return $this->show($id);
+        } catch (\InvalidArgumentException $e) {
+            return \Failed($e->getMessage(), 422);
+        } catch (\Exception $e) {
+            return \Failed($e->getMessage());
+        }
+    }
+
+    public function addPayment(AddReservationPaymentRequest $request, int $id)
+    {
+        try {
+            $reservation = Reservation::with('payments')->findOrFail($id);
+            $beforeSnapshot = [
+                'paid_amount' => round($reservation->paidNetAmount(), 2),
+                'balance_due' => round($reservation->balanceDue(), 2),
+            ];
+
+            $payment = $this->reservationFinancialService->recordPayment(
+                $reservation,
+                (float) $request->pay,
+                (int) auth()->id(),
+                (int) ($request->type ?? ReservationPay::TYPE_PAYMENT)
+            );
+
+            $reservation->refresh()->load('payments');
+            $afterSnapshot = [
+                'paid_amount' => round($reservation->paidNetAmount(), 2),
+                'balance_due' => round($reservation->balanceDue(), 2),
+                'payment_amount' => round((float) $request->pay, 2),
+            ];
+            $this->changeLogService->recordIfChanged(
+                $id,
+                'payment_recorded',
+                $beforeSnapshot,
+                $afterSnapshot
+            );
+
+            return \SuccessData('Payment recorded', $payment);
+        } catch (\InvalidArgumentException $e) {
+            return \Failed($e->getMessage(), 422);
+        } catch (\Exception $e) {
+            return \Failed($e->getMessage());
+        }
+    }
+
+    public function redeemLoyaltyPoints(RedeemLoyaltyPointsRequest $request, int $id)
+    {
+        try {
+            $reservation = Reservation::with('payments')->findOrFail($id);
+
+            $result = $this->loyaltyPointsService->redeem(
+                $reservation,
+                (int) $request->points,
+                (int) auth()->id()
+            );
+
+            $this->changeLogService->recordIfChanged(
+                $id,
+                'loyalty_points_redeemed',
+                ['total' => round((float) $reservation->getOriginal('total'), 2)],
+                ['total' => $result['reservation_total'], 'points_redeemed' => $result['points_redeemed']]
+            );
+
+            return \SuccessData('Loyalty points redeemed', $result);
+        } catch (\InvalidArgumentException $e) {
+            return \Failed($e->getMessage(), 422);
+        } catch (\Exception $e) {
+            return \Failed($e->getMessage());
+        }
+    }
+
+    public function getByClientId(GetByClientIdRequest $request)
+    {
+        try {
+            $perPage = \returnPerPage();
+            $clientId = $request->client_id;
+
+            $reservations = Reservation::with(['client', 'reservationRooms.room.roomType', 'payments'])
+                ->where('client_id', $clientId)
+                ->orderBy('created_at', 'desc')
+                ->paginate($perPage);
+
+            return \Pagination($reservations);
+        } catch (\Exception $e) {
+            return \Failed($e->getMessage());
+        }
+    }
+
+    public function makeReservation(MakeReservationRequest $request)
+    {
+        try {
+            DB::beginTransaction();
+
+            $startDate = Carbon::parse($request->start_date)->startOfDay();
+            $endDate = Carbon::parse($request->expire_date)->startOfDay();
+            $nights = $startDate->diffInDays($endDate);
+
+            $totalBasePrice = 0;
+            $roomsData = [];
+
+            $globalPeakMonths = PeakMonth::where('check', 1)->pluck('month_name_en')->toArray();
+            $globalPeakDays = PeakDay::where('check', 1)->pluck('day_name_en')->toArray();
+
+            // Set by ResolveCurrentHotel (staff) or AuthenticateKioskDevice (kiosk) —
+            // a reservation must not mix rooms from two different hotels/branches.
+            $currentHotelId = $request->attributes->get('currentHotelId');
+
+            if ($request->has('rooms') && is_array($request->rooms)) {
+                foreach ($request->rooms as $roomData) {
+                    $roomsToProcess = [];
+
+                    if (isset($roomData['suite_id']) && $roomData['suite_id']) {
+                        $suite = Suite::findOrFail($roomData['suite_id']);
+                        $roomsToProcess = $suite->rooms()->where('active', 1)->get();
+                    } else {
+                        $roomsToProcess = [Room::findOrFail($roomData['room_id'])];
+                    }
+
+                    foreach ($roomsToProcess as $room) {
+                        if ($currentHotelId !== null && (int) $room->building?->hotel_id !== (int) $currentHotelId) {
+                            throw new \Exception(
+                                'الغرفة رقم '.($room->number ?? $room->id).' تابعة لفرع مختلف عن الفرع الحالي.'
+                            );
+                        }
+
+                        $blockingInHouseId = $this->roomStatusService->findActiveInHouseReservationId((int) $room->id);
+                        if ($blockingInHouseId !== null) {
+                            throw new \Exception(
+                                'لا يمكن حجز الغرفة رقم '.($room->number ?? $room->id)
+                                .' لأن النزيل في الحجز #'.$blockingInHouseId.' لم يسجّل المغادرة بعد.'
+                            );
+                        }
+
+                        if (! $this->isRoomAvailable($room->id, $startDate->toDateString(), $endDate->toDateString())) {
+                            throw new \Exception('الغرفة رقم '.($room->number ?? $room->id).' غير متاحة في هذه الفترة.');
+                        }
+
+                        $priceMode = (int) ($request->price_calculation_mode ?? 0);
+                        $dailyLines = $this->pricingEngine->buildDailyBreakdown(
+                            $room,
+                            $startDate->toDateString(),
+                            $endDate->toDateString(),
+                            (int) $request->rent_type,
+                            $priceMode
+                        );
+                        $roomPrice = $this->pricingEngine->sumBaseAmount($dailyLines);
+
+                        $totalBasePrice += $roomPrice;
+                        $roomsData[] = [
+                            'room' => $room,
+                            'suite_id' => $roomData['suite_id'] ?? null,
+                            'price' => $roomPrice,
+                            'daily_lines' => $dailyLines,
+                        ];
+                    }
+                }
+            }
+
+            $user = auth()->user();
+            $manualDiscount = (float) ($request->discount ?? 0);
+
+            $extras = $request->extras ?? 0;
+            $penalties = $request->penalties ?? 0;
+
+            $reservationDraft = new Reservation;
+            $this->guestClassificationDiscountService->applyFinancialsForNewBooking(
+                $reservationDraft,
+                (int) $request->client_id,
+                $totalBasePrice,
+                $manualDiscount,
+                (float) $extras,
+                (float) $penalties
+            );
+
+            $subtotal = $reservationDraft->subtotal;
+            $taxes = $reservationDraft->taxes;
+            $total = $reservationDraft->total;
+            $classificationDiscount = $reservationDraft->classification_discount;
+            $discount = $reservationDraft->discount;
+
+            $payAmount = (float) ($request->pay_amount ?? 0);
+            if ($payAmount > 0.005 && $payAmount > $total + 0.005) {
+                throw new \InvalidArgumentException('Payment amount exceeds the reservation total.');
+            }
+
+            if ((int) ($request->logedin ?? Reservation::LOGEDIN_NOT_IN_HOUSE) === Reservation::LOGEDIN_IN_HOUSE) {
+                foreach ($roomsData as $data) {
+                    $this->roomStatusService->assertRoomReadyForCheckIn($data['room']);
+                }
+            }
+
+            $reservation = Reservation::create([
+                'client_id' => $request->client_id,
+                'start_date' => $request->start_date,
+                'nights' => $nights,
+                'expire_date' => $request->expire_date,
+                'reservation_type' => $request->reservation_type,
+                'reservation_status' => $request->reservation_status ?? (($request->pay_amount >= $total) ? Reservation::STATUS_CONFIRMED : Reservation::STATUS_PENDING_PAYMENT),
+                'stay_reason_id' => $request->stay_reason_id,
+                'reservation_source_id' => $request->reservation_source_id,
+                'rent_type' => $request->rent_type,
+                'price_calculation_mode' => (int) ($request->price_calculation_mode ?? 0),
+                'base_price' => $totalBasePrice,
+                'discount' => $discount,
+                'classification_discount' => $classificationDiscount,
+                'guest_classification_id' => $reservationDraft->guest_classification_id,
+                'classification_discount_id' => $reservationDraft->classification_discount_id,
+                'logedin' => $request->logedin ?? Reservation::LOGEDIN_NOT_IN_HOUSE,
+                'login_time' => $this->resolveLoginTimeForCreate($request),
+                'extras' => $extras,
+                'penalties' => $penalties,
+                'subtotal' => $subtotal,
+                'taxes' => $taxes,
+                'total' => $total,
+                'user_id' => $user->id,
+            ]);
+
+            if ($request->filled('pay_amount') && $request->pay_amount > 0) {
+                $payment = ReservationPay::create([
+                    'reservation_id' => $reservation->id,
+                    'pay' => $request->pay_amount,
+                    'type' => $request->pay_type ?? 0,
+                    'user_id' => $user->id,
+                ]);
+                $reservation->load('payments');
+                $reservation->syncConfirmationIfFullyPaid();
+                $this->accountingPostingService->postPayment($payment);
+            }
+
+            $numRooms = count($roomsData);
+            $totalDiscount = $classificationDiscount + $discount;
+            foreach ($roomsData as $data) {
+                $room = $data['room'];
+                $roomType = $room->roomType;
+
+                $roomDiscount = $totalDiscount / $numRooms;
+                $roomExtras = $extras / $numRooms;
+                $roomPenalties = $penalties / $numRooms;
+                $finalRoomPrice = ($data['price'] - $roomDiscount + $roomExtras + $roomPenalties) * 1.15;
+
+                $resRoom = ReservationRoom::create([
+                    'reservation_id' => $reservation->id,
+                    'room_id' => $room->id,
+                    'suite_id' => $data['suite_id'],
+                    'price' => $finalRoomPrice,
+                ]);
+
+                $dailyLines = $data['daily_lines'] ?? $this->pricingEngine->buildDailyBreakdown(
+                    $room,
+                    $startDate->toDateString(),
+                    $endDate->toDateString(),
+                    (int) $request->rent_type,
+                    (int) ($request->price_calculation_mode ?? 0)
+                );
+                $this->revenueAccrualService->persistDailyCharges(
+                    $reservation->id,
+                    $resRoom->id,
+                    $room->id,
+                    (int) $request->rent_type,
+                    $dailyLines
+                );
+
+                $roomTypePlan = RoomtypePricingplan::where('roomtype_id', $room->room_type_id)
+                    ->whereHas('pricingplan', function ($q) use ($startDate, $endDate) {
+                        $q->where('StartDate', '<=', $endDate->toDateString())
+                            ->where('EndDate', '>=', $startDate->toDateString());
+                    })->first();
+
+                $savedStartPlan = null;
+                $savedEndPlan = null;
+                if ($roomTypePlan) {
+                    $pStart = Carbon::parse($roomTypePlan->pricingplan->StartDate);
+                    $pEnd = Carbon::parse($roomTypePlan->pricingplan->EndDate);
+                    $savedStartPlan = $startDate->max($pStart)->toDateString();
+                    $savedEndPlan = $endDate->min($pEnd)->toDateString();
+                }
+
+                $roomPriceData = [
+                    'reservation_room_id' => $resRoom->id,
+                    'start_plan' => $savedStartPlan,
+                    'end_plan' => $savedEndPlan,
+                ];
+
+                if ($request->rent_type == 0) {
+                    if ($roomTypePlan) {
+                        $roomPriceData['pricing_plan_daily'] = $roomTypePlan->DailyPrice;
+                    }
+
+                    if ($roomType->active_type == 0 || $roomType->active_type == 1) {
+                        $roomPriceData['min_price'] = $roomType->Min_daily_price;
+                    }
+                    if ($roomType->active_type == 2 || $roomType->active_type == 1) {
+                        $roomPriceData['max_price'] = $roomType->Max_daily_price;
+                    }
+
+                } else {
+                    if ($roomTypePlan) {
+                        $roomPriceData['pricing_plan_monthly'] = $roomTypePlan->MonthlyPrice;
+                    }
+
+                    if ($roomType->active_type == 0 || $roomType->active_type == 1) {
+                        $roomPriceData['min_month'] = $roomType->Min_monthly_price;
+                    }
+                    if ($roomType->active_type == 2 || $roomType->active_type == 1) {
+                        $roomPriceData['max_month'] = $roomType->Max_monthly_price;
+                    }
+                }
+
+                $roomPriceRecord = RoomPrice::create($roomPriceData);
+
+                if ($roomType->active_type == 1) {
+                    if ($request->rent_type == 0) { // فحص الأيام
+                        $period = CarbonPeriod::create($startDate, $endDate->copy()->subDay());
+                        foreach ($period as $date) {
+                            if (in_array($date->format('l'), $globalPeakDays)) {
+                                RoomPriceMaxDay::firstOrCreate([
+                                    'room_price_id' => $roomPriceRecord->id,
+                                    'day' => $date->dayOfWeekIso,
+                                ]);
+                            }
+                        }
+                    } else {
+                        $current = $startDate->copy()->startOfMonth();
+                        $final = $endDate->copy()->startOfMonth();
+                        while ($current <= $final) {
+                            if (in_array($current->format('F'), $globalPeakMonths)) {
+                                RoomPriceMaxMonth::firstOrCreate([
+                                    'room_price_id' => $roomPriceRecord->id,
+                                    'month' => $current->month,
+                                ]);
+                            }
+                            $current->addMonth();
+                        }
+                    }
+                }
+            }
+
+            $this->accountingPostingService->syncAccrualForReservation($reservation->id);
+
+            $this->roomStatusService->syncForReservation($reservation->fresh(['reservationRooms']));
+
+            DB::commit();
+
+            $this->notifyReservationLive((int) $reservation->id, 'reservation_created', true);
+
+            $reservation->load([
+                'client',
+                'reservationRooms.room.roomType',
+                'reservationRooms.room.building',
+                'reservationRooms.room.floor',
+                'payments',
+                'user',
+            ]);
+
+            return \SuccessData('تم إنشاء الحجز بنجاح', $this->reservationDetailPayload($reservation));
+
+        } catch (\InvalidArgumentException $e) {
+            DB::rollBack();
+
+            return \Failed($e->getMessage(), 422);
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            return \Failed($e->getMessage());
+        }
+    }
+
+    /**
+     * Process refund for a reservation using refund policy discount
+     */
+    public function refund(RefundRequest $request)
+    {
+        try {
+            DB::beginTransaction();
+            $reservation = Reservation::with(['payments', 'client', 'reservationRooms'])->findOrFail($request->reservation_id);
+            $newExpireDate = $request->input('new_expire_date');
+
+            // This reservation never held real cash — the normal refund flow
+            // unconditionally credits real Cash (account 1010), which would
+            // fabricate a cash movement that never happened. Cancelling it
+            // instead automatically reverses the corporate billing entry
+            // (see ReservationController::cancel()).
+            if ($reservation->company_id !== null) {
+                return $this->failedTransaction('This reservation is billed to a company account — cancel it instead of refunding; the billing entry reverses automatically.', 422);
+            }
+
+            if ($newExpireDate) {
+                $this->shortenService->validateShorten(
+                    $reservation,
+                    Carbon::parse($newExpireDate)->startOfDay()
+                );
+            }
+
+            $preview = $this->refundPolicyService->preview($reservation, $newExpireDate);
+            $finalRefundAmount = $preview['refund_amount'];
+            $policyQuery = $preview['policy'];
+
+            if ($newExpireDate) {
+                $this->shortenService->applyShorten(
+                    $reservation,
+                    Carbon::parse($newExpireDate)->startOfDay()
+                );
+                $reservation->refresh();
+            }
+
+            $refundPay = ReservationPay::create([
+                'reservation_id' => $reservation->id,
+                'pay' => $finalRefundAmount,
+                'type' => ReservationPay::TYPE_REFUND,
+                'note' => $newExpireDate
+                    ? 'استرداد — إلغاء جزئي (سياسة الاسترداد)'
+                    : 'استرداد — إلغاء الحجز (سياسة الاسترداد)',
+                'user_id' => auth()->id(),
+            ]);
+
+            $this->accountingPostingService->postPayment($refundPay);
+
+            if (! $newExpireDate) {
+                $wasInHouse = (int) $reservation->logedin === Reservation::LOGEDIN_IN_HOUSE;
+                $reservation->update([
+                    'reservation_status' => Reservation::STATUS_CANCELLED,
+                    'logedin' => Reservation::LOGEDIN_NOT_IN_HOUSE,
+                ]);
+                $this->roomStatusService->releaseRoomsAfterCancellation(
+                    $reservation->fresh(['reservationRooms']),
+                    $wasInHouse
+                );
+            }
+
+            DB::commit();
+
+            $this->livePublisher->publishPaymentChanged(
+                (int) $request->reservation_id,
+                $newExpireDate ? 'partial_refund' : 'refund_processed'
+            );
+            $this->notifyReservationLive((int) $request->reservation_id, 'reservation_refunded');
+
+            $reservation = Reservation::with([
+                'client',
+                'reservationRooms.room.roomType',
+                'reservationRooms.room.building',
+                'reservationRooms.room.floor',
+                'payments',
+                'user',
+            ])->findOrFail($request->reservation_id);
+
+            return \SuccessData('Refund processed successfully', array_merge(
+                $this->reservationDetailPayload($reservation),
+                [
+                    'refund_id' => $refundPay->id,
+                    'amount' => $finalRefundAmount,
+                    'policy_name' => $policyQuery->name,
+                    'breakdown' => $preview['breakdown'],
+                    'partial_cancel' => $newExpireDate !== null,
+                ]
+            ));
+        } catch (RefundNotAllowedException $e) {
+            DB::rollBack();
+
+            return \Failed($e->getMessage(), 422);
+        } catch (\InvalidArgumentException $e) {
+            DB::rollBack();
+
+            return \Failed($e->getMessage(), 422);
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            return \Failed($e->getMessage());
+        }
+    }
+
+    /**
+     * NEW: Check if room is available for given dates
+     */
+    private function isRoomAvailable($roomId, $startDate, $endDate, ?int $excludeReservationId = null)
+    {
+        $room = Room::where('id', $roomId)
+            ->where('active', 1)
+            ->first();
+        if (! $room) {
+            return false;
+        }
+
+        // Any guest still checked in blocks booking until checkout, even after scheduled departure.
+        if ($this->roomStatusService->roomHasActiveInHouseStay((int) $roomId, $excludeReservationId)) {
+            return false;
+        }
+
+        $query = ReservationRoom::where('room_id', $roomId)
+            ->where('status', ReservationRoom::STATUS_ACTIVE)
+            ->whereHas('reservation', function ($q) use ($startDate, $endDate, $excludeReservationId) {
+                $q->whereNotIn('reservation_status', Reservation::nonBlockingInventoryStatuses())
+                    ->where('start_date', '<', $endDate)
+                    ->where('expire_date', '>', $startDate);
+                if ($excludeReservationId) {
+                    $q->where('id', '!=', $excludeReservationId);
+                }
+            });
+
+        return ! $query->exists();
+    }
+
+    private function calculateRoomPrice($room, $start, $end, $rentType, $priceMode = 0)
+    {
+        $startDate = Carbon::parse($start);
+        $endDate = Carbon::parse($end);
+
+        $roomType = RoomType::find($room->room_type_id);
+        $roomTypePlan = RoomtypePricingplan::with(['pricingplan', 'roomType'])->where('roomtype_id', $room->room_type_id)
+            ->whereHas('pricingplan', function ($query) use ($start, $end) {
+                $query->where('StartDate', '<=', $end)
+                    ->where('EndDate', '>=', $start);
+            })->first();
+
+        $totalPrice = 0;
+
+        if ($rentType == 0) {
+            $nights = $startDate->diffInDays($endDate);
+
+            switch ($priceMode) {
+                case 0:
+                    if ($roomTypePlan) {
+                        $planStart = Carbon::parse($roomTypePlan->pricingplan->StartDate);
+                        $planEnd = Carbon::parse($roomTypePlan->pricingplan->EndDate);
+
+                        if ($start >= $planStart->toDateString() && $end <= $planEnd->toDateString()) {
+                            $totalPrice = $roomTypePlan->DailyPrice * $nights;
+                        } else {
+                            switch ($roomTypePlan->pricingplan->ActiveType) {
+                                case 0: // Const
+                                    $totalPrice = $roomTypePlan->roomType->Min_daily_price * $nights;
+                                    break;
+                                case 1: // As Per Day
+                                    $dailyPrices = [];
+                                    for ($date = $startDate->copy(); $date->lt($endDate); $date->addDay()) {
+                                        if ($date->between($planStart, $planEnd)) {
+                                            $dailyPrices[] = $roomTypePlan->DailyPrice;
+                                        } else {
+                                            $dayName = $date->format('l');
+                                            $dailyPrices[] = $this->checkPeakDay($dayName)
+                                                ? $roomTypePlan->roomType->Max_daily_price
+                                                : $roomTypePlan->roomType->Min_daily_price;
+                                        }
+                                    }
+                                    $totalPrice = array_sum($dailyPrices);
+                                    break;
+                                case 2: // Plan Price
+                                    $totalPrice = $roomTypePlan->DailyPrice * $nights;
+                                    break;
+                            }
+                        }
+                    } else {
+                        switch ($roomType->active_type) {
+                            case 0:
+                                $totalPrice = $roomType->Min_daily_price * $nights;
+                                break;
+                            case 1:
+                                $dailyPrices = [];
+                                for ($date = $startDate->copy(); $date->lt($endDate); $date->addDay()) {
+                                    $dayName = $date->format('l');
+                                    $dailyPrices[] = $this->checkPeakDay($dayName)
+                                        ? $roomType->Max_daily_price
+                                        : $roomType->Min_daily_price;
+                                }
+                                $totalPrice = array_sum($dailyPrices);
+                                break;
+                            case 2:
+                                $totalPrice = $roomType->Max_daily_price * $nights;
+                                break;
+                        }
+                    }
+                    break;
+
+                case 1: // Pricing plan only
+                    if ($roomTypePlan) {
+                        $totalPrice = $roomTypePlan->DailyPrice * $nights;
+                    } else {
+                        throw new \Exception('No pricing plan found for price mode 1');
+                    }
+                    break;
+                case 2: // RoomType only
+                    switch ($roomType->active_type) {
+                        case 0:
+                            $totalPrice = $roomType->Min_daily_price * $nights;
+                            break;
+                        case 1:
+                            $dailyPrices = [];
+                            for ($date = $startDate->copy(); $date->lt($endDate); $date->addDay()) {
+                                $dayName = $date->format('l');
+                                $dailyPrices[] = $this->checkPeakDay($dayName)
+                                    ? $roomType->Max_daily_price
+                                    : $roomType->Min_daily_price;
+                            }
+                            $totalPrice = array_sum($dailyPrices);
+                            break;
+                        case 2:
+                            $totalPrice = $roomType->Max_daily_price * $nights;
+                            break;
+                    }
+                    break;
+            }
+        } elseif ($rentType == 1) {
+
+            $daysInPeriod = $startDate->diffInDays($endDate, false);
+
+            switch ($priceMode) {
+                case 0:
+                    $monthlyMin = $roomType->Min_monthly_price;
+                    $monthlyMax = $roomType->Max_monthly_price;
+                    $dailyMin = $roomType->Min_daily_price;
+                    $dailyMax = $roomType->Max_daily_price;
+
+                    $totalPrice = 0;
+                    $startDate = Carbon::parse($start);
+                    $endDate = Carbon::parse($end);
+
+                    $totalFullMonths = $startDate->diffInMonths($endDate);
+
+                    $tempDate = $startDate->copy();
+                    for ($m = 0; $m < $totalFullMonths; $m++) {
+                        $nextMonthDate = $tempDate->copy()->addMonthNoOverflow();
+                        $chunkDays = $tempDate->diffInDays($nextMonthDate);
+                        $chunkPrice = 0;
+
+                        for ($i = 0; $i < $chunkDays; $i++) {
+                            $currDay = $tempDate->copy()->addDays($i + 1);
+                            $mName = $currDay->format('F');
+
+                            $monthlyValueForThisDay = $this->checkPeakMonth($mName) ? $monthlyMax : $monthlyMin;
+                            $chunkPrice += ($monthlyValueForThisDay / $chunkDays);
+                        }
+
+                        $totalPrice += $chunkPrice;
+                        $tempDate = $nextMonthDate;
+                    }
+
+                    $remainingDays = $tempDate->diffInDays($endDate);
+
+                    if ($remainingDays > 0) {
+                        $extraPartPrice = 0;
+                        for ($d = 0; $d < $remainingDays; $d++) {
+                            $currDay = $tempDate->copy()->addDays($d + 1);
+                            $extraPartPrice += $this->checkPeakDay($currDay->format('l')) ? $dailyMax : $dailyMin;
+                        }
+
+                        $potentialNextMonth = $tempDate->copy()->addMonthNoOverflow();
+                        $potentialDays = $tempDate->diffInDays($potentialNextMonth);
+                        $potentialMonthPrice = 0;
+
+                        for ($i = 0; $i < $potentialDays; $i++) {
+                            $currDay = $tempDate->copy()->addDays($i + 1);
+                            $mName = $currDay->format('F');
+                            $monthlyValueForThisDay = $this->checkPeakMonth($mName) ? $monthlyMax : $monthlyMin;
+                            $potentialMonthPrice += ($monthlyValueForThisDay / $potentialDays);
+                        }
+
+                        if ($extraPartPrice > $potentialMonthPrice) {
+                            $totalPrice += $potentialMonthPrice;
+                        } else {
+                            $totalPrice += $extraPartPrice;
+                        }
+                    }
+
+                    $totalPrice = round($totalPrice, 2, PHP_ROUND_HALF_UP);
+                    if (abs($totalPrice - round($totalPrice, 0)) < 0.005) {
+                        $totalPrice = round($totalPrice, 0);
+                    }
+                    break;
+
+                    $totalPrice = $monthlyTotalPart;
+
+                    $extraDays = $tempDate->diffInDays($endDate);
+
+                    if ($extraDays > 0) {
+                        for ($d = 0; $d < $extraDays; $d++) {
+                            $extraDate = $tempDate->copy()->addDays($d + 1);
+                            $dayName = $extraDate->format('l');
+
+                            $inPlan = false;
+                            if ($roomTypePlan && $planStart && $planEnd) {
+                                if ($extraDate->betweenIncluded($planStart, $planEnd)) {
+                                    $inPlan = true;
+                                }
+                            }
+
+                            if ($inPlan) {
+                                $extraPart += ($planPrice / $extraDate->daysInMonth);
+                            } else {
+                                $extraPart += $this->checkPeakDay($dayName) ? $dailyMax : $dailyMin;
+                            }
+                        }
+                        $totalPrice += $extraPart;
+                    }
+
+                    $totalPrice = round($totalPrice, 2, PHP_ROUND_HALF_UP);
+                    if (abs($totalPrice - round($totalPrice, 0)) < 0.01) {
+                        $totalPrice = round($totalPrice, 0);
+                    }
+                    break;
+
+                case 1: // Plan only
+                    if ($roomTypePlan) {
+                        $totalPrice = round($roomTypePlan->MonthlyPrice + ($roomTypePlan->MonthlyPrice * max(0, ($daysInPeriod - $startDate->daysInMonth))) / $endDate->daysInMonth, 2, PHP_ROUND_HALF_UP);
+                        if (abs($totalPrice - round($totalPrice, 0)) < 0.005) {
+                            $totalPrice = round($totalPrice, 0);
+                        }
+                    } else {
+                        throw new \Exception('No pricing plan for mode 1');
+                    }
+                    break;
+
+                case 2:
+                    $monthlyMin = $roomType->Min_monthly_price;
+                    $monthlyMax = $roomType->Max_monthly_price;
+                    $dailyMin = $roomType->Min_daily_price;
+                    $dailyMax = $roomType->Max_daily_price;
+                    $totalPrice = 0;
+                    $extraPart = 0;
+                    $fullMonths = 0;
+                    $monthlyTotalPart = 0;
+
+                    $tempDate = $startDate->copy();
+
+                    $targetDay = $startDate->day;
+
+                    while (true) {
+                        $nextMonth = $tempDate->copy()->addMonthNoOverflow();
+
+                        if ($startDate->isLastOfMonth()) {
+                            $potentialNext = $nextMonth->copy()->day($nextMonth->daysInMonth);
+                        } else {
+                            $potentialNext = $nextMonth->copy()->day(min($targetDay, $nextMonth->daysInMonth));
+                        }
+
+                        if ($potentialNext->lte($endDate)) {
+                            $currentMonthPrice = 0;
+                            switch ($roomType->active_type) {
+                                case 0:
+                                    $currentMonthPrice = $monthlyMin;
+                                    break;
+                                case 2:
+                                    $currentMonthPrice = $monthlyMax;
+                                    break;
+                                case 1:
+                                    $chunkDays = $tempDate->diffInDays($potentialNext);
+                                    $chunkPrice = 0;
+
+                                    for ($i = 0; $i < $chunkDays; $i++) {
+                                        $currDay = $tempDate->copy()->addDays($i + 1);
+                                        $mName = $currDay->format('F');
+                                        $monthlyValueForThisDay = $this->checkPeakMonth($mName) ? $monthlyMax : $monthlyMin;
+
+                                        $chunkPrice += ($monthlyValueForThisDay / $chunkDays);
+                                    }
+                                    $currentMonthPrice = $chunkPrice;
+                                    break;
+                            }
+
+                            $monthlyTotalPart += $currentMonthPrice;
+                            $fullMonths++;
+                            $tempDate = $potentialNext;
+
+                            if ($tempDate->eq($endDate)) {
+                                break;
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+
+                    $totalPrice = $monthlyTotalPart;
+
+                    $extraDays = $tempDate->diffInDays($endDate);
+
+                    if ($extraDays > 0) {
+                        for ($d = 0; $d < $extraDays; $d++) {
+                            $extraDate = $tempDate->copy()->addDays($d + 1);
+                            $dayName = $extraDate->format('l');
+                            $extraPart += $this->checkPeakDay($dayName) ? $dailyMax : $dailyMin;
+                        }
+                        $totalPrice += $extraPart;
+                    }
+
+                    $totalPrice = round($totalPrice, 2, PHP_ROUND_HALF_UP);
+                    if (abs($totalPrice - round($totalPrice, 0)) < 0.005) {
+                        $totalPrice = round($totalPrice, 0);
+                    }
+            }
+        }
+
+        return $totalPrice;
+    }
+
+    public function checkReservation(CheckReservationRequest $request)
+    {
+        try {
+            $perPage = \returnPerPage();
+            $availableRoomsQuery = Room::where('building_id', '=', $request->building_id)
+                ->whereNotIn('roomStatus', [2, 4])
+                ->where('active', '=', 1);
+            if ($request->filled('room_type')) {
+                $availableRoomsQuery->where('room_type_id', '=', $request->room_type);
+            }
+            if ($request->filled('suite_id')) {
+                $availableRoomsQuery->where('suite_id', '=', $request->suite_id);
+            }
+            if ($request->filled('floor_id')) {
+                $availableRoomsQuery->where('floor_id', '=', $request->floor_id);
+            }
+            $availableRoomsQuery->whereDoesntHave('reservationRooms.reservation', function ($reservationQuery) use ($request) {
+                $reservationQuery->whereNotIn('reservation_status', Reservation::nonBlockingInventoryStatuses())
+                    ->where('start_date', '<', $request->expire_date)
+                    ->where('expire_date', '>', $request->start_date);
+            });
+            //  $availableRooms = AvailableRoomResource::collection($availableRoomsQuery->paginate($perPage));
+            $availableRooms = $availableRoomsQuery->paginate($perPage);
+
+            return \Pagination($availableRooms);
+        } catch (\Exception $e) {
+            return \Failed($e->getMessage());
+        }
+    }
+
+    /**
+     * All rooms in a building with availability for a check-in / check-out range.
+     */
+    public function bookingRoomAvailability(BookingRoomAvailabilityRequest $request)
+    {
+        try {
+            $startDate = $request->start_date;
+            $endDate = $request->expire_date;
+
+            $query = Room::with(['roomType', 'floor', 'suite', 'building'])
+                ->where('building_id', $request->building_id)
+                ->where('active', 1);
+
+            if ($request->filled('floor_id')) {
+                $query->where('floor_id', $request->floor_id);
+            }
+            if ($request->filled('room_type_id')) {
+                $query->where('room_type_id', $request->room_type_id);
+            }
+            if ($request->filled('search')) {
+                $query->where('number', 'like', '%'.trim($request->search).'%');
+            }
+
+            $rooms = $query->orderBy('floor_id')->orderBy('number')->get();
+            $roomIds = $rooms->pluck('id')->all();
+
+            $conflictsByRoom = collect();
+            $inHouseByRoom = collect();
+            if (! empty($roomIds)) {
+                $conflictsByRoom = ReservationRoom::whereIn('room_id', $roomIds)
+                    ->whereHas('reservation', function ($q) use ($startDate, $endDate) {
+                        $q->whereNotIn('reservation_status', Reservation::nonBlockingInventoryStatuses())
+                            ->where('start_date', '<', $endDate)
+                            ->where('expire_date', '>', $startDate);
+                    })
+                    ->with(['reservation.client'])
+                    ->get()
+                    ->groupBy('room_id')
+                    ->map(fn ($rows) => $rows->first());
+
+                // Still-checked-in guests block the room for any new booking until checkout.
+                $inHouseByRoom = ReservationRoom::whereIn('room_id', $roomIds)
+                    ->whereHas('reservation', function ($q) {
+                        $q->where('reservation_status', Reservation::STATUS_CONFIRMED)
+                            ->where('logedin', Reservation::LOGEDIN_IN_HOUSE);
+                    })
+                    ->with(['reservation.client'])
+                    ->get()
+                    ->groupBy('room_id')
+                    ->map(fn ($rows) => $rows->first());
+            }
+
+            $payload = $rooms->map(function (Room $room) use ($conflictsByRoom, $inHouseByRoom) {
+                $inHouseRow = $inHouseByRoom->get($room->id);
+                $conflictRow = $conflictsByRoom->get($room->id);
+                $reservation = $inHouseRow?->reservation ?? $conflictRow?->reservation;
+
+                $unavailableReason = null;
+                $availableForPeriod = true;
+                $needsCleaningBeforeCheckin = (int) $room->roomStatus === 3;
+
+                if ($inHouseRow) {
+                    $availableForPeriod = false;
+                    $unavailableReason = 'still_checked_in';
+                } elseif ((int) $room->roomStatus === 2) {
+                    $this->roomStatusService->setAvailableIfNoActiveStay((int) $room->id);
+                    $room->refresh();
+                }
+
+                if ((int) $room->roomStatus === 4) {
+                    $availableForPeriod = false;
+                    $unavailableReason = 'out_of_service';
+                } elseif ($conflictRow && ! $inHouseRow) {
+                    $availableForPeriod = false;
+                    $unavailableReason = 'booked';
+                }
+
+                $client = $reservation?->client;
+                $clientName = $client
+                    ? trim(($client->first_name ?? '').' '.($client->last_name ?? ''))
+                    : null;
+
+                return [
+                    'id' => $room->id,
+                    'number' => $room->number,
+                    'room_type_id' => $room->room_type_id,
+                    'floor_id' => $room->floor_id,
+                    'roomStatus' => (int) $room->roomStatus,
+                    'room_type' => $room->roomType ? [
+                        'id' => $room->roomType->id,
+                        'name_en' => $room->roomType->name_en ?? null,
+                        'name_ar' => $room->roomType->name_ar ?? null,
+                    ] : null,
+                    'floor' => $room->floor ? [
+                        'id' => $room->floor->id,
+                        'number' => $room->floor->number ?? null,
+                        'name' => $room->floor->name ?? null,
+                    ] : null,
+                    'building' => $room->building ? [
+                        'id' => $room->building->id,
+                        'number' => $room->building->number ?? null,
+                        'name' => $room->building->name ?? null,
+                    ] : null,
+                    'suite_id' => $room->suite_id,
+                    'suite' => $room->suite ? [
+                        'id' => $room->suite->id,
+                        'number' => $room->suite->number ?? null,
+                    ] : null,
+                    'available_for_period' => $availableForPeriod,
+                    'unavailable_reason' => $unavailableReason,
+                    'needs_cleaning_before_checkin' => $needsCleaningBeforeCheckin,
+                    'conflict' => $reservation ? [
+                        'reservation_id' => $reservation->id,
+                        'start_date' => $reservation->start_date,
+                        'expire_date' => $reservation->expire_date,
+                        'client_name' => $clientName ?: null,
+                    ] : null,
+                ];
+            });
+
+            $availableCount = $payload->where('available_for_period', true)->count();
+
+            return SuccessData('Room availability loaded.', [
+                'rooms' => $payload->values(),
+                'summary' => [
+                    'total' => $payload->count(),
+                    'available' => $availableCount,
+                    'unavailable' => $payload->count() - $availableCount,
+                    'start_date' => $startDate,
+                    'expire_date' => $endDate,
+                ],
+            ]);
+        } catch (\Exception $e) {
+            return Failed($e->getMessage());
+        }
+    }
+
+    public function getRoomPrice(GetRoomPriceRequest $request)
+    {
+        try {
+            $startDate = Carbon::parse($request->startDate)->startOfDay();
+            $priceMode = (int) ($request->input('price_calculation_mode', 0));
+
+            if ((int) $request->typeReservation === 0) {
+                $endDate = Carbon::parse($request->endDate)->startOfDay();
+                $rentType = 0;
+            } else {
+                $rentType = 1;
+                if ($request->filled('endDate')) {
+                    $endDate = Carbon::parse($request->endDate)->startOfDay();
+                } else {
+                    $months = max(1, (int) ($request->numberOfMonths ?? 1));
+                    $endDate = $startDate->copy()->addMonthsNoOverflow($months);
+                }
+            }
+
+            $room = $this->representativeRoomForType((int) $request->roomTypeId);
+            $startStr = $startDate->toDateString();
+            $endStr = $endDate->toDateString();
+            $stayPlan = ($priceMode === 0 || $priceMode === 1)
+                ? $this->pricingEngine->resolveStayPricingPlan((int) $request->roomTypeId, $startStr, $endStr)
+                : null;
+
+            $lines = $this->pricingEngine->buildDailyBreakdown(
+                $room,
+                $startDate->toDateString(),
+                $endDate->toDateString(),
+                $rentType,
+                $priceMode
+            );
+
+            $days = $this->pricingEngine->linesToDaysMap($lines);
+            $totalPrice = $this->pricingEngine->sumBaseAmount($lines);
+            $segments = $this->pricingEngine->buildPriceSegments($lines, $rentType);
+            $dailyLines = array_map(static fn (array $line) => [
+                'date' => $line['date'],
+                'amount' => $line['base_amount'],
+                'price_source' => $line['price_source'],
+            ], $lines);
+            $appliedPlan = $this->formatAppliedPlanMeta($stayPlan, $priceMode);
+
+            if ($rentType === 0) {
+                return \SuccessData('Daily pricing calculated', [
+                    'days' => $days,
+                    'daily_lines' => $dailyLines,
+                    'segments' => $segments,
+                    'totalPrice' => $totalPrice,
+                    'nightCount' => count($lines),
+                    'rent_type' => $rentType,
+                    'applied_plan' => $appliedPlan,
+                ]);
+            }
+
+            return \SuccessData('Monthly pricing calculated', [
+                'startDate' => $startDate->toDateString(),
+                'endDate' => $endDate->toDateString(),
+                'numberOfMonths' => $request->numberOfMonths,
+                'days' => $days,
+                'daily_lines' => $dailyLines,
+                'segments' => $segments,
+                'totalPrice' => $totalPrice,
+                'rent_type' => $rentType,
+                'nightCount' => count($lines),
+                'applied_plan' => $appliedPlan,
+            ]);
+        } catch (\Exception $e) {
+            return \Failed($e->getMessage());
+        }
+    }
+
+    private function formatAppliedPlanMeta(?RoomtypePricingplan $stayPlan, int $priceMode): ?array
+    {
+        if (! $stayPlan || ! $stayPlan->pricingplan) {
+            return null;
+        }
+
+        $plan = $stayPlan->pricingplan;
+
+        return [
+            'id' => $stayPlan->id,
+            'pricingplan_id' => $plan->id,
+            'name_en' => $plan->NameEn,
+            'name_ar' => $plan->NameAr,
+            'start_date' => $plan->StartDate,
+            'end_date' => $plan->EndDate,
+            'daily_price' => (float) $stayPlan->DailyPrice,
+            'monthly_price' => (float) $stayPlan->MonthlyPrice,
+            'price_mode' => $priceMode,
+        ];
+    }
+
+    private function representativeRoomForType(int $roomTypeId): Room
+    {
+        $room = Room::where('room_type_id', $roomTypeId)
+            ->where('active', 1)
+            ->orderBy('id')
+            ->first();
+
+        if (! $room) {
+            throw new \Exception('No active room found for this room type.');
+        }
+
+        return $room;
+    }
+
+    public function checkPeakDay($day): bool
+    {
+        return PeakDay::where('day_name_en', $day)->value('check') == 1;
+    }
+
+    public function checkPeakMonth($Month): bool
+    {
+        return PeakMonth::where('month_name_en', $Month)->value('check') == 1;
+    }
+
+    private function recalculateReservationPricing(Reservation $reservation): void
+    {
+        $priceMode = (int) ($reservation->price_calculation_mode ?? 0);
+        $startDate = Carbon::parse($reservation->start_date)->startOfDay();
+        $endDate = Carbon::parse($reservation->expire_date)->startOfDay();
+        $reservation->nights = $startDate->diffInDays($endDate);
+
+        $totalBase = 0.0;
+        foreach ($reservation->reservationRooms as $resRoom) {
+            if (! $resRoom->room) {
+                continue;
+            }
+            $lines = $this->pricingEngine->buildDailyBreakdown(
+                $resRoom->room,
+                $startDate->toDateString(),
+                $endDate->toDateString(),
+                (int) $reservation->rent_type,
+                $priceMode
+            );
+            $roomBase = $this->pricingEngine->sumBaseAmount($lines);
+            $totalBase += $roomBase;
+
+            $this->revenueAccrualService->persistDailyCharges(
+                $reservation->id,
+                $resRoom->id,
+                $resRoom->room_id,
+                (int) $reservation->rent_type,
+                $lines
+            );
+        }
+
+        $this->accountingPostingService->syncAccrualForReservation($reservation->id);
+
+        $reservation->base_price = round($totalBase, 2);
+        $this->guestClassificationDiscountService->applyFinancialsAfterRecalculation($reservation, $totalBase);
+        $this->reservationFinancialService->syncTotalsFromDailyCharges($reservation, preservePaidInFull: true);
+    }
+
+    /**
+     * Refund guest overpayment after dates are shortened from reservation details (full amount, not policy %).
+     *
+     * @param  array{cancelled_nights_count?: int, cancelled_nights_base?: float}  $removedContext
+     */
+    private function refundOverpaymentAfterDateChange(Reservation $reservation, array $removedContext, int $reservationId): void
+    {
+        if ((int) ($removedContext['cancelled_nights_count'] ?? 0) === 0) {
+            return;
+        }
+
+        $reservation->loadMissing('payments');
+        $overpaid = round($reservation->paidNetAmount() - (float) $reservation->total, 2);
+        if ($overpaid <= 0.005) {
+            return;
+        }
+
+        $userId = (int) (Auth::id() ?? $reservation->user_id);
+        if ($userId <= 0) {
+            throw new \RuntimeException('Unable to resolve actor for refund after date change.');
+        }
+
+        $beforeSnapshot = [
+            'paid_amount' => round($reservation->paidNetAmount(), 2),
+            'balance_due' => round($reservation->balanceDue(), 2),
+        ];
+
+        $refund = ReservationPay::create([
+            'reservation_id' => $reservation->id,
+            'pay' => $overpaid,
+            'type' => ReservationPay::TYPE_REFUND,
+            'note' => 'استرداد — تقليص مدة الحجز',
+            'user_id' => $userId,
+        ]);
+        $this->accountingPostingService->postPayment($refund);
+        $reservation->load('payments');
+
+        $afterSnapshot = [
+            'paid_amount' => round($reservation->paidNetAmount(), 2),
+            'balance_due' => round($reservation->balanceDue(), 2),
+            'payment_amount' => $overpaid,
+        ];
+        $this->changeLogService->recordIfChanged(
+            $reservationId,
+            'refund_recorded',
+            $beforeSnapshot,
+            $afterSnapshot
+        );
+    }
+
+    private function resolveCalendarState(Reservation $r, float $paidNet, float $balanceDue): string
+    {
+        if (Reservation::isCancelled((int) $r->reservation_status)) {
+            return 'cancelled';
+        }
+
+        if ((int) $r->reservation_status === Reservation::STATUS_PENDING_PAYMENT) {
+            return $paidNet > 0 ? 'partial-pay' : 'needs-pay';
+        }
+
+        if ($balanceDue > 0.01) {
+            return $paidNet > 0 ? 'partial-pay' : 'needs-pay';
+        }
+
+        if ((int) $r->logedin === 1) {
+            return 'checked-in';
+        }
+
+        return 'confirmed';
+    }
+
+    public function getReservationByDate(GetReservationByDateRequest $request)
+    {
+        try {
+            $query = Reservation::with(['client', 'reservationRooms.room.roomType', 'payments'])
+                ->where('start_date', '<=', $request->expire_date)
+                ->where('expire_date', '>=', $request->start_date);
+
+            $query->whereHas('reservationRooms.room', function ($roomQuery) use ($request) {
+                if ($request->has('building_id') && $request->building_id) {
+                    $roomQuery->where('building_id', $request->building_id);
+                }
+                if ($request->has('floor_id') && $request->floor_id) {
+                    $roomQuery->where('floor_id', $request->floor_id);
+                }
+                if ($request->has('suite_id') && $request->suite_id) {
+                    $roomQuery->where('suite_id', $request->suite_id);
+                }
+            });
+            $reservations = $query->get();
+            if ($reservations->isEmpty()) {
+                return SuccessData('No reservations found', []);
+            }
+
+            return SuccessData('Reservations found', $reservations);
+        } catch (\Exception $e) {
+            return Failed($e->getMessage());
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function reservationDetailPayload(Reservation $reservation): array
+    {
+        $dailyCharges = ReservationDailyCharge::where('reservation_id', $reservation->id)
+            ->orderBy('charge_date')
+            ->get();
+
+        $roomNumbers = $reservation->reservationRooms
+            ->filter(fn ($row) => ! ReservationRoom::isCancelled((int) $row->status))
+            ->map(fn ($row) => $row->room?->number)
+            ->filter(fn ($n) => $n !== null && $n !== '')
+            ->values()
+            ->all();
+
+        return [
+            'reservation' => $reservation,
+            'daily_charges' => $dailyCharges,
+            'paid_amount' => $reservation->paidNetAmount(),
+            'balance_due' => $reservation->balanceDue(),
+            'room_numbers' => $roomNumbers,
+            'room_numbers_label' => $roomNumbers !== [] ? implode(', ', array_map('strval', $roomNumbers)) : null,
+            'change_logs' => $this->changeLogService->listForReservation((int) $reservation->id),
+            'zatca_invoice' => $this->zatcaCheckoutReportingService->invoiceSummaryForReservation((int) $reservation->id),
+        ];
+    }
+
+    private function resolveLoginTimeForCreate(MakeReservationRequest $request): ?string
+    {
+        $logedin = (int) ($request->logedin ?? Reservation::LOGEDIN_NOT_IN_HOUSE);
+        if ($logedin !== Reservation::LOGEDIN_IN_HOUSE) {
+            return null;
+        }
+
+        return $request->login_time ?? $request->start_date ?? Carbon::today()->toDateString();
+    }
+}
