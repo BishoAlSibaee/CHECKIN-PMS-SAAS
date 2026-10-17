@@ -1,0 +1,24 @@
+<div class="login-screen">
+  <form class="card login-card" (ngSubmit)="submit()">
+    <h1>لوحة إدارة الاشتراكات</h1>
+    <p class="subtitle">تسجيل دخول مشغل المنصة</p>
+
+    @if (error()) {
+      <div class="alert alert-danger">{{ error() }}</div>
+    }
+
+    <div class="field">
+      <label for="email">البريد الإلكتروني</label>
+      <input id="email" type="email" name="email" [(ngModel)]="email" autocomplete="username" />
+    </div>
+
+    <div class="field">
+      <label for="password">كلمة المرور</label>
+      <input id="password" type="password" name="password" [(ngModel)]="password" autocomplete="current-password" />
+    </div>
+
+    <button type="submit" class="btn btn-primary login-btn" [disabled]="loading()">
+      {{ loading() ? 'جارٍ تسجيل الدخول...' : 'تسجيل الدخول' }}
+    </button>
+  </form>
+</div>

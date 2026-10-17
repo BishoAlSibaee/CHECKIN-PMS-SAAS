@@ -1,0 +1,80 @@
+<div class="page">
+  <header class="page-header">
+    <div>
+      <h1>المشغّلون</h1>
+      <p class="subtitle">حسابات الدخول إلى لوحة إدارة الاشتراكات نفسها</p>
+    </div>
+    <div class="header-actions">
+      <a routerLink="/tenants" class="btn btn-secondary">رجوع للمستأجرين</a>
+      <button type="button" class="btn btn-primary" (click)="showAddForm.set(!showAddForm())">
+        {{ showAddForm() ? 'إلغاء' : '+ مشغّل جديد' }}
+      </button>
+    </div>
+  </header>
+
+  @if (error()) {
+    <div class="alert alert-danger">{{ error() }}</div>
+  }
+
+  @if (showAddForm()) {
+    <form class="card add-form" (ngSubmit)="submit()">
+      @if (addError()) {
+        <div class="alert alert-danger">{{ addError() }}</div>
+      }
+
+      <div class="grid-3">
+        <div class="field">
+          <label for="name">الاسم</label>
+          <input id="name" name="name" [(ngModel)]="name" required />
+        </div>
+        <div class="field">
+          <label for="email">البريد الإلكتروني</label>
+          <input id="email" type="email" name="email" [(ngModel)]="email" required />
+        </div>
+        <div class="field">
+          <label for="password">كلمة المرور</label>
+          <input id="password" type="password" name="password" [(ngModel)]="password" required minlength="8" />
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-primary" [disabled]="adding()">
+        {{ adding() ? 'جارٍ الإضافة...' : 'إضافة المشغّل' }}
+      </button>
+    </form>
+  }
+
+  @if (loading()) {
+    <p class="subtitle">جارٍ التحميل...</p>
+  } @else {
+    <div class="card table-card">
+      <table>
+        <thead>
+          <tr>
+            <th>الاسم</th>
+            <th>البريد الإلكتروني</th>
+            <th>الحالة</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (op of operators(); track op.id) {
+            <tr>
+              <td>{{ op.name }}</td>
+              <td>{{ op.email }}</td>
+              <td>
+                @if (op.is_active) {
+                  <span class="badge badge-active">نشط</span>
+                } @else {
+                  <span class="badge badge-expired">غير نشط</span>
+                }
+              </td>
+            </tr>
+          } @empty {
+            <tr>
+              <td colspan="3" class="empty-row">لا يوجد مشغّلون</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</div>

@@ -1,0 +1,183 @@
+<div class="page">
+  <header class="page-header">
+    <a routerLink="/tenants" class="btn btn-secondary">رجوع للقائمة</a>
+  </header>
+
+  @if (error()) {
+    <div class="alert alert-danger">{{ error() }}</div>
+  }
+
+  @if (loading()) {
+    <p class="subtitle">جارٍ التحميل...</p>
+  } @else if (tenant(); as t) {
+    <div class="card">
+      @if (!editing()) {
+        <div class="tenant-title-row">
+          <div>
+            <h1>{{ t.name_ar }}</h1>
+            <p class="subtitle">{{ t.name_en }}</p>
+          </div>
+          <button type="button" class="btn btn-secondary" (click)="startEditing()">تعديل البيانات</button>
+        </div>
+      } @else {
+        <form class="edit-form" (ngSubmit)="saveEdit()">
+          @if (editError()) {
+            <div class="alert alert-danger">{{ editError() }}</div>
+          }
+          <div class="grid-2">
+            <div class="field">
+              <label for="editNameAr">الاسم (عربي)</label>
+              <input id="editNameAr" name="editNameAr" [(ngModel)]="editNameAr" required />
+            </div>
+            <div class="field">
+              <label for="editNameEn">الاسم (إنجليزي)</label>
+              <input id="editNameEn" name="editNameEn" [(ngModel)]="editNameEn" required />
+            </div>
+          </div>
+          <div class="edit-actions">
+            <button type="submit" class="btn btn-primary" [disabled]="saving()">
+              {{ saving() ? 'جارٍ الحفظ...' : 'حفظ' }}
+            </button>
+            <button type="button" class="btn btn-secondary" (click)="editing.set(false)">إلغاء</button>
+          </div>
+        </form>
+      }
+
+      <dl class="tenant-meta">
+        <dt>حالة الحساب</dt>
+        <dd>
+          @if (t.is_active) {
+            <span class="badge badge-active">نشط</span>
+          } @else {
+            <span class="badge badge-expired">معطّل</span>
+          }
+          <button type="button" class="btn btn-secondary btn-small" (click)="toggleActive()">
+            {{ t.is_active ? 'تعطيل الحساب' : 'تفعيل الحساب' }}
+          </button>
+        </dd>
+
+        <dt>حالة الاشتراك</dt>
+        <dd>
+          @if (t.is_subscription_active) {
+            <span class="badge badge-active">نشط</span>
+          } @else {
+            <span class="badge badge-expired">منتهٍ</span>
+          }
+        </dd>
+
+        <dt>انتهاء الاشتراك</dt>
+        <dd>
+          {{ t.subscription_ends_at ?? 'بلا انتهاء' }}
+          <button type="button" class="btn btn-secondary btn-small" (click)="showRenew.set(!showRenew())">
+            {{ showRenew() ? 'إلغاء' : 'تجديد الاشتراك' }}
+          </button>
+        </dd>
+
+        @if (t.created_by) {
+          <dt>أنشأه</dt>
+          <dd>{{ t.created_by.name }} ({{ t.created_by.email }})</dd>
+        }
+      </dl>
+
+      @if (showRenew()) {
+        <form class="renew-form" (ngSubmit)="submitRenewal()">
+          @if (renewError()) {
+            <div class="alert alert-danger">{{ renewError() }}</div>
+          }
+          <div class="field checkbox-field">
+            <label>
+              <input type="checkbox" name="renewNoExpiry" [(ngModel)]="renewNoExpiry" />
+              منح وصول بلا انتهاء (عميل دائم)
+            </label>
+          </div>
+          @if (!renewNoExpiry) {
+            <div class="field subscription-days">
+              <label for="extendDays">عدد الأيام المُضافة</label>
+              <input id="extendDays" type="number" min="1" name="extendDays" [(ngModel)]="extendDays" />
+              <p class="hint">يُضاف إلى المدة المتبقية الحالية إن كان الاشتراك لا يزال نشطًا.</p>
+            </div>
+          }
+          <button type="submit" class="btn btn-primary" [disabled]="renewing()">
+            {{ renewing() ? 'جارٍ التجديد...' : 'تأكيد التجديد' }}
+          </button>
+        </form>
+      }
+    </div>
+
+    <div class="card branches-card">
+      <div class="branches-header">
+        <h2>الفروع ({{ t.hotels?.length ?? 0 }})</h2>
+        <button type="button" class="btn btn-primary" (click)="showAddBranch.set(!showAddBranch())">
+          {{ showAddBranch() ? 'إلغاء' : '+ فرع جديد' }}
+        </button>
+      </div>
+
+      @if (showAddBranch()) {
+        <form class="add-branch-form" (ngSubmit)="submitBranch()">
+          @if (addBranchError()) {
+            <div class="alert alert-danger">{{ addBranchError() }}</div>
+          }
+
+          <div class="grid-2">
+            <div class="field">
+              <label for="hotelNameAr">اسم الفرع (عربي)</label>
+              <input id="hotelNameAr" name="hotelNameAr" [(ngModel)]="hotelNameAr" required />
+            </div>
+            <div class="field">
+              <label for="hotelNameEn">اسم الفرع (إنجليزي)</label>
+              <input id="hotelNameEn" name="hotelNameEn" [(ngModel)]="hotelNameEn" required />
+            </div>
+          </div>
+          <div class="grid-3">
+            <div class="field">
+              <label for="buildingsCount">عدد المباني</label>
+              <input id="buildingsCount" type="number" min="1" max="26" name="buildingsCount" [(ngModel)]="buildingsCount" required />
+            </div>
+            <div class="field">
+              <label for="floorsCount">عدد الأدوار بكل مبنى</label>
+              <input id="floorsCount" type="number" min="1" max="50" name="floorsCount" [(ngModel)]="floorsCount" required />
+            </div>
+            <div class="field">
+              <label for="roomsPerFloor">عدد الغرف بكل دور</label>
+              <input id="roomsPerFloor" type="number" min="1" max="50" name="roomsPerFloor" [(ngModel)]="roomsPerFloor" required />
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-primary submit-btn" [disabled]="addingBranch()">
+            {{ addingBranch() ? 'جارٍ الإضافة...' : 'إضافة الفرع' }}
+          </button>
+        </form>
+      }
+
+      <table>
+        <thead>
+          <tr>
+            <th>الفرع</th>
+            <th>الحالة</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (hotel of t.hotels; track hotel.id) {
+            <tr>
+              <td>
+                <div class="tenant-name">{{ hotel.name_ar }}</div>
+                <div class="tenant-name-en">{{ hotel.name_en }}</div>
+              </td>
+              <td>
+                @if (hotel.is_active) {
+                  <span class="badge badge-active">نشط</span>
+                } @else {
+                  <span class="badge badge-expired">غير نشط</span>
+                }
+              </td>
+            </tr>
+          } @empty {
+            <tr>
+              <td colspan="2" class="empty-row">لا توجد فروع</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</div>
