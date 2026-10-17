@@ -18,7 +18,7 @@ class AuthenticateKioskDevice
             return \Failed('Missing kiosk device token', 401);
         }
 
-        $device = KioskDevice::with(['user', 'building.hotel'])
+        $device = KioskDevice::with(['user', 'building.hotel.tenant'])
             ->where('token_hash', hash('sha256', $token))
             ->where('active', true)
             ->first();
@@ -36,6 +36,19 @@ class AuthenticateKioskDevice
         // regardless of what's actually assigned. The kiosk is physically tied
         // to one building, so its hotel is unambiguous.
         if ($device->building) {
+            $tenant = $device->building->hotel?->tenant;
+
+            // A kiosk device has no "login" to gate at — this middleware IS
+            // its enforcement point, same role ResolveCurrentHotel plays for
+            // staff sessions. Without this, a deactivated or expired tenant's
+            // kiosk would keep accepting check-ins/payments indefinitely.
+            if ($tenant && !$tenant->is_active) {
+                return \Failed('This account has been deactivated.', 403);
+            }
+            if ($tenant && !$tenant->isSubscriptionActive()) {
+                return \Failed('This subscription has expired.', 403);
+            }
+
             app(PermissionRegistrar::class)->setPermissionsTeamId($device->building->hotel_id);
             $request->attributes->set('currentHotelId', $device->building->hotel_id);
             $request->attributes->set('currentTenantId', $device->building->hotel?->tenant_id);
