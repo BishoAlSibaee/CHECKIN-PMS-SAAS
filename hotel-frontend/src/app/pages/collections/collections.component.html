@@ -1,0 +1,267 @@
+<div class="collections-page">
+  <section class="collections-hero">
+    <div class="collections-hero__copy">
+      <p class="collections-hero__eyebrow">
+        <i class="bi bi-cash-coin" aria-hidden="true"></i>
+        {{ 'COLLECTIONS.EYEBROW' | translate }}
+      </p>
+      <h1>{{ 'COLLECTIONS.TITLE' | translate }}</h1>
+      <p class="collections-hero__subtitle">{{ 'COLLECTIONS.SUBTITLE' | translate }}</p>
+    </div>
+    <div class="collections-hero__actions">
+      <button type="button" class="btn btn-outline-secondary" (click)="refresh()" [disabled]="isBusy"
+              [attr.aria-label]="'COMMON.REFRESH' | translate">
+        <i class="bi bi-arrow-clockwise" [class.spin]="isLoading || isLoadingSummary" aria-hidden="true"></i>
+        <span>{{ 'COMMON.REFRESH' | translate }}</span>
+      </button>
+      <button type="button" class="btn btn-primary"
+              *ngIf="canCollect && summary && summary.count > 0"
+              [disabled]="isCollectingAll"
+              (click)="collectAllOutstanding()">
+        <span *ngIf="!isCollectingAll" class="d-inline-flex align-items-center gap-1">
+          <i class="bi bi-wallet2" aria-hidden="true"></i>
+          <span>{{ 'COLLECTIONS.COLLECT_ALL' | translate }}</span>
+        </span>
+        <span *ngIf="isCollectingAll">{{ 'COLLECTIONS.COLLECT_ALL_WORKING' | translate }}</span>
+      </button>
+    </div>
+  </section>
+
+  <div class="alert alert-success collections-alert d-flex align-items-start justify-content-between gap-2"
+       *ngIf="collectAllMessage" role="status">
+    <span>{{ collectAllMessage }}</span>
+    <button type="button" class="btn-close" (click)="dismissCollectMessage()"
+            [attr.aria-label]="'COMMON.CANCEL' | translate"></button>
+  </div>
+
+  <div class="collections-summary" role="group" [attr.aria-label]="'COLLECTIONS.SUMMARY_ARIA' | translate">
+    <ng-container *ngIf="isLoadingSummary">
+      <div class="collections-stat" *ngFor="let i of [1,2,3,4]">
+        <div class="skeleton skeleton-text" style="width: 45%;"></div>
+        <div class="skeleton skeleton-text mt-2" style="width: 55%; height: 1.5rem;"></div>
+        <div class="skeleton skeleton-text mt-2" style="width: 40%;"></div>
+      </div>
+    </ng-container>
+    <ng-container *ngIf="!isLoadingSummary && summary">
+      <button type="button" class="collections-stat"
+              [class.collections-stat--active]="activeTab === 'all'"
+              (click)="setTab('all')">
+        <span class="collections-stat__label">{{ 'COLLECTIONS.KPI_TOTAL_BALANCE' | translate }}</span>
+        <span class="collections-stat__value">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ formatMoney(summary.total_balance) }}</span>
+        <span class="collections-stat__hint">{{ 'COLLECTIONS.KPI_COUNT' | translate:{ count: summary.count } }}</span>
+      </button>
+      <button type="button" class="collections-stat collections-stat--checkout"
+              [class.collections-stat--active]="activeTab === 'checkout_today'"
+              (click)="setTab('checkout_today')">
+        <span class="collections-stat__label">{{ 'COLLECTIONS.KPI_CHECKOUT_TODAY' | translate }}</span>
+        <span class="collections-stat__value">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ formatMoney(summary.checkout_today_balance) }}</span>
+        <span class="collections-stat__hint">{{ 'COLLECTIONS.KPI_COUNT' | translate:{ count: summary.checkout_today_count } }}</span>
+      </button>
+      <button type="button" class="collections-stat collections-stat--overdue"
+              [class.collections-stat--active]="activeTab === 'overdue'"
+              (click)="setTab('overdue')">
+        <span class="collections-stat__label">{{ 'COLLECTIONS.KPI_OVERDUE' | translate }}</span>
+        <span class="collections-stat__value">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ formatMoney(summary.overdue_balance) }}</span>
+        <span class="collections-stat__hint">{{ 'COLLECTIONS.KPI_COUNT' | translate:{ count: summary.overdue_count } }}</span>
+      </button>
+      <button type="button" class="collections-stat collections-stat--in-house"
+              [class.collections-stat--active]="activeTab === 'in_house'"
+              (click)="setTab('in_house')">
+        <span class="collections-stat__label">{{ 'COLLECTIONS.KPI_IN_HOUSE' | translate }}</span>
+        <span class="collections-stat__value">{{ summary.in_house_count }}</span>
+        <span class="collections-stat__hint">{{ 'COLLECTIONS.KPI_IN_HOUSE_HINT' | translate }}</span>
+      </button>
+    </ng-container>
+  </div>
+
+  <div class="collections-tabs" role="tablist" [attr.aria-label]="'COLLECTIONS.TABS_ARIA' | translate">
+    <button type="button" role="tab" class="collections-tab" *ngFor="let tab of tabs"
+            [class.collections-tab--active]="activeTab === tab.id"
+            [attr.aria-selected]="activeTab === tab.id"
+            (click)="setTab(tab.id)">
+      <span>{{ tab.labelKey | translate }}</span>
+      <span class="collections-tab__count" *ngIf="tabCount(tab.id) !== null">{{ tabCount(tab.id) }}</span>
+    </button>
+  </div>
+
+  <div class="card border-0 shadow-sm collections-card">
+    <div class="collections-toolbar">
+      <div class="collections-search flex-grow-1">
+        <i class="bi bi-search collections-search__icon" aria-hidden="true"></i>
+        <label class="visually-hidden" for="collectionsSearch">{{ 'COLLECTIONS.SEARCH' | translate }}</label>
+        <input id="collectionsSearch" type="search" class="form-control collections-search__input"
+               [ngModel]="search"
+               (ngModelChange)="onSearchChange($event)"
+               [placeholder]="'COLLECTIONS.SEARCH' | translate" />
+      </div>
+      <button type="button" class="btn btn-outline-secondary btn-sm" *ngIf="hasSearch" (click)="clearSearch()">
+        {{ 'COLLECTIONS.CLEAR_SEARCH' | translate }}
+      </button>
+    </div>
+
+    <div *ngIf="listError" class="alert alert-danger m-3 mb-0">{{ listError }}</div>
+
+    <div *ngIf="!isLoading && items.length === 0" class="collections-empty py-5 px-3 text-center">
+      <i class="bi" [ngClass]="hasSearch ? 'bi-search' : 'bi-check-circle'" aria-hidden="true"></i>
+      <p class="fw-semibold mb-1">
+        {{ (hasSearch ? 'COLLECTIONS.NO_RESULTS' : 'COLLECTIONS.EMPTY') | translate }}
+      </p>
+      <p class="text-muted small mb-3">
+        {{ (hasSearch ? 'COLLECTIONS.NO_RESULTS_HINT' : 'COLLECTIONS.EMPTY_HINT') | translate }}
+      </p>
+      <button type="button" class="btn btn-outline-secondary btn-sm" *ngIf="hasSearch" (click)="clearSearch()">
+        {{ 'COLLECTIONS.CLEAR_SEARCH' | translate }}
+      </button>
+    </div>
+
+    <div class="table-responsive d-none d-lg-block" *ngIf="isLoading">
+      <table class="table align-middle mb-0 collections-table">
+        <thead>
+          <tr>
+            <th>{{ 'COLLECTIONS.COL_GUEST' | translate }}</th>
+            <th>{{ 'COLLECTIONS.COL_ROOM' | translate }}</th>
+            <th>{{ 'COLLECTIONS.COL_STAY' | translate }}</th>
+            <th>{{ 'COLLECTIONS.COL_PAID' | translate }}</th>
+            <th class="text-end">{{ 'COLLECTIONS.COL_BALANCE' | translate }}</th>
+            <th>{{ 'COLLECTIONS.COL_STATUS' | translate }}</th>
+            <th class="text-end">{{ 'COMMON.ACTIONS' | translate }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let i of [1,2,3,4,5]">
+            <td>
+              <div class="skeleton skeleton-text" style="width: 120px;"></div>
+              <div class="skeleton skeleton-text" style="width: 80px;"></div>
+            </td>
+            <td><div class="skeleton skeleton-text" style="width: 60px;"></div></td>
+            <td><div class="skeleton skeleton-text" style="width: 110px;"></div></td>
+            <td><div class="skeleton" style="width: 100%; height: 8px; border-radius: 4px;"></div></td>
+            <td class="text-end"><div class="skeleton skeleton-text ms-auto" style="width: 70px;"></div></td>
+            <td><div class="skeleton" style="width: 70px; height: 22px; border-radius: 11px;"></div></td>
+            <td class="text-end"><div class="skeleton ms-auto" style="width: 90px; height: 28px; border-radius: 6px;"></div></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="d-lg-none p-3" *ngIf="isLoading">
+      <div class="card border-0 shadow-sm mb-3 p-3" *ngFor="let i of [1,2,3]">
+        <div class="skeleton skeleton-text mb-2" style="width: 50%;"></div>
+        <div class="skeleton skeleton-text mb-3" style="width: 70%;"></div>
+        <div class="skeleton w-100 mb-2" style="height: 8px;"></div>
+        <div class="skeleton skeleton-text" style="width: 40%;"></div>
+      </div>
+    </div>
+
+    <div class="table-responsive d-none d-lg-block" *ngIf="!isLoading && items.length > 0">
+      <table class="table table-hover align-middle mb-0 collections-table">
+        <thead>
+          <tr>
+            <th>{{ 'COLLECTIONS.COL_GUEST' | translate }}</th>
+            <th>{{ 'COLLECTIONS.COL_ROOM' | translate }}</th>
+            <th>{{ 'COLLECTIONS.COL_STAY' | translate }}</th>
+            <th>{{ 'COLLECTIONS.COL_PAID' | translate }}</th>
+            <th class="text-end">{{ 'COLLECTIONS.COL_BALANCE' | translate }}</th>
+            <th>{{ 'COLLECTIONS.COL_STATUS' | translate }}</th>
+            <th class="text-end">{{ 'COMMON.ACTIONS' | translate }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let item of items" class="row-clickable" (click)="openReservation(item)">
+            <td>
+              <div class="fw-semibold">{{ item.guest }}</div>
+              <div class="small text-muted" *ngIf="item.guest_phone">{{ item.guest_phone }}</div>
+              <div class="small text-muted">#{{ item.reservation_id }}</div>
+            </td>
+            <td>
+              <span class="collections-room">{{ item.room }}</span>
+            </td>
+            <td class="text-nowrap small">
+              {{ item.start_date }} → {{ item.expire_date }}
+              <span *ngIf="item.days_overdue > 0" class="d-block text-danger">
+                {{ 'COLLECTIONS.DAYS_OVERDUE' | translate:{ days: item.days_overdue } }}
+              </span>
+            </td>
+            <td style="min-width: 140px;">
+              <div class="progress progress-thin mb-1" role="progressbar"
+                   [attr.aria-valuenow]="item.paid_percent" aria-valuemin="0" aria-valuemax="100">
+                <div class="progress-bar bg-success" [style.width.%]="item.paid_percent"></div>
+              </div>
+              <span class="small text-muted">{{ item.paid_percent }}%</span>
+            </td>
+            <td class="text-end fw-bold text-danger">
+              {{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ formatMoney(item.balance_due) }}
+            </td>
+            <td>
+              <span class="badge rounded-pill urgency-badge" [ngClass]="urgencyClass(item.urgency)">
+                {{ urgencyLabel(item.urgency) }}
+              </span>
+            </td>
+            <td class="text-end text-nowrap" (click)="$event.stopPropagation()">
+              <button type="button" class="btn btn-sm btn-outline-primary me-1" (click)="openReservation(item)">
+                {{ 'COLLECTIONS.VIEW' | translate }}
+              </button>
+              <button type="button" class="btn btn-sm btn-primary" *ngIf="canCollect"
+                      (click)="collectPayment(item, $event)">
+                {{ 'COLLECTIONS.COLLECT' | translate }}
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="d-lg-none p-3" *ngIf="!isLoading && items.length > 0">
+      <div class="collection-card card border-0 shadow-sm mb-3" *ngFor="let item of items"
+           (click)="openReservation(item)"
+           (keydown.enter)="openReservation(item)"
+           tabindex="0"
+           role="button">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+            <div class="min-w-0">
+              <div class="fw-bold text-truncate">{{ item.guest }}</div>
+              <div class="small text-muted">#{{ item.reservation_id }} · {{ item.room }}</div>
+            </div>
+            <span class="badge rounded-pill urgency-badge flex-shrink-0" [ngClass]="urgencyClass(item.urgency)">
+              {{ urgencyLabel(item.urgency) }}
+            </span>
+          </div>
+          <div class="small text-muted mb-2">{{ item.start_date }} → {{ item.expire_date }}</div>
+          <div class="progress progress-thin mb-2">
+            <div class="progress-bar bg-success" [style.width.%]="item.paid_percent"></div>
+          </div>
+          <div class="d-flex justify-content-between align-items-center">
+            <span class="small">{{ item.paid_percent }}% {{ 'COLLECTIONS.PAID' | translate }}</span>
+            <span class="fw-bold text-danger">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ formatMoney(item.balance_due) }}</span>
+          </div>
+          <div class="d-flex gap-2 mt-3" (click)="$event.stopPropagation()">
+            <button type="button" class="btn btn-sm btn-outline-primary flex-grow-1" (click)="openReservation(item)">
+              {{ 'COLLECTIONS.VIEW' | translate }}
+            </button>
+            <button type="button" class="btn btn-sm btn-primary flex-grow-1" *ngIf="canCollect"
+                    (click)="collectPayment(item, $event)">
+              {{ 'COLLECTIONS.COLLECT' | translate }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="collections-footer" *ngIf="!isLoading && (items.length > 0 || lastPage > 1)">
+      <span class="small text-muted">
+        {{ 'COLLECTIONS.PAGE_INFO' | translate:{ page: currentPage, total: lastPage, count: totalItems } }}
+      </span>
+      <div class="btn-group" *ngIf="lastPage > 1">
+        <button type="button" class="btn btn-sm btn-outline-secondary"
+                [disabled]="currentPage <= 1" (click)="goToPage(currentPage - 1)">
+          {{ 'COLLECTIONS.PREV' | translate }}
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-secondary"
+                [disabled]="currentPage >= lastPage" (click)="goToPage(currentPage + 1)">
+          {{ 'COLLECTIONS.NEXT' | translate }}
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

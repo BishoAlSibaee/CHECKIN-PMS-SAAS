@@ -1,0 +1,111 @@
+.modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.4);
+  /* backdrop-filter: blur(4px); */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1050;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.modal-content {
+  width: 90%;
+  max-width: 600px;
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+  border: none;
+  animation: slideDown 0.3s ease-out;
+  background: white;
+}
+
+.card-body {
+  overflow-y: auto;
+  padding: 1.5rem;
+}
+
+.permission-categories {
+  max-height: 350px;
+  overflow-y: auto;
+  border: 1px solid #e9ecef;
+  border-radius: 0.5rem;
+  background: #fff;
+}
+
+.permission-category {
+  border-bottom: 1px solid #e9ecef;
+}
+
+.permission-category:last-child {
+  border-bottom: none;
+}
+
+.category-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.85rem 1.25rem;
+  background: #f8f9fa;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.2s;
+}
+
+.category-header:hover {
+  background: #f1f3f5;
+}
+
+.category-permissions {
+  padding: 0.75rem 1.25rem;
+  background: #fff;
+}
+
+.permission-item {
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #f8f9fa;
+}
+
+.permission-item:last-child {
+  border-bottom: none;
+}
+
+.selected-permissions-list {
+  max-height: 100px;
+  overflow-y: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideDown {
+  from { transform: translateY(-20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* Scrollbar Styling */
+.permission-categories::-webkit-scrollbar,
+.card-body::-webkit-scrollbar {
+  width: 6px;
+}
+.permission-categories::-webkit-scrollbar-thumb,
+.card-body::-webkit-scrollbar-thumb {
+  background: #dee2e6;
+  border-radius: 10px;
+}
+.permission-categories::-webkit-scrollbar-track,
+.card-body::-webkit-scrollbar-track {
+  background: transparent;
+}

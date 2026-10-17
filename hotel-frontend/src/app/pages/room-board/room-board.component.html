@@ -1,0 +1,463 @@
+<div class="room-board">
+  <section class="board-hero">
+    <div class="board-hero__copy">
+      <div class="board-hero__title-row">
+        <button type="button" class="btn btn-light btn-sm board-hero__back" (click)="goDashboard()"
+                [attr.aria-label]="'COMMON.BACK' | translate">
+          <i class="bi bi-arrow-left" aria-hidden="true"></i>
+        </button>
+        <div>
+          <p class="board-hero__eyebrow">
+            <i class="bi bi-grid-3x3-gap" aria-hidden="true"></i>
+            {{ 'ROOM_BOARD.EYEBROW' | translate }}
+          </p>
+          <h1>{{ 'ROOM_BOARD.TITLE' | translate }}</h1>
+          <p class="board-hero__subtitle">{{ 'ROOM_BOARD.SUBTITLE' | translate }}</p>
+        </div>
+      </div>
+    </div>
+    <div class="board-hero__actions">
+      <button type="button" class="btn btn-outline-secondary" (click)="refresh()" [disabled]="isLoading"
+              [attr.aria-label]="'COMMON.REFRESH' | translate">
+        <i class="bi bi-arrow-clockwise" [class.spin]="isLoading" aria-hidden="true"></i>
+        <span>{{ 'COMMON.REFRESH' | translate }}</span>
+      </button>
+      <div class="board-view-toggle" role="group" [attr.aria-label]="'ROOM_BOARD.VIEW_MODE_ARIA' | translate">
+        <button type="button" class="board-view-btn"
+                [class.board-view-btn--active]="viewMode === 'grid'"
+                (click)="viewMode = 'grid'"
+                [attr.aria-pressed]="viewMode === 'grid'"
+                [attr.aria-label]="'ROOM_BOARD.VIEW_GRID' | translate">
+          <i class="bi bi-grid" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="board-view-btn"
+                [class.board-view-btn--active]="viewMode === 'list'"
+                (click)="viewMode = 'list'"
+                [attr.aria-pressed]="viewMode === 'list'"
+                [attr.aria-label]="'ROOM_BOARD.VIEW_LIST' | translate">
+          <i class="bi bi-list-ul" aria-hidden="true"></i>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <div class="board-summary" role="group" [attr.aria-label]="'ROOM_BOARD.SUMMARY_ARIA' | translate">
+    <ng-container *ngIf="isLoading && !summaryCount('total')">
+      <div class="board-stat" *ngFor="let i of [1,2,3,4]">
+        <div class="skeleton skeleton-text" style="width: 50%;"></div>
+        <div class="skeleton skeleton-text mt-2" style="width: 35%; height: 1.4rem;"></div>
+      </div>
+    </ng-container>
+    <ng-container *ngIf="!isLoading || summaryCount('total')">
+      <button type="button" class="board-stat board-stat--secondary-kpi"
+              [class.board-stat--active]="isKpiActive('total')"
+              (click)="setStatusFromKpi('total')">
+        <span class="board-stat__label">{{ 'ROOM_BOARD.KPI_TOTAL' | translate }}</span>
+        <span class="board-stat__value">{{ summaryCount('total') }}</span>
+      </button>
+      <button type="button" class="board-stat board-stat--vacant"
+              [class.board-stat--active]="isKpiActive('vacant')"
+              (click)="setStatusFromKpi('vacant')">
+        <span class="board-stat__label">{{ 'ROOM_BOARD.KPI_VACANT' | translate }}</span>
+        <span class="board-stat__value">{{ summaryCount('vacant') }}</span>
+      </button>
+      <button type="button" class="board-stat board-stat--in-house"
+              [class.board-stat--active]="isKpiActive('in_house')"
+              (click)="setStatusFromKpi('in_house')">
+        <span class="board-stat__label">{{ 'ROOM_BOARD.KPI_IN_HOUSE' | translate }}</span>
+        <span class="board-stat__value">{{ summaryCount('in_house') }}</span>
+      </button>
+      <button type="button" class="board-stat board-stat--arrival"
+              [class.board-stat--active]="isKpiActive('check_in_today')"
+              (click)="setStatusFromKpi('check_in_today')">
+        <span class="board-stat__label">{{ 'ROOM_BOARD.KPI_CHECK_IN_TODAY' | translate }}</span>
+        <span class="board-stat__value">{{ summaryCount('check_in_today') }}</span>
+      </button>
+      <button type="button" class="board-stat board-stat--departure"
+              [class.board-stat--active]="isKpiActive('check_out_today')"
+              (click)="setStatusFromKpi('check_out_today')">
+        <span class="board-stat__label">{{ 'ROOM_BOARD.KPI_CHECK_OUT_TODAY' | translate }}</span>
+        <span class="board-stat__value">{{ summaryCount('check_out_today') }}</span>
+      </button>
+      <button type="button" class="board-stat board-stat--prep board-stat--secondary-kpi"
+              [class.board-stat--active]="isKpiActive('preparation')"
+              (click)="setStatusFromKpi('preparation')">
+        <span class="board-stat__label">{{ 'ROOM_BOARD.KPI_PREPARATION' | translate }}</span>
+        <span class="board-stat__value">{{ summaryCount('preparation') }}</span>
+      </button>
+      <div class="board-stat board-stat--rate board-stat--secondary-kpi">
+        <span class="board-stat__label">{{ 'ROOM_BOARD.OCCUPANCY_RATE' | translate }}</span>
+        <span class="board-stat__value">{{ summaryCount('occupancy_rate') }}%</span>
+      </div>
+    </ng-container>
+  </div>
+
+  <section class="card border-0 shadow-sm board-filters">
+    <div class="board-filters__mobile-bar d-lg-none">
+      <button type="button" class="btn btn-outline-secondary btn-sm flex-grow-1"
+              (click)="filtersExpanded = !filtersExpanded"
+              [attr.aria-expanded]="filtersExpanded">
+        <i class="bi bi-funnel" aria-hidden="true"></i>
+        {{ (filtersExpanded ? 'ROOM_BOARD.HIDE_FILTERS' : 'ROOM_BOARD.SHOW_FILTERS') | translate }}
+        <span class="badge text-bg-primary ms-1" *ngIf="hasActiveFilters">!</span>
+      </button>
+      <button type="button" class="btn btn-primary btn-sm" (click)="onFilterChange()" [disabled]="isLoading">
+        {{ 'ROOM_BOARD.APPLY' | translate }}
+      </button>
+    </div>
+    <div class="board-filters__fields" [class.board-filters__fields--collapsed]="!filtersExpanded">
+      <div class="board-field board-field--date">
+        <div class="board-field__label-row">
+          <label class="board-field__label mb-0" for="boardDate">{{ 'ROOM_BOARD.DATE' | translate }}</label>
+          <button type="button" class="board-today-btn" (click)="setToday()">
+            {{ 'ROOM_BOARD.TODAY' | translate }}
+          </button>
+        </div>
+        <input id="boardDate" type="date" class="form-control form-control-sm"
+               [(ngModel)]="selectedDate" (change)="onDateChange()">
+      </div>
+      <div class="board-field">
+        <label class="board-field__label" for="boardBuilding">{{ 'ROOM_BOARD.BUILDING' | translate }}</label>
+        <select id="boardBuilding" class="form-select form-select-sm"
+                [(ngModel)]="selectedBuildingId" (ngModelChange)="onBuildingChange()">
+          <option [ngValue]="null">{{ 'ROOM_BOARD.ALL_BUILDINGS' | translate }}</option>
+          <option *ngFor="let b of buildings" [ngValue]="b.id">{{ b.label }}</option>
+        </select>
+      </div>
+      <div class="board-field">
+        <label class="board-field__label" for="boardFloor">{{ 'ROOM_BOARD.FLOOR' | translate }}</label>
+        <select id="boardFloor" class="form-select form-select-sm"
+                [(ngModel)]="selectedFloorId" (ngModelChange)="onFilterChange()"
+                [disabled]="!selectedBuildingId">
+          <option [ngValue]="null">{{ 'ROOM_BOARD.ALL_FLOORS' | translate }}</option>
+          <option *ngFor="let f of floors" [ngValue]="f.id">{{ f.label }}</option>
+        </select>
+      </div>
+      <div class="board-field board-field--search">
+        <label class="board-field__label" for="boardSearch">{{ 'ROOM_BOARD.SEARCH' | translate }}</label>
+        <div class="board-search">
+          <i class="bi bi-search board-search__icon" aria-hidden="true"></i>
+          <input id="boardSearch" type="search" class="form-control form-control-sm board-search__input"
+                 [(ngModel)]="search" (keyup.enter)="onFilterChange()"
+                 [placeholder]="'ROOM_BOARD.SEARCH_PLACEHOLDER' | translate">
+        </div>
+      </div>
+      <div class="board-field board-field--actions d-none d-lg-block">
+        <label class="board-field__label board-field__label--spacer" aria-hidden="true">&nbsp;</label>
+        <div class="d-flex gap-1">
+          <button type="button" class="btn btn-primary btn-sm flex-grow-1"
+                  (click)="onFilterChange()" [disabled]="isLoading">
+            {{ 'ROOM_BOARD.APPLY' | translate }}
+          </button>
+          <button type="button" class="btn btn-outline-secondary btn-sm"
+                  *ngIf="hasActiveFilters" (click)="clearFilters()">
+            {{ 'ROOM_BOARD.CLEAR_FILTERS' | translate }}
+          </button>
+        </div>
+      </div>
+      <div class="board-filters__mobile-clear d-lg-none" *ngIf="hasActiveFilters && filtersExpanded">
+        <button type="button" class="btn btn-outline-secondary btn-sm w-100" (click)="clearFilters()">
+          {{ 'ROOM_BOARD.CLEAR_FILTERS' | translate }}
+        </button>
+      </div>
+    </div>
+
+    <div class="board-chips" role="group" [attr.aria-label]="'ROOM_BOARD.STATUS_FILTER_ARIA' | translate">
+      <button type="button" *ngFor="let chip of statusChips"
+              class="board-chip"
+              [class.board-chip--active]="statusFilter === chip.key"
+              (click)="setStatusFilter(chip.key)">
+        <span>{{ chip.label | translate }}</span>
+        <span class="board-chip__count">{{ chip.key === 'all' ? summaryCount('total') : summaryCount(chip.key) }}</span>
+      </button>
+    </div>
+  </section>
+
+  <div class="alert alert-danger mb-0" *ngIf="errorMessage">{{ errorMessage }}</div>
+
+  <section *ngIf="isLoading && !groupedRooms.length" class="board-loading">
+    <div class="row g-2">
+      <div class="col-6 col-sm-4 col-md-3 col-lg-2" *ngFor="let i of [1,2,3,4,5,6,7,8]">
+        <div class="card border-0 shadow-sm p-3">
+          <div class="d-flex justify-content-between mb-2">
+            <div class="skeleton skeleton-text" style="width: 40%;"></div>
+            <div class="skeleton" style="width: 48px; height: 18px; border-radius: 999px;"></div>
+          </div>
+          <div class="skeleton skeleton-text" style="width: 70%;"></div>
+          <div class="skeleton skeleton-text" style="width: 55%;"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Grid view: grouped by building → floor -->
+  <ng-container *ngIf="!isLoading && viewMode === 'grid' && groupedRooms.length">
+    <section class="building-block" *ngFor="let building of groupedRooms">
+      <div class="building-header">
+        <div class="building-header__icon"><i class="bi bi-building" aria-hidden="true"></i></div>
+        <div>
+          <h2 class="building-header__title mb-0">{{ building.buildingName }}</h2>
+          <span class="building-header__meta">{{ 'ROOM_BOARD.ROOMS_COUNT' | translate:{ count: building.roomCount } }}</span>
+        </div>
+      </div>
+
+      <div class="floor-block" *ngFor="let floor of building.floors">
+        <div class="floor-header">
+          <span class="floor-header__label">{{ 'ROOM_BOARD.FLOOR' | translate }} {{ floor.floorNumber }}</span>
+          <span class="floor-header__count">{{ 'ROOM_BOARD.ROOMS_COUNT' | translate:{ count: floor.rooms.length } }}</span>
+        </div>
+
+        <div class="suites-row" *ngIf="floor.suites.length">
+          <div class="suite-block" *ngFor="let suite of floor.suites" [ngClass]="suiteBlockClass(suite)">
+            <div class="suite-header">
+              <div class="suite-header__main">
+                <i class="bi bi-door-open suite-header__icon" aria-hidden="true"></i>
+                <span class="suite-header__label text-truncate">{{ suite.suiteName }}</span>
+                <span class="badge status-badge ms-1" [ngClass]="statusClass(suite.aggregateStatus)">
+                  {{ ('ROOM_BOARD.STATUS_' + suite.aggregateStatus.toUpperCase()) | translate }}
+                </span>
+              </div>
+              <span class="suite-header__count">{{ 'ROOM_BOARD.ROOMS_COUNT' | translate:{ count: suite.rooms.length } }}</span>
+            </div>
+            <div class="suite-room-grid">
+              <div class="suite-room-slot" *ngFor="let room of suite.rooms">
+                <ng-container *ngTemplateOutlet="roomCard; context: { room: room, compact: true }"></ng-container>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div *ngIf="floor.standaloneRooms.length" class="standalone-block">
+          <div class="standalone-header">
+            <span class="standalone-header__label">{{ 'ROOM_BOARD.STANDALONE_ROOMS' | translate }}</span>
+          </div>
+          <div class="row g-2 room-grid">
+            <div class="col-6 col-sm-4 col-md-3 col-lg-2 col-xl-2" *ngFor="let room of floor.standaloneRooms">
+              <ng-container *ngTemplateOutlet="roomCard; context: { room: room }"></ng-container>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </ng-container>
+
+  <!-- List view: grouped by building → floor -->
+  <ng-container *ngIf="!isLoading && viewMode === 'list' && groupedRooms.length">
+    <section class="building-block" *ngFor="let building of groupedRooms">
+      <div class="building-header">
+        <div class="building-header__icon"><i class="bi bi-building" aria-hidden="true"></i></div>
+        <div>
+          <h2 class="building-header__title mb-0">{{ building.buildingName }}</h2>
+          <span class="building-header__meta">{{ 'ROOM_BOARD.ROOMS_COUNT' | translate:{ count: building.roomCount } }}</span>
+        </div>
+      </div>
+
+      <div class="floor-block" *ngFor="let floor of building.floors">
+        <div class="floor-header">
+          <span class="floor-header__label">{{ 'ROOM_BOARD.FLOOR' | translate }} {{ floor.floorNumber }}</span>
+          <span class="floor-header__count">{{ 'ROOM_BOARD.ROOMS_COUNT' | translate:{ count: floor.rooms.length } }}</span>
+        </div>
+
+        <div class="suite-block" *ngFor="let suite of floor.suites">
+          <div class="suite-header">
+            <div class="suite-header__main">
+              <i class="bi bi-door-open suite-header__icon" aria-hidden="true"></i>
+              <span class="suite-header__label">{{ suite.suiteName }}</span>
+              <span class="badge status-badge ms-2" [ngClass]="statusClass(suite.aggregateStatus)">
+                {{ ('ROOM_BOARD.STATUS_' + suite.aggregateStatus.toUpperCase()) | translate }}
+              </span>
+            </div>
+            <span class="suite-header__count">{{ 'ROOM_BOARD.ROOMS_COUNT' | translate:{ count: suite.rooms.length } }}</span>
+          </div>
+          <div class="card board-card list-card mb-2" *ngIf="suite.rooms.length">
+            <div class="table-responsive">
+              <table class="table table-sm table-hover mb-0 align-middle list-table">
+                <thead>
+                  <tr>
+                    <th>{{ 'ROOM_BOARD.COL_ROOM' | translate }}</th>
+                    <th>{{ 'ROOM_BOARD.COL_TYPE' | translate }}</th>
+                    <th>{{ 'ROOM_BOARD.COL_STATUS' | translate }}</th>
+                    <th>{{ 'ROOM_BOARD.COL_GUEST' | translate }}</th>
+                    <th>{{ 'ROOM_BOARD.COL_STAY' | translate }}</th>
+                    <th class="text-end">{{ 'ROOM_BOARD.COL_TOTAL' | translate }}</th>
+                    <th class="text-end">{{ 'ROOM_BOARD.COL_BALANCE' | translate }}</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let room of suite.rooms" class="list-row list-row--clickable"
+                      [ngClass]="statusClass(room.occupancy_status)" (click)="openCreateReservation(room)">
+                    <td class="fw-bold">#{{ room.number }}</td>
+                    <td>{{ room.room_type_name }}</td>
+                    <td>
+                      <span class="badge status-badge" [ngClass]="statusClass(room.occupancy_status)">
+                        {{ ('ROOM_BOARD.STATUS_' + room.occupancy_status.toUpperCase()) | translate }}
+                      </span>
+                    </td>
+                    <td class="text-truncate" style="max-width: 10rem;">{{ room.reservation?.client_name || '—' }}</td>
+                    <td class="small text-nowrap">
+                      <ng-container *ngIf="room.reservation">{{ room.reservation.start_date }} → {{ room.reservation.expire_date }}</ng-container>
+                      <ng-container *ngIf="!room.reservation">—</ng-container>
+                    </td>
+                    <td class="text-end text-nowrap">{{ room.reservation ? formatMoney(room.reservation.total) : '—' }}</td>
+                    <td class="text-end text-nowrap">{{ room.reservation && room.reservation.balance_due > 0 ? formatMoney(room.reservation.balance_due) : '—' }}</td>
+                    <td class="text-end">
+                      <button type="button" class="btn btn-xs btn-primary me-1" *ngIf="canCheckIn(room)"
+                              [disabled]="checkingInReservationId === room.reservation?.reservation_id"
+                              (click)="checkInGuest(room, $event)">{{ 'RESERVATIONS.CHECK_IN_BTN' | translate }}</button>
+                      <button type="button" class="btn btn-xs btn-success me-1" *ngIf="canCheckOut(room)"
+                              [disabled]="checkingOutReservationId === room.reservation?.reservation_id"
+                              (click)="checkOutGuest(room, $event)">{{ 'DASHBOARD.CHECK_OUT_BTN' | translate }}</button>
+                      <button type="button" class="btn btn-xs btn-warning me-1"
+                              *ngIf="room.occupancy_status === 'preparation' && canManageRooms"
+                              [disabled]="markingReadyRoomId === room.id"
+                              (click)="markRoomReady(room, $event)">{{ 'ROOM_BOARD.MARK_READY' | translate }}</button>
+                      <button type="button" class="btn btn-xs btn-outline-primary" *ngIf="room.reservation"
+                              (click)="openReservation(room); $event.stopPropagation()">{{ 'ROOM_BOARD.VIEW' | translate }}</button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div *ngIf="floor.standaloneRooms.length">
+          <div class="standalone-header">
+            <span class="standalone-header__label">{{ 'ROOM_BOARD.STANDALONE_ROOMS' | translate }}</span>
+          </div>
+          <div class="card board-card list-card mb-2">
+            <div class="table-responsive">
+              <table class="table table-sm table-hover mb-0 align-middle list-table">
+                <thead>
+                  <tr>
+                    <th>{{ 'ROOM_BOARD.COL_ROOM' | translate }}</th>
+                    <th>{{ 'ROOM_BOARD.COL_TYPE' | translate }}</th>
+                    <th>{{ 'ROOM_BOARD.COL_STATUS' | translate }}</th>
+                    <th>{{ 'ROOM_BOARD.COL_GUEST' | translate }}</th>
+                    <th>{{ 'ROOM_BOARD.COL_STAY' | translate }}</th>
+                    <th class="text-end">{{ 'ROOM_BOARD.COL_TOTAL' | translate }}</th>
+                    <th class="text-end">{{ 'ROOM_BOARD.COL_BALANCE' | translate }}</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let room of floor.standaloneRooms" class="list-row list-row--clickable"
+                      [ngClass]="statusClass(room.occupancy_status)" (click)="openCreateReservation(room)">
+                    <td class="fw-bold">#{{ room.number }}</td>
+                    <td>{{ room.room_type_name }}</td>
+                    <td>
+                      <span class="badge status-badge" [ngClass]="statusClass(room.occupancy_status)">
+                        {{ ('ROOM_BOARD.STATUS_' + room.occupancy_status.toUpperCase()) | translate }}
+                      </span>
+                    </td>
+                    <td class="text-truncate" style="max-width: 10rem;">{{ room.reservation?.client_name || '—' }}</td>
+                    <td class="small text-nowrap">
+                      <ng-container *ngIf="room.reservation">{{ room.reservation.start_date }} → {{ room.reservation.expire_date }}</ng-container>
+                      <ng-container *ngIf="!room.reservation">—</ng-container>
+                    </td>
+                    <td class="text-end text-nowrap">{{ room.reservation ? formatMoney(room.reservation.total) : '—' }}</td>
+                    <td class="text-end text-nowrap">{{ room.reservation && room.reservation.balance_due > 0 ? formatMoney(room.reservation.balance_due) : '—' }}</td>
+                    <td class="text-end">
+                      <button type="button" class="btn btn-xs btn-primary me-1" *ngIf="canCheckIn(room)"
+                              [disabled]="checkingInReservationId === room.reservation?.reservation_id"
+                              (click)="checkInGuest(room, $event)">{{ 'RESERVATIONS.CHECK_IN_BTN' | translate }}</button>
+                      <button type="button" class="btn btn-xs btn-success me-1" *ngIf="canCheckOut(room)"
+                              [disabled]="checkingOutReservationId === room.reservation?.reservation_id"
+                              (click)="checkOutGuest(room, $event)">{{ 'DASHBOARD.CHECK_OUT_BTN' | translate }}</button>
+                      <button type="button" class="btn btn-xs btn-warning me-1"
+                              *ngIf="room.occupancy_status === 'preparation' && canManageRooms"
+                              [disabled]="markingReadyRoomId === room.id"
+                              (click)="markRoomReady(room, $event)">{{ 'ROOM_BOARD.MARK_READY' | translate }}</button>
+                      <button type="button" class="btn btn-xs btn-outline-primary" *ngIf="room.reservation"
+                              (click)="openReservation(room); $event.stopPropagation()">{{ 'ROOM_BOARD.VIEW' | translate }}</button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </ng-container>
+
+  <section *ngIf="!isLoading && rooms.length === 0" class="board-empty">
+    <i class="bi bi-door-closed" aria-hidden="true"></i>
+    <p class="fw-semibold mb-1">{{ 'ROOM_BOARD.EMPTY' | translate }}</p>
+    <p class="text-muted small mb-3">{{ 'ROOM_BOARD.EMPTY_HINT' | translate }}</p>
+    <button type="button" class="btn btn-outline-secondary btn-sm" *ngIf="hasActiveFilters" (click)="clearFilters()">
+      {{ 'ROOM_BOARD.CLEAR_FILTERS' | translate }}
+    </button>
+  </section>
+</div>
+
+<ng-template #roomCard let-room="room" let-compact="compact">
+  <div class="card room-card h-100"
+       [ngClass]="statusClass(room.occupancy_status)"
+       [class.room-card--compact]="compact">
+    <div class="card-body room-card__body">
+      <div class="room-card__main"
+           (click)="openCreateReservation(room)"
+           (keydown.enter)="openCreateReservation(room)"
+           tabindex="0"
+           role="button"
+           [attr.aria-label]="('DASHBOARD.ROOM' | translate) + ' ' + room.number">
+        <div class="d-flex justify-content-between align-items-start gap-1 mb-1">
+          <div class="min-w-0">
+            <div class="room-number">#{{ room.number }}</div>
+            <div class="room-type text-truncate">{{ room.room_type_name }}</div>
+            <div class="suite-badge text-truncate" *ngIf="room.suite_name && !compact">{{ room.suite_name }}</div>
+          </div>
+          <span class="badge status-badge flex-shrink-0">{{ ('ROOM_BOARD.STATUS_' + room.occupancy_status.toUpperCase()) | translate }}</span>
+        </div>
+
+        <ng-container *ngIf="room.reservation; else vacantBlock">
+          <div class="guest-name text-truncate">{{ room.reservation.client_name }}</div>
+          <div class="room-meta text-truncate">{{ room.reservation.start_date }} → {{ room.reservation.expire_date }}</div>
+          <div class="room-meta room-meta--nights text-muted">{{ 'ROOM_BOARD.NIGHTS_LEFT' | translate }}: {{ room.reservation.nights_remaining }}</div>
+          <div class="room-footer">
+            <span>{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ formatMoney(room.reservation.total) }}</span>
+            <span class="text-danger" *ngIf="room.reservation.balance_due > 0">
+              {{ formatMoney(room.reservation.balance_due) }}
+            </span>
+          </div>
+        </ng-container>
+
+        <ng-template #vacantBlock>
+          <p class="room-meta mb-0 text-muted">{{ 'ROOM_BOARD.NO_GUEST' | translate }}</p>
+        </ng-template>
+      </div>
+
+      <div class="room-actions">
+        <button type="button" class="btn btn-xs btn-primary flex-fill"
+                *ngIf="canCheckIn(room)"
+                [disabled]="checkingInReservationId === room.reservation?.reservation_id"
+                (click)="checkInGuest(room, $event)">
+          {{ 'RESERVATIONS.CHECK_IN_BTN' | translate }}
+        </button>
+        <button type="button" class="btn btn-xs btn-success flex-fill"
+                *ngIf="canCheckOut(room)"
+                [disabled]="checkingOutReservationId === room.reservation?.reservation_id"
+                (click)="checkOutGuest(room, $event)">
+          {{ 'DASHBOARD.CHECK_OUT_BTN' | translate }}
+        </button>
+        <button type="button" class="btn btn-xs btn-warning flex-fill"
+                *ngIf="room.occupancy_status === 'preparation' && canManageRooms"
+                [disabled]="markingReadyRoomId === room.id"
+                (click)="markRoomReady(room, $event)">
+          {{ 'ROOM_BOARD.MARK_READY' | translate }}
+        </button>
+        <button type="button" class="btn btn-xs btn-outline-primary flex-fill" *ngIf="room.reservation"
+                (click)="openReservation(room)">
+          {{ compact ? ('ROOM_BOARD.VIEW' | translate) : ('ROOM_BOARD.VIEW_BOOKING' | translate) }}
+        </button>
+        <button type="button" class="btn btn-xs btn-outline-secondary"
+                (click)="openRoomHistory(room)" [title]="'ROOM_BOARD.HISTORY' | translate"
+                [attr.aria-label]="'ROOM_BOARD.HISTORY' | translate">
+          <i class="bi bi-clock-history" aria-hidden="true"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+</ng-template>

@@ -1,0 +1,156 @@
+<div class="hotels-page">
+  <section class="dept-hero">
+    <div class="dept-hero__copy">
+      <p class="dept-hero__eyebrow">
+        <i class="bi bi-plug" aria-hidden="true"></i>
+        {{ 'EXTERNAL_SUBSCRIPTIONS.EYEBROW' | translate }}
+      </p>
+      <h1>{{ 'EXTERNAL_SUBSCRIPTIONS.TITLE' | translate }}</h1>
+      <p class="dept-hero__subtitle">{{ 'EXTERNAL_SUBSCRIPTIONS.SUBTITLE' | translate }}</p>
+    </div>
+  </section>
+
+  <div class="pricing-tabs" role="tablist">
+    <button type="button" role="tab" class="pricing-tab" [class.pricing-tab--active]="activeTab === 'taqnyat'" (click)="activeTab = 'taqnyat'">
+      <i class="bi bi-chat-dots" aria-hidden="true"></i> {{ 'EXTERNAL_SUBSCRIPTIONS.TAB_TAQNYAT' | translate }}
+    </button>
+    <button type="button" role="tab" class="pricing-tab" [class.pricing-tab--active]="activeTab === 'campaigns'" (click)="activeTab = 'campaigns'">
+      <i class="bi bi-megaphone" aria-hidden="true"></i> {{ 'EXTERNAL_SUBSCRIPTIONS.TAB_CAMPAIGNS' | translate }}
+    </button>
+  </div>
+
+  <!-- Taqnyat tab -->
+  <div class="card border-0 shadow-sm dept-card" *ngIf="activeTab === 'taqnyat'">
+    <div class="card-body">
+      <div *ngIf="isLoadingBalance" class="text-center py-3">
+        <div class="spinner-border spinner-border-sm text-primary"></div>
+      </div>
+
+      <ng-container *ngIf="!isLoadingBalance">
+        <div *ngIf="balance?.configured && !balance?.error" class="row g-3 mb-3">
+          <div class="col-md-4">
+            <p class="text-muted small mb-1">{{ 'EXTERNAL_SUBSCRIPTIONS.BALANCE' | translate }}</p>
+            <p class="h4 fw-bold mb-0">{{ balance?.balance | number:'1.2-2' }} {{ balance?.currency }}</p>
+          </div>
+          <div class="col-md-4">
+            <p class="text-muted small mb-1">{{ 'EXTERNAL_SUBSCRIPTIONS.ACCOUNT_STATUS' | translate }}</p>
+            <p class="fw-semibold mb-0">{{ balance?.account_status || ('COMMON.NA' | translate) }}</p>
+          </div>
+          <div class="col-md-4">
+            <p class="text-muted small mb-1">{{ 'EXTERNAL_SUBSCRIPTIONS.EXPIRY_DATE' | translate }}</p>
+            <p class="fw-semibold mb-0">{{ balance?.account_expiry_date || ('COMMON.NA' | translate) }}</p>
+          </div>
+        </div>
+
+        <div *ngIf="balance && !balance.configured" class="alert alert-warning">
+          {{ 'EXTERNAL_SUBSCRIPTIONS.NOT_CONFIGURED' | translate }}
+        </div>
+        <div *ngIf="balance?.error" class="alert alert-danger">
+          {{ 'EXTERNAL_SUBSCRIPTIONS.BALANCE_ERROR' | translate }}: {{ balance?.error }}
+        </div>
+
+        <button type="button" class="btn btn-sm btn-outline-secondary" (click)="showCredentialsForm = !showCredentialsForm">
+          <i class="bi bi-key me-1" aria-hidden="true"></i>{{ 'EXTERNAL_SUBSCRIPTIONS.UPDATE_CREDENTIALS' | translate }}
+        </button>
+
+        <div *ngIf="showCredentialsForm" class="row g-2 mt-3">
+          <div class="col-md-6">
+            <label class="form-label small">{{ 'EXTERNAL_SUBSCRIPTIONS.TOKEN' | translate }}</label>
+            <input type="password" class="form-control" [(ngModel)]="credentialsForm.token" name="taqnyatToken" autocomplete="off">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small">{{ 'EXTERNAL_SUBSCRIPTIONS.SENDER_NAME' | translate }}</label>
+            <input type="text" class="form-control" [(ngModel)]="credentialsForm.sender" name="taqnyatSender">
+          </div>
+          <div class="col-md-2 d-flex align-items-end">
+            <button type="button" class="btn btn-primary w-100" [disabled]="!credentialsForm.token.trim() || isSavingCredentials" (click)="saveCredentials()">
+              <span *ngIf="isSavingCredentials" class="spinner-border spinner-border-sm me-1"></span>{{ 'COMMON.SAVE' | translate }}
+            </button>
+          </div>
+        </div>
+      </ng-container>
+    </div>
+  </div>
+
+  <!-- Campaigns tab -->
+  <div *ngIf="activeTab === 'campaigns'" class="row g-3">
+    <div class="col-lg-7">
+      <div class="card border-0 shadow-sm dept-card">
+        <div class="card-body">
+          <h6 class="fw-bold mb-3">{{ 'EXTERNAL_SUBSCRIPTIONS.NEW_CAMPAIGN' | translate }}</h6>
+
+          <label class="form-label small">{{ 'EXTERNAL_SUBSCRIPTIONS.MESSAGE_BODY' | translate }}</label>
+          <textarea class="form-control mb-3" rows="3" maxlength="1000" [(ngModel)]="messageBody" name="messageBody"></textarea>
+
+          <label class="form-label small d-block">{{ 'EXTERNAL_SUBSCRIPTIONS.AUDIENCE_TYPE' | translate }}</label>
+          <div class="btn-group mb-3" role="group">
+            <button type="button" class="btn btn-sm" [class.btn-primary]="audienceType === 'classification'" [class.btn-outline-secondary]="audienceType !== 'classification'"
+                    (click)="audienceType = 'classification'; onAudienceTypeChange()">
+              {{ 'EXTERNAL_SUBSCRIPTIONS.BY_CLASSIFICATION' | translate }}
+            </button>
+            <button type="button" class="btn btn-sm" [class.btn-primary]="audienceType === 'manual'" [class.btn-outline-secondary]="audienceType !== 'manual'"
+                    (click)="audienceType = 'manual'; onAudienceTypeChange()">
+              {{ 'EXTERNAL_SUBSCRIPTIONS.MANUAL_SELECTION' | translate }}
+            </button>
+          </div>
+
+          <div *ngIf="audienceType === 'classification'" class="mb-3">
+            <select class="form-select" [(ngModel)]="selectedClassificationId" name="classificationId" (ngModelChange)="previewAudience()">
+              <option [ngValue]="null">—</option>
+              <option *ngFor="let c of classifications" [ngValue]="c.id">{{ c.name_en }} / {{ c.name_ar }}</option>
+            </select>
+          </div>
+
+          <div *ngIf="audienceType === 'manual'" class="mb-3">
+            <input type="text" class="form-control mb-2" [(ngModel)]="manualSearch" name="manualSearch"
+                   [placeholder]="'EXTERNAL_SUBSCRIPTIONS.SEARCH_CLIENTS' | translate"
+                   (ngModelChange)="searchManualClients()">
+            <div *ngIf="manualResults.length" class="list-group mb-2">
+              <button type="button" class="list-group-item list-group-item-action small" *ngFor="let r of manualResults" (click)="addManualClient(r)">
+                {{ r.name }} <span class="text-muted">{{ r.mobile }}</span>
+              </button>
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+              <span class="badge bg-light text-dark border" *ngFor="let c of selectedClients">
+                {{ c.name }}
+                <button type="button" class="btn-close btn-close-sm ms-1" style="font-size:0.6rem" (click)="removeManualClient(c.id)"></button>
+              </span>
+            </div>
+          </div>
+
+          <div class="alert alert-info py-2 small" *ngIf="previewCount !== null">
+            {{ 'EXTERNAL_SUBSCRIPTIONS.AUDIENCE_COUNT' | translate:{count: previewCount} }}
+          </div>
+
+          <!-- Deliberately no "send" button in this phase — draft only. -->
+          <button type="button" class="btn btn-primary w-100" [disabled]="!canSaveDraft" (click)="saveDraft()">
+            <span *ngIf="isSavingDraft" class="spinner-border spinner-border-sm me-1"></span>
+            <i class="bi bi-save me-1" aria-hidden="true"></i>{{ 'EXTERNAL_SUBSCRIPTIONS.SAVE_DRAFT' | translate }}
+          </button>
+          <p class="text-muted small mt-2 mb-0">{{ 'EXTERNAL_SUBSCRIPTIONS.NO_SEND_NOTE' | translate }}</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-5">
+      <div class="card border-0 shadow-sm dept-card">
+        <div class="card-body">
+          <h6 class="fw-bold mb-3">{{ 'EXTERNAL_SUBSCRIPTIONS.SAVED_DRAFTS' | translate }}</h6>
+          <div *ngIf="isLoadingCampaigns" class="text-center py-3">
+            <div class="spinner-border spinner-border-sm text-primary"></div>
+          </div>
+          <div class="small py-2 border-bottom" *ngFor="let c of campaigns">
+            <div class="d-flex justify-content-between">
+              <span class="badge badge-inactive">{{ 'EXTERNAL_SUBSCRIPTIONS.DRAFT_STATUS' | translate }}</span>
+              <span class="text-muted">{{ c.recipient_count }} {{ 'EXTERNAL_SUBSCRIPTIONS.RECIPIENTS' | translate }}</span>
+            </div>
+            <p class="mb-0 mt-1">{{ c.message_body }}</p>
+          </div>
+          <p class="text-muted small text-center py-3" *ngIf="!isLoadingCampaigns && campaigns.length === 0">
+            {{ 'EXTERNAL_SUBSCRIPTIONS.NO_DRAFTS' | translate }}
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

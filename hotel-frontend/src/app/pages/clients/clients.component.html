@@ -1,0 +1,396 @@
+<div class="clients-page">
+  <section class="clients-hero">
+    <div class="clients-hero__copy">
+      <p class="clients-hero__eyebrow">
+        <i class="bi bi-people" aria-hidden="true"></i>
+        {{ 'CLIENTS.EYEBROW' | translate }}
+      </p>
+      <h1>{{ 'CLIENTS.TITLE' | translate }}</h1>
+      <p class="clients-hero__subtitle">{{ 'CLIENTS.SUBTITLE' | translate }}</p>
+    </div>
+    <div class="clients-hero__actions">
+      <button type="button" class="btn btn-outline-secondary" (click)="loadClients()" [disabled]="isLoading"
+              [attr.aria-label]="'COMMON.REFRESH' | translate">
+        <i class="bi bi-arrow-clockwise" [class.spin]="isLoading" aria-hidden="true"></i>
+        <span>{{ 'COMMON.REFRESH' | translate }}</span>
+      </button>
+      <button type="button" class="btn btn-primary" (click)="addNewClient()">
+        <i class="bi bi-plus-lg" aria-hidden="true"></i>
+        <span>{{ 'CLIENTS.ADD_NEW' | translate }}</span>
+      </button>
+    </div>
+  </section>
+
+  <div class="clients-summary" role="group" [attr.aria-label]="'CLIENTS.SUMMARY_ARIA' | translate">
+    <ng-container *ngIf="isLoading">
+      <div class="clients-stat" *ngFor="let i of [1,2,3]">
+        <div class="skeleton skeleton-text" style="width: 40%;"></div>
+        <div class="skeleton skeleton-text mt-2" style="width: 30%; height: 1.5rem;"></div>
+      </div>
+    </ng-container>
+    <ng-container *ngIf="!isLoading">
+      <div class="clients-stat">
+        <span class="clients-stat__label">{{ 'CLIENTS.STAT_TOTAL' | translate }}</span>
+        <span class="clients-stat__value">{{ clients.length }}</span>
+      </div>
+      <div class="clients-stat clients-stat--active">
+        <span class="clients-stat__label">{{ 'CLIENTS.STAT_ACTIVE' | translate }}</span>
+        <span class="clients-stat__value">{{ activeCount }}</span>
+      </div>
+      <div class="clients-stat clients-stat--citizen">
+        <span class="clients-stat__label">{{ 'CLIENTS.STAT_CITIZEN' | translate }}</span>
+        <span class="clients-stat__value">{{ citizenCount }}</span>
+      </div>
+    </ng-container>
+  </div>
+
+  <div class="card border-0 shadow-sm clients-card">
+    <div class="clients-toolbar">
+      <div class="ui-search clients-search flex-grow-1">
+        <i class="bi bi-search ui-search__icon" aria-hidden="true"></i>
+        <label class="visually-hidden" for="clientsSearch">{{ 'CLIENTS.SEARCH_PLACEHOLDER' | translate }}</label>
+        <input id="clientsSearch" type="search" class="form-control ui-search__input"
+               [(ngModel)]="searchTerm"
+               (input)="applyFilter()"
+               [placeholder]="'CLIENTS.SEARCH_PLACEHOLDER' | translate" />
+      </div>
+      <div class="clients-type-filter" role="group" [attr.aria-label]="'CLIENTS.TYPE_FILTER_ARIA' | translate">
+        <button type="button" class="clients-chip"
+                [class.clients-chip--active]="guestTypeFilter === 'all'"
+                (click)="guestTypeFilter = 'all'; applyFilter()">{{ 'CLIENTS.FILTER_ALL' | translate }}</button>
+        <button type="button" class="clients-chip" *ngFor="let type of guestTypeOptions"
+                [class.clients-chip--active]="normalizeGuestType(guestTypeFilter) === normalizeGuestType(type)"
+                (click)="guestTypeFilter = type; applyFilter()">
+          {{ guestTypeLabelKey(type) | translate }}
+        </button>
+      </div>
+    </div>
+
+    <div class="table-responsive d-none d-lg-block">
+      <table class="table table-hover align-middle mb-0 clients-table">
+        <thead>
+          <tr>
+            <th>{{ 'CLIENTS.TABLE.CLIENT' | translate }}</th>
+            <th>{{ 'CLIENTS.TABLE.CONTACT' | translate }}</th>
+            <th>{{ 'CLIENTS.TABLE.TYPE_NATIONALITY' | translate }}</th>
+            <th>{{ 'CLIENTS.ID_NUMBER' | translate }}</th>
+            <th>{{ 'CLIENTS.TABLE.STATUS' | translate }}</th>
+            <th class="text-end">{{ 'COMMON.ACTIONS' | translate }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <ng-container *ngIf="isLoading">
+            <tr *ngFor="let i of [1,2,3,4,5]">
+              <td>
+                <div class="d-flex align-items-center gap-3">
+                  <div class="skeleton" style="width: 40px; height: 40px; border-radius: 999px;"></div>
+                  <div class="skeleton skeleton-text" style="width: 120px;"></div>
+                </div>
+              </td>
+              <td><div class="skeleton skeleton-text" style="width: 140px;"></div></td>
+              <td><div class="skeleton" style="width: 80px; height: 22px; border-radius: 999px;"></div></td>
+              <td><div class="skeleton skeleton-text" style="width: 90px;"></div></td>
+              <td><div class="skeleton" style="width: 70px; height: 22px; border-radius: 999px;"></div></td>
+              <td class="text-end">
+                <div class="skeleton ms-auto" style="width: 140px; height: 32px; border-radius: 6px;"></div>
+              </td>
+            </tr>
+          </ng-container>
+
+          <tr *ngIf="!isLoading && filteredClients.length === 0">
+            <td colspan="6" class="py-5 text-center">
+              <div class="clients-empty">
+                <i class="bi bi-people" aria-hidden="true"></i>
+                <p class="fw-semibold mb-1">
+                  {{ (clients.length === 0 ? 'CLIENTS.EMPTY' : 'CLIENTS.NO_CLIENTS') | translate }}
+                </p>
+                <p class="text-muted small mb-3">
+                  {{ (clients.length === 0 ? 'CLIENTS.EMPTY_LIST_HINT' : 'CLIENTS.NO_RESULTS_HINT') | translate }}
+                </p>
+                <button type="button" class="btn btn-primary btn-sm" *ngIf="clients.length === 0" (click)="addNewClient()">
+                  <i class="bi bi-plus-lg me-1" aria-hidden="true"></i>{{ 'CLIENTS.ADD_NEW' | translate }}
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" *ngIf="clients.length > 0" (click)="clearFilters()">
+                  {{ 'CLIENTS.CLEAR_FILTERS' | translate }}
+                </button>
+              </div>
+            </td>
+          </tr>
+
+          <tr *ngFor="let client of paginatedClients">
+            <td>
+              <div class="d-flex align-items-center gap-3">
+                <div class="user-avatar">{{ clientInitials(client) }}</div>
+                <div>
+                  <div class="fw-semibold">{{ client.first_name }} {{ client.last_name }}</div>
+                  <div class="small text-muted">#{{ client.id }}</div>
+                </div>
+              </div>
+            </td>
+            <td>
+              <div class="small">{{ client.email || ('COMMON.NA' | translate) }}</div>
+              <div class="small text-muted text-nowrap">
+                <span class="badge rounded-pill clients-badge--code me-1" *ngIf="client.international_code">
+                  {{ client.international_code }}
+                </span>
+                {{ client.mobile || ('COMMON.NA' | translate) }}
+              </div>
+            </td>
+            <td>
+              <span class="badge rounded-pill clients-badge--type">
+                {{ guestTypeLabelKey(client.guest_type) | translate }}
+              </span>
+              <div class="small text-muted mt-1">{{ client.nationality || ('COMMON.UNKNOWN' | translate) }}</div>
+            </td>
+            <td class="fw-medium text-nowrap">{{ client.IdNumber || ('COMMON.NA' | translate) }}</td>
+            <td>
+              <span class="badge rounded-pill"
+                    [class.clients-badge--active]="isActive(client)"
+                    [class.clients-badge--inactive]="!isActive(client)">
+                {{ (isActive(client) ? 'CLIENTS.STATUS_ACTIVE' : 'CLIENTS.STATUS_INACTIVE') | translate }}
+              </span>
+            </td>
+            <td class="text-end text-nowrap">
+              <button type="button" class="btn btn-sm btn-primary me-1"
+                      (click)="newBooking(client.id)"
+                      [attr.title]="'RESERVATIONS.NEW_BOOKING' | translate">
+                <i class="bi bi-calendar-plus" aria-hidden="true"></i>
+                <span class="d-none d-xl-inline ms-1">{{ 'RESERVATIONS.NEW_BOOKING' | translate }}</span>
+              </button>
+              <button type="button" class="btn btn-sm btn-light clients-action-btn"
+                      (click)="goToDetails(client.id)"
+                      [attr.title]="'CLIENTS.VIEW_DETAILS' | translate">
+                <i class="bi bi-eye" aria-hidden="true"></i>
+                <span class="d-none d-xl-inline ms-1">{{ 'CLIENTS.VIEW_DETAILS' | translate }}</span>
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="clients-cards d-lg-none">
+      <ng-container *ngIf="isLoading">
+        <div class="clients-card-item" *ngFor="let i of [1,2,3]">
+          <div class="skeleton skeleton-text" style="width: 45%;"></div>
+          <div class="skeleton skeleton-text mt-2" style="width: 70%;"></div>
+          <div class="skeleton skeleton-text mt-2" style="width: 55%;"></div>
+        </div>
+      </ng-container>
+
+      <ng-container *ngIf="!isLoading">
+        <div *ngIf="filteredClients.length === 0" class="clients-empty">
+          <i class="bi bi-people" aria-hidden="true"></i>
+          <p class="fw-semibold mb-1">
+            {{ (clients.length === 0 ? 'CLIENTS.EMPTY' : 'CLIENTS.NO_CLIENTS') | translate }}
+          </p>
+          <p class="text-muted small mb-3">
+            {{ (clients.length === 0 ? 'CLIENTS.EMPTY_LIST_HINT' : 'CLIENTS.NO_RESULTS_HINT') | translate }}
+          </p>
+          <button type="button" class="btn btn-primary btn-sm" *ngIf="clients.length === 0" (click)="addNewClient()">
+            <i class="bi bi-plus-lg me-1" aria-hidden="true"></i>{{ 'CLIENTS.ADD_NEW' | translate }}
+          </button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" *ngIf="clients.length > 0" (click)="clearFilters()">
+            {{ 'CLIENTS.CLEAR_FILTERS' | translate }}
+          </button>
+        </div>
+
+        <article class="clients-card-item" *ngFor="let client of paginatedClients">
+          <button type="button" class="clients-card-item__main" (click)="goToDetails(client.id)">
+            <div class="clients-card-item__top">
+              <div class="d-flex align-items-center gap-3 min-w-0">
+                <div class="user-avatar" aria-hidden="true">{{ clientInitials(client) }}</div>
+                <div class="min-w-0">
+                  <div class="fw-semibold text-truncate">{{ client.first_name }} {{ client.last_name }}</div>
+                  <div class="small text-muted">#{{ client.id }}</div>
+                </div>
+              </div>
+              <span class="badge rounded-pill"
+                    [class.clients-badge--active]="isActive(client)"
+                    [class.clients-badge--inactive]="!isActive(client)">
+                {{ (isActive(client) ? 'CLIENTS.STATUS_ACTIVE' : 'CLIENTS.STATUS_INACTIVE') | translate }}
+              </span>
+            </div>
+            <div class="clients-card-item__meta">
+              <span class="badge rounded-pill clients-badge--type">
+                {{ guestTypeLabelKey(client.guest_type) | translate }}
+              </span>
+              <span class="text-muted text-truncate">
+                <span *ngIf="client.international_code">{{ client.international_code }} </span>{{ client.mobile || ('COMMON.NA' | translate) }}
+              </span>
+            </div>
+          </button>
+          <div class="clients-card-item__actions">
+            <button type="button" class="btn btn-sm btn-primary flex-grow-1"
+                    (click)="newBooking(client.id)">
+              <i class="bi bi-calendar-plus" aria-hidden="true"></i>
+              {{ 'RESERVATIONS.NEW_BOOKING' | translate }}
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-secondary"
+                    (click)="goToDetails(client.id)"
+                    [attr.aria-label]="'CLIENTS.VIEW_DETAILS' | translate">
+              <i class="bi bi-eye" aria-hidden="true"></i>
+            </button>
+          </div>
+        </article>
+      </ng-container>
+    </div>
+
+    <div class="clients-footer" *ngIf="!isLoading && filteredClients.length > 0">
+      <div class="d-flex align-items-center gap-3 flex-wrap">
+        <span class="small text-muted">
+          {{ 'CLIENTS.SHOWING_COUNT' | translate:{ from: paginationFrom, to: paginationTo, total: filteredClients.length } }}
+        </span>
+        <div class="d-flex align-items-center gap-2">
+          <label class="small text-muted mb-0" for="clientsPerPage">{{ 'CLIENTS.ROWS_PER_PAGE' | translate }}</label>
+          <select id="clientsPerPage" [(ngModel)]="pageSize" (change)="onPerPageChange()"
+                  class="form-select form-select-sm" style="width: 5rem;">
+            <option [ngValue]="5">5</option>
+            <option [ngValue]="10">10</option>
+            <option [ngValue]="25">25</option>
+            <option [ngValue]="50">50</option>
+          </select>
+        </div>
+      </div>
+      <nav [attr.aria-label]="'CLIENTS.PAGINATION_ARIA' | translate" *ngIf="totalPages > 1">
+        <ul class="pagination pagination-sm mb-0">
+          <li class="page-item" [class.disabled]="currentPage === 1">
+            <button type="button" class="page-link" (click)="prevPage()" [disabled]="currentPage === 1">
+              <i class="bi bi-chevron-left" aria-hidden="true"></i>
+            </button>
+          </li>
+          <li class="page-item disabled">
+            <span class="page-link">{{ 'CLIENTS.PAGE' | translate }} {{ currentPage }} {{ 'CLIENTS.OF' | translate }} {{ totalPages }}</span>
+          </li>
+          <li class="page-item" [class.disabled]="currentPage === totalPages">
+            <button type="button" class="page-link" (click)="nextPage()" [disabled]="currentPage === totalPages">
+              <i class="bi bi-chevron-right" aria-hidden="true"></i>
+            </button>
+          </li>
+        </ul>
+      </nav>
+    </div>
+  </div>
+</div>
+
+<div *ngIf="showAddModal" class="modal-backdrop-custom" (click)="closeModal()">
+  <div class="modal-content-custom card border-0 shadow-lg"
+       (click)="$event.stopPropagation()"
+       role="dialog"
+       aria-modal="true"
+       [attr.aria-labelledby]="'client-modal-title'">
+    <div class="card-header bg-white py-3 border-bottom d-flex align-items-center justify-content-between">
+      <div>
+        <p class="small text-muted text-uppercase fw-semibold mb-1">{{ 'CLIENTS.EYEBROW' | translate }}</p>
+        <h2 class="h5 mb-0" id="client-modal-title">{{ 'CLIENTS.ADD_CLIENT' | translate }}</h2>
+      </div>
+      <button type="button" class="btn btn-sm btn-light" (click)="closeModal()"
+              [attr.aria-label]="'COMMON.CANCEL' | translate" [disabled]="isSaving">
+        <i class="bi bi-x-lg" aria-hidden="true"></i>
+      </button>
+    </div>
+    <div class="card-body p-4">
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label small fw-bold" for="clientFirstName">{{ 'CLIENTS.FIRST_NAME' | translate }} <span class="text-danger">*</span></label>
+          <input id="clientFirstName" type="text" [(ngModel)]="newClient.first_name" class="form-control"
+                 [class.is-invalid]="isSubmitted && !newClient.first_name" autocomplete="off">
+          <div class="invalid-feedback" *ngIf="isSubmitted && !newClient.first_name">
+            {{ 'CLIENTS.FIRST_NAME' | translate }} {{ 'CLIENTS.REQUIRED_FIELD' | translate }}
+          </div>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small fw-bold" for="clientLastName">{{ 'CLIENTS.LAST_NAME' | translate }} <span class="text-danger">*</span></label>
+          <input id="clientLastName" type="text" [(ngModel)]="newClient.last_name" class="form-control"
+                 [class.is-invalid]="isSubmitted && !newClient.last_name" autocomplete="off">
+          <div class="invalid-feedback" *ngIf="isSubmitted && !newClient.last_name">
+            {{ 'CLIENTS.LAST_NAME' | translate }} {{ 'CLIENTS.REQUIRED_FIELD' | translate }}
+          </div>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small fw-bold" for="clientEmail">{{ 'CLIENTS.EMAIL' | translate }}</label>
+          <input id="clientEmail" type="email" [(ngModel)]="newClient.email" class="form-control" autocomplete="off">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small fw-bold" for="clientMobile">{{ 'CLIENTS.MOBILE' | translate }} <span class="text-danger">*</span></label>
+          <div class="input-group" [class.is-invalid]="isSubmitted && !newClient.mobile">
+            <div class="position-relative" style="max-width: 90px;">
+              <input type="text"
+                     [(ngModel)]="newClient.international_code"
+                     (input)="filterCountryCodes()"
+                     (focus)="showCountryDropdown = true"
+                     (blur)="onBlurCountry()"
+                     class="form-control border-end-0 text-center px-1"
+                     placeholder="+966"
+                     style="font-size: 0.8rem; height: 100%;"
+                     [attr.aria-label]="'CLIENTS.COUNTRY_CODE' | translate">
+              <div *ngIf="showCountryDropdown && filteredCountryCodes.length > 0"
+                   class="country-dropdown shadow-sm border rounded">
+                <button type="button" *ngFor="let country of filteredCountryCodes"
+                        (click)="selectCountryCode(country.code)"
+                        class="country-option p-2 small w-100 text-start border-0 bg-transparent">
+                  <span class="fw-bold">{{ country.code }}</span>
+                  <span class="text-muted ms-1">{{ country.key | translate }}</span>
+                </button>
+              </div>
+            </div>
+            <input id="clientMobile" type="text" [(ngModel)]="newClient.mobile" class="form-control"
+                   [class.is-invalid]="isSubmitted && !newClient.mobile" placeholder="5XXXXXXXX">
+          </div>
+          <div class="invalid-feedback d-block" *ngIf="isSubmitted && !newClient.mobile">
+            {{ 'CLIENTS.MOBILE' | translate }} {{ 'CLIENTS.REQUIRED_FIELD' | translate }}
+          </div>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small fw-bold" for="clientIdType">{{ 'CLIENTS.ID_TYPE' | translate }}</label>
+          <select id="clientIdType" [(ngModel)]="newClient.IdType" class="form-select">
+            <option value="ID">{{ 'CLIENTS.ID_CARD' | translate }}</option>
+            <option value="PASSPORT">{{ 'CLIENTS.PASSPORT' | translate }}</option>
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small fw-bold" for="clientIdNumber">{{ 'CLIENTS.ID_NUMBER' | translate }} <span class="text-danger">*</span></label>
+          <input id="clientIdNumber" type="text" [(ngModel)]="newClient.IdNumber" class="form-control"
+                 [class.is-invalid]="isSubmitted && !newClient.IdNumber" autocomplete="off">
+          <div class="invalid-feedback" *ngIf="isSubmitted && !newClient.IdNumber">
+            {{ 'CLIENTS.ID_NUMBER' | translate }} {{ 'CLIENTS.REQUIRED_FIELD' | translate }}
+          </div>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small fw-bold" for="clientBirth">{{ 'CLIENTS.BIRTH_DATE' | translate }}</label>
+          <input id="clientBirth" type="date" [(ngModel)]="newClient.birth_date" class="form-control">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small fw-bold" for="clientGender">{{ 'CLIENTS.GENDER' | translate }}</label>
+          <select id="clientGender" [(ngModel)]="newClient.gender" class="form-select">
+            <option value="MALE">{{ 'CLIENTS.MALE' | translate }}</option>
+            <option value="FEMALE">{{ 'CLIENTS.FEMALE' | translate }}</option>
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small fw-bold" for="clientGuestType">{{ 'CLIENTS.GUEST_TYPE' | translate }}</label>
+          <select id="clientGuestType" [(ngModel)]="newClient.guest_type" class="form-select">
+            <option value="CITIZEN">{{ 'CLIENTS.CITIZEN' | translate }}</option>
+            <option value="RESIDENT">{{ 'CLIENTS.RESIDENT' | translate }}</option>
+            <option value="VISITOR">{{ 'CLIENTS.VISITOR' | translate }}</option>
+            <option value="GULF CITIZEN">{{ 'CLIENTS.GULF_CITIZEN' | translate }}</option>
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small fw-bold" for="clientNationality">{{ 'CLIENTS.NATIONALITY' | translate }}</label>
+          <input id="clientNationality" type="text" [(ngModel)]="newClient.nationality" class="form-control"
+                 [placeholder]="'CLIENTS.NATIONALITY_PLACEHOLDER' | translate" autocomplete="off">
+        </div>
+      </div>
+      <div class="d-flex gap-2 mt-4">
+        <button type="button" class="btn btn-light flex-grow-1" (click)="closeModal()" [disabled]="isSaving">
+          {{ 'COMMON.CANCEL' | translate }}
+        </button>
+        <button type="button" class="btn btn-primary flex-grow-1" (click)="saveClient()" [disabled]="isSaving">
+          <span *ngIf="isSaving" class="spinner-border spinner-border-sm me-2" role="status"></span>
+          {{ 'CLIENTS.SAVE_CLIENT' | translate }}
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

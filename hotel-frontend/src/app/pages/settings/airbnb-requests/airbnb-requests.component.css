@@ -1,0 +1,176 @@
+.hotels-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+  padding: 0.25rem 0 1.5rem;
+}
+
+.dept-hero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem 1.35rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(14, 116, 144, 0.16);
+  background:
+    linear-gradient(135deg, rgba(8, 145, 178, 0.1), rgba(236, 254, 255, 0.65) 42%, rgba(248, 250, 252, 0.95));
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.05);
+}
+
+.dept-hero__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0 0 0.45rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #0e7490;
+}
+
+.dept-hero h1 {
+  margin: 0 0 0.35rem;
+  font-size: 1.85rem;
+  font-weight: 800;
+  color: var(--primary, #0f4c4c);
+}
+
+.dept-hero__subtitle {
+  margin: 0;
+  max-width: 38rem;
+  color: #475569;
+  font-size: 1.02rem;
+  line-height: 1.45;
+}
+
+.dept-hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.dept-hero__actions .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.95rem;
+}
+
+.dept-card {
+  border-radius: 1rem !important;
+  overflow: hidden;
+}
+
+.dept-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f8fafc;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #475569;
+  white-space: nowrap;
+  border-top: 0;
+  padding-top: 0.85rem;
+  padding-bottom: 0.85rem;
+}
+
+.dept-table thead th:first-child,
+.dept-table tbody td:first-child {
+  padding-inline-start: 1.15rem;
+}
+
+.dept-table thead th:last-child,
+.dept-table tbody td:last-child {
+  padding-inline-end: 1.15rem;
+}
+
+.dept-table tbody td {
+  font-size: 0.95rem;
+  vertical-align: middle;
+}
+
+.dept-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 22rem;
+  margin: 0 auto;
+}
+
+.dept-empty .bi {
+  font-size: 2rem;
+  color: #0e7490;
+  opacity: 0.45;
+  margin-bottom: 0.65rem;
+}
+
+.spin {
+  animation: dept-spin 0.8s linear infinite;
+}
+
+@keyframes dept-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.modal-backdrop-custom {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(4px);
+  z-index: 1050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: dept-fade 0.2s ease-out;
+  padding: 1rem;
+}
+
+.modal-content-custom {
+  width: 100%;
+  max-width: 28rem;
+  max-height: min(92vh, 40rem);
+  overflow-y: auto;
+  border-radius: 1rem;
+  animation: dept-slide 0.25s ease-out;
+}
+
+@keyframes dept-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes dept-slide {
+  from { transform: translateY(16px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@media (max-width: 575.98px) {
+  .dept-hero {
+    padding: 1rem;
+  }
+
+  .dept-hero h1 {
+    font-size: 1.55rem;
+  }
+
+  .dept-hero__actions {
+    width: 100%;
+  }
+
+  .dept-hero__actions .btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  .dept-hero__actions .btn span {
+    display: none;
+  }
+}

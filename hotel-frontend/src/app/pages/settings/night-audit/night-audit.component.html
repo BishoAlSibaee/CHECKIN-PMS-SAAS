@@ -1,0 +1,112 @@
+<div class="hotels-page">
+  <section class="dept-hero">
+    <div class="dept-hero__copy">
+      <p class="dept-hero__eyebrow">
+        <i class="bi bi-moon-stars" aria-hidden="true"></i>
+        {{ 'NIGHT_AUDIT.EYEBROW' | translate }}
+      </p>
+      <h1>{{ 'NIGHT_AUDIT.TITLE' | translate }}</h1>
+      <p class="dept-hero__subtitle">{{ 'NIGHT_AUDIT.SUBTITLE' | translate }}</p>
+    </div>
+    <div class="dept-hero__actions">
+      <button type="button" class="btn btn-outline-secondary" (click)="loadRuns()" [disabled]="isLoading">
+        <i class="bi bi-arrow-clockwise" [class.spin]="isLoading" aria-hidden="true"></i>
+        <span>{{ 'COMMON.REFRESH' | translate }}</span>
+      </button>
+      <button type="button" class="btn btn-primary" (click)="runNow()" [disabled]="isRunning">
+        <span *ngIf="isRunning" class="spinner-border spinner-border-sm me-2" role="status"></span>
+        <i class="bi bi-play-fill" *ngIf="!isRunning" aria-hidden="true"></i>
+        <span>{{ 'NIGHT_AUDIT.RUN_NOW' | translate }}</span>
+      </button>
+    </div>
+  </section>
+
+  <div class="card border-0 shadow-sm dept-card">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0 dept-table">
+        <thead>
+          <tr>
+            <th>{{ 'NIGHT_AUDIT.DATE' | translate }}</th>
+            <th>{{ 'NIGHT_AUDIT.CASH_COLLECTED' | translate }}</th>
+            <th>{{ 'NIGHT_AUDIT.OVERDUE_CHECKOUTS' | translate }}</th>
+            <th>{{ 'NIGHT_AUDIT.BOOKS_BALANCED' | translate }}</th>
+            <th>{{ 'NIGHT_AUDIT.ZATCA_PENDING' | translate }}</th>
+            <th>{{ 'NIGHT_AUDIT.EXCEPTIONS' | translate }}</th>
+            <th class="text-end">{{ 'COMMON.ACTIONS' | translate }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <ng-container *ngIf="isLoading">
+            <tr *ngFor="let i of [1,2,3]">
+              <td colspan="7"><div class="skeleton skeleton-text" style="width: 100%; height: 22px;"></div></td>
+            </tr>
+          </ng-container>
+
+          <tr *ngIf="!isLoading && runs.length === 0">
+            <td colspan="7" class="py-5 text-center">
+              <div class="dept-empty">
+                <i class="bi bi-moon-stars" aria-hidden="true"></i>
+                <p class="fw-semibold mb-1">{{ 'NIGHT_AUDIT.NO_RUNS' | translate }}</p>
+                <p class="text-muted small mb-3">{{ 'NIGHT_AUDIT.EMPTY_HINT' | translate }}</p>
+              </div>
+            </td>
+          </tr>
+
+          <ng-container *ngFor="let run of runs">
+            <tr (click)="toggleExpand(run)" style="cursor: pointer;">
+              <td class="fw-semibold">{{ run.audit_date | date:'yyyy-MM-dd' }}</td>
+              <td>{{ run.metrics.cash_collected | number:'1.2-2' }}</td>
+              <td>
+                <span class="badge border-0" [ngClass]="run.metrics.overdue_checkouts_count > 0 ? 'bg-warning-subtle text-warning' : 'bg-success-subtle text-success'">
+                  {{ run.metrics.overdue_checkouts_count }}
+                </span>
+              </td>
+              <td>
+                <span class="badge border-0" [ngClass]="run.exceptions.trial_balance_unbalanced ? 'bg-danger-subtle text-danger' : 'bg-success-subtle text-success'">
+                  {{ (run.exceptions.trial_balance_unbalanced ? 'NIGHT_AUDIT.NOT_BALANCED' : 'NIGHT_AUDIT.BALANCED') | translate }}
+                </span>
+              </td>
+              <td>
+                <span class="badge border-0" [ngClass]="run.metrics.zatca_pending_count > 0 ? 'bg-warning-subtle text-warning' : 'bg-success-subtle text-success'">
+                  {{ run.metrics.zatca_pending_count }}
+                </span>
+              </td>
+              <td>
+                <span class="badge border-0" [ngClass]="run.exceptions_count > 0 ? 'bg-danger-subtle text-danger' : 'bg-success-subtle text-success'">
+                  {{ run.exceptions_count }}
+                </span>
+              </td>
+              <td class="text-end">
+                <i class="bi" [ngClass]="expandedRunId === run.id ? 'bi-chevron-up' : 'bi-chevron-down'" aria-hidden="true"></i>
+              </td>
+            </tr>
+            <tr *ngIf="expandedRunId === run.id">
+              <td colspan="7" class="bg-light-subtle p-3">
+                <div *ngIf="run.exceptions.overdue_checkouts.length > 0" class="mb-3">
+                  <p class="fw-bold small mb-2">{{ 'NIGHT_AUDIT.OVERDUE_CHECKOUTS' | translate }}</p>
+                  <ul class="mb-0 small">
+                    <li *ngFor="let item of run.exceptions.overdue_checkouts">
+                      #{{ item.reservation_id }} — {{ item.guest }} — {{ 'NIGHT_AUDIT.ROOM' | translate }} {{ item.room ?? '—' }}
+                      — {{ item.days_overdue }} {{ 'NIGHT_AUDIT.DAYS_OVERDUE' | translate }}
+                    </li>
+                  </ul>
+                </div>
+                <div *ngIf="run.exceptions.zatca_pending.length > 0" class="mb-3">
+                  <p class="fw-bold small mb-2">{{ 'NIGHT_AUDIT.ZATCA_PENDING' | translate }}</p>
+                  <ul class="mb-0 small">
+                    <li *ngFor="let item of run.exceptions.zatca_pending">
+                      {{ item.invoice_number }} ({{ 'NIGHT_AUDIT.RESERVATION' | translate }} #{{ item.reservation_id }}) — {{ item.status }}
+                    </li>
+                  </ul>
+                </div>
+                <p *ngIf="run.exceptions_count === 0" class="text-success small mb-0">
+                  <i class="bi bi-check-circle me-1" aria-hidden="true"></i>{{ 'NIGHT_AUDIT.ALL_CLEAR' | translate }}
+                </p>
+              </td>
+            </tr>
+          </ng-container>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>

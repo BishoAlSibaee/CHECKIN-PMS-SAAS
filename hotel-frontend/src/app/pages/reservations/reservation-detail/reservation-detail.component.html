@@ -1,0 +1,871 @@
+<div class="reservation-detail-page container-fluid py-4">
+  <section class="rd-hero">
+    <div class="rd-hero__start">
+      <button
+        type="button"
+        class="rd-hero__back"
+        (click)="goBack()"
+        [attr.aria-label]="'COMMON.BACK' | translate">
+        <i class="bi" [ngClass]="isRtl ? 'bi-arrow-right' : 'bi-arrow-left'" aria-hidden="true"></i>
+      </button>
+      <div class="rd-hero__copy min-w-0">
+        <p class="rd-hero__eyebrow">
+          <i class="bi bi-journal-bookmark" aria-hidden="true"></i>
+          {{ 'RESERVATIONS.DETAIL_EYEBROW' | translate }}
+        </p>
+        <div class="rd-hero__title-row">
+          <h1>
+            {{ 'RESERVATIONS.BOOKING_DETAILS' | translate }}
+            <span class="rd-hero__id" *ngIf="booking?.id">#{{ booking?.id }}</span>
+          </h1>
+          <span
+            *ngIf="booking"
+            class="badge rounded-pill status-pill rd-hero__status"
+            [ngClass]="getStatusBadgeClass(booking.status)">
+            {{ bookingStatusLabel }}
+          </span>
+        </div>
+        <p class="rd-hero__subtitle" *ngIf="booking">
+          <span *ngIf="booking.guest">{{ booking.guest }}</span>
+          <span *ngIf="booking.guest && roomsDisplay && roomsDisplay !== '—'" class="rd-hero__dot" aria-hidden="true">·</span>
+          <span *ngIf="roomsDisplay && roomsDisplay !== '—'">{{ 'RESERVATIONS.ROOM' | translate }} {{ roomsDisplay }}</span>
+        </p>
+        <nav class="rd-hero__crumb" [attr.aria-label]="'RESERVATIONS.DETAIL_BREADCRUMB_ARIA' | translate">
+          <a routerLink="/booking/reservations">{{ 'RESERVATIONS.TITLE' | translate }}</a>
+          <span aria-hidden="true">/</span>
+          <span>{{ booking?.id || '—' }}</span>
+        </nav>
+      </div>
+    </div>
+
+    <div class="rd-hero__actions d-none d-md-flex" *ngIf="!isLoading && booking">
+      <button type="button" class="btn btn-outline-secondary" (click)="openRoomBoard()">
+        <i class="bi bi-grid-3x3-gap" aria-hidden="true"></i>
+        <span>{{ 'SIDEBAR.ROOM_BOARD' | translate }}</span>
+      </button>
+      <button type="button" class="btn btn-primary" *ngIf="canCheckIn" (click)="checkIn()" [disabled]="isSaving">
+        <i class="bi bi-box-arrow-in-right" aria-hidden="true"></i>
+        <span>{{ 'RESERVATIONS.CHECK_IN_BTN' | translate }}</span>
+      </button>
+      <button
+        type="button"
+        class="btn btn-success"
+        *ngIf="canCheckOut"
+        (click)="checkOut()"
+        [disabled]="isSaving || !canCheckOutNow"
+        [title]="!canCheckOutNow ? ('RESERVATIONS.CHECKOUT_REQUIRES_PAYMENT' | translate:{ amount: (balanceDue | number:'1.2-2') }) : ''">
+        <i class="bi bi-box-arrow-right" aria-hidden="true"></i>
+        <span>{{ 'DASHBOARD.CHECK_OUT_BTN' | translate }}</span>
+      </button>
+      <button type="button" class="btn btn-warning" *ngIf="canRefund" (click)="openRefundModal()" [disabled]="isSaving">
+        <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i>
+        <span>{{ 'RESERVATIONS.REFUND_AND_CANCEL' | translate }}</span>
+      </button>
+    </div>
+  </section>
+
+  <!-- Mobile ops bar: one primary action + overflow -->
+  <nav class="rd-mobile-bar d-md-none" *ngIf="!isLoading && booking" [attr.aria-label]="'RESERVATIONS.DETAIL_ACTIONS_ARIA' | translate">
+    <button type="button" class="btn btn-primary flex-grow-1" *ngIf="canCheckIn" (click)="checkIn()" [disabled]="isSaving">
+      <i class="bi bi-box-arrow-in-right" aria-hidden="true"></i>
+      {{ 'RESERVATIONS.CHECK_IN_BTN' | translate }}
+    </button>
+    <button
+      type="button"
+      class="btn btn-success flex-grow-1"
+      *ngIf="canCheckOut"
+      (click)="checkOut()"
+      [disabled]="isSaving || !canCheckOutNow">
+      <i class="bi bi-box-arrow-right" aria-hidden="true"></i>
+      {{ 'DASHBOARD.CHECK_OUT_BTN' | translate }}
+    </button>
+    <button type="button" class="btn btn-primary flex-grow-1" *ngIf="canAddPayment && !canCheckIn && !canCheckOut"
+            (click)="openPaymentModal()" [disabled]="isSaving">
+      <i class="bi bi-credit-card" aria-hidden="true"></i>
+      {{ 'RESERVATIONS.ADD_PAYMENT' | translate }}
+    </button>
+    <button type="button" class="btn btn-outline-secondary flex-grow-1"
+            *ngIf="!canCheckIn && !canCheckOut && !canAddPayment"
+            (click)="printInvoice()">
+      <i class="bi bi-printer" aria-hidden="true"></i>
+      {{ 'RESERVATIONS.PRINT_INVOICE' | translate }}
+    </button>
+    <button type="button" class="btn btn-outline-secondary rd-mobile-bar__more"
+            (click)="openMoreActions()"
+            [attr.aria-label]="'COMMON.MORE' | translate"
+            [attr.aria-expanded]="showMoreActions">
+      <i class="bi bi-three-dots" aria-hidden="true"></i>
+    </button>
+  </nav>
+
+  <div *ngIf="showMoreActions" class="ui-modal-backdrop rd-more-sheet-backdrop" (click)="closeMoreActions()">
+    <div class="ui-modal rd-more-sheet" (click)="$event.stopPropagation()" role="dialog" aria-modal="true"
+         [attr.aria-label]="'COMMON.MORE' | translate">
+      <div class="ui-modal__header">
+        <div class="ui-modal__title-row">
+          <span class="ui-modal__icon" aria-hidden="true"><i class="bi bi-three-dots"></i></span>
+          <div class="min-w-0">
+            <h3 class="ui-modal__title">{{ 'COMMON.MORE' | translate }}</h3>
+            <p class="ui-modal__subtitle">{{ 'RESERVATIONS.DETAIL_ACTIONS_ARIA' | translate }}</p>
+          </div>
+        </div>
+        <button type="button" class="ui-modal__close" (click)="closeMoreActions()"
+                [attr.aria-label]="'COMMON.CANCEL' | translate">
+          <i class="bi bi-x-lg" aria-hidden="true"></i>
+        </button>
+      </div>
+      <div class="ui-modal__body rd-more-sheet__body">
+        <button type="button" class="rd-more-sheet__item" (click)="runMoreAction('roomBoard')">
+          <i class="bi bi-grid-3x3-gap" aria-hidden="true"></i>
+          <span>{{ 'SIDEBAR.ROOM_BOARD' | translate }}</span>
+        </button>
+        <button type="button" class="rd-more-sheet__item" *ngIf="canAddPayment && (canCheckIn || canCheckOut)"
+                (click)="runMoreAction('payment')" [disabled]="isSaving">
+          <i class="bi bi-credit-card" aria-hidden="true"></i>
+          <span>{{ 'RESERVATIONS.ADD_PAYMENT' | translate }}</span>
+        </button>
+        <button type="button" class="rd-more-sheet__item" *ngIf="canRefund"
+                (click)="runMoreAction('refund')" [disabled]="isSaving">
+          <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i>
+          <span>{{ 'RESERVATIONS.REFUND_AND_CANCEL' | translate }}</span>
+        </button>
+        <button type="button" class="rd-more-sheet__item" (click)="runMoreAction('print')">
+          <i class="bi bi-printer" aria-hidden="true"></i>
+          <span>{{ 'RESERVATIONS.PRINT_INVOICE' | translate }}</span>
+        </button>
+      </div>
+      <div class="ui-modal__footer">
+        <button type="button" class="btn btn-light w-100" (click)="closeMoreActions()">
+          {{ 'COMMON.CANCEL' | translate }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div
+    *ngIf="!isLoading && booking"
+    class="rd-summary"
+    role="group"
+    [attr.aria-label]="'RESERVATIONS.DETAIL_SUMMARY_ARIA' | translate">
+    <div class="rd-stat">
+      <span class="rd-stat__label">{{ 'RESERVATIONS.DETAIL_NIGHTS' | translate }}</span>
+      <span class="rd-stat__value">{{ booking.totalDays || 0 }}</span>
+    </div>
+    <div class="rd-stat rd-stat--total">
+      <span class="rd-stat__label">{{ 'RESERVATIONS.TOTAL_AMOUNT' | translate }}</span>
+      <span class="rd-stat__value">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ booking.amount | number:'1.2-2' }}</span>
+    </div>
+    <div class="rd-stat rd-stat--paid">
+      <span class="rd-stat__label">{{ 'RESERVATIONS.TOTAL_PAID' | translate }}</span>
+      <span class="rd-stat__value">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ getTotalPaid() | number:'1.2-2' }}</span>
+    </div>
+    <div class="rd-stat" [class.rd-stat--due]="balanceDue > 0.005" [class.rd-stat--clear]="balanceDue <= 0.005">
+      <span class="rd-stat__label">{{ 'RESERVATIONS.REMAINING_BALANCE' | translate }}</span>
+      <span class="rd-stat__value">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ balanceDue | number:'1.2-2' }}</span>
+      <span class="rd-stat__hint">{{ getPaymentStatusLabel(booking.paymentStatus) }}</span>
+    </div>
+  </div>
+
+  <div *ngIf="isLoading" class="ui-loading mb-4" role="status" [attr.aria-label]="'COMMON.LOADING' | translate">
+    <p class="ui-loading__text">{{ 'COMMON.LOADING' | translate }}</p>
+    <div class="row g-3 w-100">
+      <div class="col-lg-8">
+        <div class="card border-0 shadow-sm rounded-xl p-4 mb-3">
+          <div class="skeleton skeleton-text mb-3" style="width: 40%; height: 1.25rem;"></div>
+          <div class="row g-3">
+            <div class="col-md-6" *ngFor="let _ of [1,2,3,4,5,6]">
+              <div class="skeleton skeleton-text mb-2" style="width: 35%;"></div>
+              <div class="skeleton skeleton-text" style="width: 70%; height: 1.1rem;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-4">
+        <div class="card border-0 shadow-sm rounded-xl p-4">
+          <div class="skeleton skeleton-text mb-3" style="width: 50%;"></div>
+          <div class="skeleton w-100 mb-2" style="height: 2.5rem;"></div>
+          <div class="skeleton w-100" style="height: 2.5rem;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div *ngIf="!isLoading && booking && bookingAlerts.length"
+       class="reservation-alerts mb-4"
+       role="region"
+       [attr.aria-label]="'RESERVATIONS.BOOKING_ALERTS_ARIA' | translate">
+    <div *ngFor="let alert of bookingAlerts"
+         class="alert mb-2 d-flex align-items-start justify-content-between gap-2 flex-wrap"
+         [ngClass]="'alert-' + alert.variant"
+         role="alert">
+      <div>
+        <strong class="d-block" *ngIf="alert.titleKey">{{ alert.titleKey | translate }}</strong>
+        <span>{{ alert.messageKey | translate: alert.params }}</span>
+      </div>
+      <button *ngIf="alert.action === 'roomBoard'" type="button"
+              class="btn btn-sm btn-outline-warning flex-shrink-0"
+              (click)="openRoomBoard()">
+        {{ 'SIDEBAR.ROOM_BOARD' | translate }}
+      </button>
+    </div>
+  </div>
+
+  <div *ngIf="!isLoading && booking" class="row g-4">
+    <div class="col-lg-8">
+      <section class="card border-0 shadow-sm rd-section mb-4">
+        <div class="rd-section__header">
+          <div class="rd-section__title">
+            <span class="rd-section__icon" aria-hidden="true"><i class="bi bi-journal-text"></i></span>
+            <h2>{{ 'RESERVATIONS.BOOKING_DETAILS' | translate }}</h2>
+          </div>
+          <button type="button" class="btn btn-sm btn-outline-primary" *ngIf="canEditDates" (click)="saveReservationDates()" [disabled]="isSaving">
+            {{ 'RESERVATIONS.SAVE_CHANGES' | translate }}
+          </button>
+        </div>
+        <div class="rd-section__body">
+          <dl class="rd-dl">
+            <div class="rd-dl__item">
+              <dt>{{ 'RESERVATIONS.GUEST' | translate }}</dt>
+              <dd>{{ booking.guest }}</dd>
+            </div>
+            <div class="rd-dl__item">
+              <dt>{{ 'RESERVATIONS.ROOM' | translate }}</dt>
+              <dd>{{ roomsDisplay }}</dd>
+            </div>
+            <div class="rd-dl__item">
+              <dt>{{ 'RESERVATIONS.STATUS' | translate }}</dt>
+              <dd>
+                <span class="badge rounded-pill status-pill" [ngClass]="getStatusBadgeClass(booking.status)">
+                  {{ bookingStatusLabel }}
+                </span>
+              </dd>
+            </div>
+            <div class="rd-dl__item">
+              <dt>{{ 'RESERVATIONS.CHECK_IN' | translate }}</dt>
+              <dd>
+                <input *ngIf="canEditDates" type="date" class="form-control form-control-sm" [(ngModel)]="editStartDate" [disabled]="isSaving" [max]="editExpireDate" />
+                <span *ngIf="!canEditDates">{{ booking.checkIn }}</span>
+              </dd>
+            </div>
+            <div class="rd-dl__item">
+              <dt>{{ 'RESERVATIONS.CHECK_OUT' | translate }}</dt>
+              <dd>
+                <input *ngIf="canEditDates" type="date" class="form-control form-control-sm" [(ngModel)]="editExpireDate" [disabled]="isSaving" [min]="minExpireDate" />
+                <span *ngIf="!canEditDates">{{ booking.checkOut }}</span>
+              </dd>
+            </div>
+            <div class="rd-dl__item">
+              <dt>{{ 'RESERVATIONS.PHONE' | translate }}</dt>
+              <dd><span class="rd-dl__ltr" dir="ltr">{{ booking.phone || '—' }}</span></dd>
+            </div>
+            <div class="rd-dl__item">
+              <dt>{{ 'RESERVATIONS.EMAIL' | translate }}</dt>
+              <dd>{{ booking.email || '—' }}</dd>
+            </div>
+            <div class="rd-dl__item">
+              <dt>{{ 'RESERVATIONS.BOOKED_BY' | translate }}</dt>
+              <dd>{{ bookedByDisplay }}</dd>
+            </div>
+            <div class="rd-dl__item">
+              <dt>{{ 'RESERVATIONS.BOOKED_AT' | translate }}</dt>
+              <dd>
+                <ng-container *ngIf="bookedAt; else bookedAtUnknown">{{ bookedAt | date:'medium':undefined:currentLang }}</ng-container>
+                <ng-template #bookedAtUnknown>—</ng-template>
+              </dd>
+            </div>
+            <div class="rd-dl__item rd-dl__item--full" *ngIf="booking.notes">
+              <dt>{{ 'RESERVATIONS.NOTES' | translate }}</dt>
+              <dd class="rd-dl__muted">{{ booking.notes }}</dd>
+            </div>
+          </dl>
+        </div>
+      </section>
+
+      <section class="card border-0 shadow-sm rd-section mb-4">
+        <div class="rd-section__header">
+          <div class="rd-section__title">
+            <span class="rd-section__icon" aria-hidden="true"><i class="bi bi-clock-history"></i></span>
+            <h2>{{ 'RESERVATIONS.CHANGE_LOG_TITLE' | translate }}</h2>
+          </div>
+        </div>
+        <div class="rd-section__body">
+          <div class="ui-empty" *ngIf="!changeLogs.length">
+            <i class="bi bi-hourglass" aria-hidden="true"></i>
+            <span>{{ 'RESERVATIONS.CHANGE_LOG_EMPTY' | translate }}</span>
+          </div>
+          <ol class="rd-timeline" *ngIf="changeLogs.length">
+            <li class="rd-timeline__item" *ngFor="let entry of changeLogs">
+              <div class="rd-timeline__dot" aria-hidden="true"></div>
+              <div class="rd-timeline__card">
+                <div class="rd-timeline__meta">
+                  <span class="badge bg-light text-dark border">{{ changeLogActionLabel(entry.action) }}</span>
+                  <span class="small text-muted">{{ entry.created_at | date:'medium':undefined:currentLang }}</span>
+                  <span class="small">
+                    <span class="text-muted">{{ 'RESERVATIONS.CHANGE_LOG_BY' | translate }}:</span>
+                    <strong>{{ changeLogUserLabel(entry) }}</strong>
+                  </span>
+                </div>
+                <div class="table-responsive">
+                  <table class="table table-sm align-middle mb-0 rd-data-table">
+                    <thead>
+                      <tr>
+                        <th>{{ 'RESERVATIONS.CHANGE_LOG_FIELD' | translate }}</th>
+                        <th>{{ 'RESERVATIONS.CHANGE_LOG_OLD' | translate }}</th>
+                        <th>{{ 'RESERVATIONS.CHANGE_LOG_NEW' | translate }}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr *ngFor="let field of changeFieldKeys(entry)">
+                        <td>{{ changeFieldLabel(field) }}</td>
+                        <td class="text-muted">{{ formatChangeValue(field, entry.changes[field]?.old) }}</td>
+                        <td class="fw-semibold">{{ formatChangeValue(field, entry.changes[field]?.new) }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <section class="card border-0 shadow-sm rd-section mb-4">
+        <div class="rd-section__header">
+          <div class="rd-section__title">
+            <span class="rd-section__icon" aria-hidden="true"><i class="bi bi-person"></i></span>
+            <h2>{{ 'RESERVATIONS.CLIENT_INFO' | translate }}</h2>
+          </div>
+        </div>
+        <div class="rd-section__body">
+          <dl class="rd-dl" *ngIf="client">
+            <div class="rd-dl__item">
+              <dt>{{ 'RESERVATIONS.CLIENT_NAME' | translate }}</dt>
+              <dd>{{ clientDisplayName }}</dd>
+            </div>
+            <div class="rd-dl__item">
+              <dt>{{ 'RESERVATIONS.CLIENT_ID' | translate }}</dt>
+              <dd>#{{ client.id }}</dd>
+            </div>
+            <div class="rd-dl__item">
+              <dt>{{ 'CLIENTS.TABLE.LOYALTY_POINTS' | translate }}</dt>
+              <dd>
+                {{ client.loyaltyPoints }}
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-primary ms-2"
+                  *ngIf="canRedeemPoints"
+                  (click)="openRedeemModal()"
+                  [disabled]="isSaving">
+                  {{ 'RESERVATIONS.PROCESS_REDEMPTION' | translate }}
+                </button>
+              </dd>
+            </div>
+            <div class="rd-dl__item">
+              <dt>{{ 'CLIENT_DETAILS.TOTAL_BOOKINGS' | translate }}</dt>
+              <dd>{{ client.totalBookings }}</dd>
+            </div>
+            <div class="rd-dl__item rd-dl__item--full">
+              <dt>{{ 'RESERVATIONS.ADDRESS' | translate }}</dt>
+              <dd>{{ client.address }}, {{ client.city }}, {{ client.country }}</dd>
+            </div>
+          </dl>
+          <div class="ui-empty" *ngIf="!client">
+            <i class="bi bi-person-x" aria-hidden="true"></i>
+            <span>{{ 'RESERVATIONS.NO_CLIENT_INFO' | translate }}</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="card border-0 shadow-sm rd-section mb-4">
+        <div class="rd-section__header">
+          <div class="rd-section__title">
+            <span class="rd-section__icon" aria-hidden="true"><i class="bi bi-credit-card"></i></span>
+            <h2>{{ 'RESERVATIONS.PAYMENT_HISTORY' | translate }}</h2>
+          </div>
+          <button class="btn btn-sm btn-outline-primary" *ngIf="canAddPayment" (click)="openPaymentModal()" [disabled]="isSaving">
+            <i class="bi bi-plus-lg me-1"></i>{{ 'RESERVATIONS.ADD_PAYMENT' | translate }}
+          </button>
+        </div>
+        <div class="table-responsive">
+          <table class="table align-middle mb-0 rd-data-table">
+            <thead>
+              <tr>
+                <th>{{ 'FINANCIALS.DATE' | translate }}</th>
+                <th>{{ 'FINANCIALS.METHOD' | translate }}</th>
+                <th>{{ 'RESERVATIONS.NOTE' | translate }}</th>
+                <th class="text-end">{{ 'FINANCIALS.AMOUNT' | translate }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let payment of booking.payments">
+                <td>{{ payment.date | date:'mediumDate' }}</td>
+                <td>
+                  <span class="badge fw-normal border" [ngClass]="payment.isRefund ? 'bg-warning-subtle text-warning-emphasis' : 'bg-light text-dark'">
+                    {{ payment.method | translate }}
+                  </span>
+                </td>
+                <td class="text-muted small">{{ payment.note || '—' }}</td>
+                <td class="text-end fw-bold" [class.text-danger]="payment.isRefund" [class.text-success]="!payment.isRefund">
+                  <span *ngIf="payment.isRefund">−</span>{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ payment.amount | number:'1.2-2' }}
+                </td>
+              </tr>
+              <tr *ngIf="!booking.payments || booking.payments.length === 0">
+                <td colspan="4">
+                  <div class="ui-empty ui-empty--compact">
+                    <i class="bi bi-wallet2" aria-hidden="true"></i>
+                    <span>{{ 'RESERVATIONS.NO_PAYMENTS' | translate }}</span>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+            <tfoot *ngIf="booking.payments && booking.payments.length > 0">
+              <tr>
+                <td colspan="3" class="text-end fw-bold small text-uppercase">{{ 'RESERVATIONS.TOTAL_PAID' | translate }}</td>
+                <td class="text-end fw-bold text-success">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ getTotalPaid() | number:'1.2-2' }}</td>
+              </tr>
+              <tr *ngIf="balanceDue > 0.005">
+                <td colspan="3" class="text-end fw-bold small text-uppercase text-danger">{{ 'RESERVATIONS.REMAINING_BALANCE' | translate }}</td>
+                <td class="text-end fw-bold text-danger">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ balanceDue | number:'1.2-2' }}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </section>
+
+      <section class="card border-0 shadow-sm rd-section mb-4" *ngIf="dailyCharges.length">
+        <div class="rd-section__header">
+          <div class="rd-section__title">
+            <span class="rd-section__icon" aria-hidden="true"><i class="bi bi-calendar3"></i></span>
+            <h2>{{ 'RESERVATIONS.DAILY_CHARGES' | translate }}</h2>
+          </div>
+        </div>
+        <div class="table-responsive">
+          <table class="table align-middle mb-0 rd-data-table rd-data-table--daily">
+            <thead>
+              <tr>
+                <th>{{ 'RESERVATIONS.DAILY_DATE' | translate }}</th>
+                <th class="text-end">{{ 'FINANCIALS.AMOUNT' | translate }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let line of dailyCharges">
+                <td>{{ toChargeDate(line.charge_date) | date:'mediumDate':undefined:currentLang }}</td>
+                <td class="text-end">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ line.base_amount | number:'1.2-2' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card border-0 shadow-sm rd-section">
+        <div class="rd-section__header">
+          <div class="rd-section__title">
+            <span class="rd-section__icon" aria-hidden="true"><i class="bi bi-door-open"></i></span>
+            <h2>{{ 'RESERVATIONS.ROOM_INFO' | translate }}</h2>
+          </div>
+        </div>
+        <div class="rd-section__body">
+          <div class="ui-empty" *ngIf="assignedRooms.length === 0">
+            <i class="bi bi-house" aria-hidden="true"></i>
+            <span>{{ 'RESERVATIONS.NO_ROOMS_ASSIGNED' | translate }}</span>
+          </div>
+          <div class="rd-room-list" *ngIf="assignedRooms.length">
+            <article class="rd-room-card" [class.rd-room-card--dirty]="rm.needsCleaning" [class.rd-room-card--cancelled]="rm.isCancelled" *ngFor="let rm of assignedRooms">
+              <div class="rd-room-card__grid">
+                <div>
+                  <span class="rd-room-card__label">{{ 'RESERVATIONS.ROOM' | translate }}</span>
+                  <strong>{{ rm.number }}</strong>
+                </div>
+                <div>
+                  <span class="rd-room-card__label">{{ 'RESERVATIONS.ROOM_STATUS' | translate }}</span>
+                  <span class="badge rounded-pill bg-secondary" *ngIf="rm.isCancelled">
+                    {{ 'RESERVATIONS.ROOM_CANCELLED' | translate }}
+                  </span>
+                  <span class="badge rounded-pill" [ngClass]="getRoomStatusBadgeClass(rm.roomStatus)" *ngIf="!rm.isCancelled">
+                    {{ getRoomStatusLabel(rm.roomStatus) }}
+                  </span>
+                </div>
+                <div *ngIf="rm.typeName">
+                  <span class="rd-room-card__label">{{ 'RESERVATIONS.ROOM_TYPE' | translate }}</span>
+                  <strong>{{ rm.typeName }}</strong>
+                </div>
+                <div *ngIf="rm.building || rm.floor">
+                  <span class="rd-room-card__label">{{ 'RESERVATIONS.ROOM_LOCATION' | translate }}</span>
+                  <strong>
+                    <span *ngIf="rm.building">{{ rm.building }}</span>
+                    <span *ngIf="rm.building && rm.floor"> · </span>
+                    <span *ngIf="rm.floor">{{ 'RESERVATIONS.FLOOR' | translate }} {{ rm.floor }}</span>
+                  </strong>
+                </div>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-warning mt-2" *ngIf="rm.needsCleaning" (click)="openRoomBoardForRoom(rm.number)">
+                {{ 'RESERVATIONS.OPEN_DIRTY_ROOM_ON_BOARD' | translate }}
+              </button>
+              <button type="button" class="btn btn-sm btn-outline-danger mt-2" *ngIf="canCancelRoom(rm)" (click)="cancelRoom(rm)">
+                {{ 'RESERVATIONS.CANCEL_THIS_ROOM' | translate }}
+              </button>
+            </article>
+          </div>
+          <div class="rd-amenities" *ngIf="roomType && roomType.amenities.length">
+            <span class="rd-room-card__label">{{ 'RESERVATIONS.AMENITIES' | translate }}</span>
+            <div class="d-flex flex-wrap gap-2 mt-1">
+              <span *ngFor="let amenity of roomType.amenities" class="badge bg-light text-dark fw-normal border px-2 py-1">{{ amenity }}</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="col-lg-4">
+      <div class="card border-0 shadow-sm rd-section rd-payment-sidebar sticky-top mb-4">
+        <div class="rd-section__header">
+          <div class="rd-section__title">
+            <span class="rd-section__icon" aria-hidden="true"><i class="bi bi-receipt"></i></span>
+            <h2>{{ 'RESERVATIONS.PAYMENT_SUMMARY' | translate }}</h2>
+          </div>
+        </div>
+        <div class="rd-section__body">
+          <div class="mb-3">
+            <span class="rd-room-card__label d-block mb-1">{{ 'RESERVATIONS.PAYMENT_STATUS' | translate }}</span>
+            <span class="badge rounded-pill status-pill" [ngClass]="getPaymentStatusBadgeClass(booking.paymentStatus)">
+              {{ getPaymentStatusLabel(booking.paymentStatus) }}
+            </span>
+          </div>
+          <div class="mb-3">
+            <span class="rd-room-card__label d-block mb-1">{{ 'RESERVATIONS.PAYMENT_METHOD' | translate }}</span>
+            <strong>{{ (booking.paymentMethod || 'COMMON.NA') | translate }}</strong>
+          </div>
+
+          <div class="border-top pt-3">
+            <div class="price-breakdown mb-3" *ngIf="priceBreakdownLines.length">
+              <h6 class="small text-muted text-uppercase mb-2">{{ 'RESERVATIONS.PRICE_BREAKDOWN' | translate }}</h6>
+              <ng-container *ngFor="let row of priceBreakdownLines">
+                <details class="price-breakdown-expand mb-2" *ngIf="isBreakdownRowExpandable(row)">
+                  <summary class="d-flex justify-content-between align-items-start gap-2 price-breakdown-row">
+                    <span class="price-breakdown-row__label small">
+                      {{ formatBreakdownLabel(row) }}
+                      <small class="text-muted d-block">
+                        {{ 'RESERVATIONS.NIGHTS_COUNT' | translate:{ count: row.nights } }}
+                      </small>
+                    </span>
+                    <span class="fw-semibold text-nowrap small">
+                      {{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ breakdownRowDisplayAmount(row) | number:'1.2-2' }}
+                    </span>
+                  </summary>
+                  <div class="price-breakdown-daily mt-2">
+                    <div
+                      class="d-flex justify-content-between small py-1 border-bottom border-light"
+                      *ngFor="let line of dailyLinesForBreakdownRow(row)">
+                      <span>{{ formatDailyDate(line.date) }}</span>
+                      <span>{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ line.amount | number:'1.2-2' }}</span>
+                    </div>
+                  </div>
+                </details>
+                <div
+                  class="d-flex justify-content-between align-items-start gap-2 mb-2 price-breakdown-row"
+                  *ngIf="!isBreakdownRowExpandable(row)">
+                  <span class="price-breakdown-row__label small">
+                    {{ formatBreakdownLabel(row) }}
+                  </span>
+                  <span class="fw-semibold text-nowrap small">
+                    {{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ breakdownRowDisplayAmount(row) | number:'1.2-2' }}
+                  </span>
+                </div>
+              </ng-container>
+            </div>
+
+            <details class="price-breakdown-expand mb-3" *ngIf="!priceBreakdownLines.length && dailyPriceLines.length">
+              <summary class="small text-muted">{{ 'RESERVATIONS.DAILY_BREAKDOWN_TOGGLE' | translate }}</summary>
+              <div class="price-breakdown-daily mt-2">
+                <div
+                  class="d-flex justify-content-between small py-1 border-bottom border-light"
+                  *ngFor="let line of dailyPriceLines">
+                  <span>{{ formatDailyDate(line.date) }}</span>
+                  <span>{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ line.amount | number:'1.2-2' }}</span>
+                </div>
+              </div>
+            </details>
+
+            <div class="d-flex justify-content-between mb-2">
+              <span class="text-muted">{{ 'RESERVATIONS.ROOM_PRICE_NIGHTS' | translate:{ nights: booking.totalDays } }}</span>
+              <span>{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ accommodationSubtotal | number:'1.2-2' }}</span>
+            </div>
+            <div class="d-flex justify-content-between mb-2">
+              <span class="text-muted">{{ 'RESERVATIONS.TAX_FEES' | translate }}</span>
+              <span>+{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ booking.tax | number }}</span>
+            </div>
+            <div class="d-flex justify-content-between mb-2 text-success" *ngIf="(booking.classificationDiscount ?? 0) > 0">
+              <span class="text-muted">{{ 'RESERVATIONS.CLASSIFICATION_DISCOUNT' | translate }}</span>
+              <span>-{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ booking.classificationDiscount | number }}</span>
+            </div>
+            <div class="d-flex justify-content-between mb-2 text-success" *ngIf="(booking.discount ?? 0) > 0">
+              <span class="text-muted">{{ 'RESERVATIONS.ADDITIONAL_DISCOUNT' | translate }}</span>
+              <span>-{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ booking.discount | number }}</span>
+            </div>
+            <div class="d-flex justify-content-between mb-3 text-success" *ngIf="(booking.classificationDiscount ?? 0) > 0 && (booking.discount ?? 0) > 0">
+              <span class="text-muted">{{ 'RESERVATIONS.TOTAL_DISCOUNT' | translate }}</span>
+              <span>-{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ ((booking.classificationDiscount ?? 0) + (booking.discount ?? 0)) | number }}</span>
+            </div>
+            <div class="d-flex justify-content-between pt-3 border-top">
+              <span class="h5 mb-0 fw-bold">{{ 'RESERVATIONS.TOTAL_AMOUNT' | translate }}</span>
+              <span class="h5 mb-0 fw-bold text-primary">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ booking.amount | number }}</span>
+            </div>
+          </div>
+
+          <div class="mb-3" *ngIf="posCharges.length">
+            <p class="small text-muted mb-2 fw-semibold">{{ 'POS.HISTORY_TITLE' | translate }}</p>
+            <div class="price-breakdown-daily">
+              <div class="d-flex justify-content-between small py-1 border-bottom border-light"
+                   *ngFor="let charge of posCharges">
+                <span>
+                  {{ charge.category?.name_en }} — {{ charge.description || ('POS.CATEGORY' | translate) }}
+                  <small *ngIf="charge.invoice_reference" class="text-muted">({{ 'POS.INVOICE_REFERENCE' | translate }}: {{ charge.invoice_reference }})</small>
+                  <span *ngIf="charge.status !== POS_CHARGE_STATUS_ACTIVE" class="text-muted">({{ 'POS.STATUS_VOIDED' | translate }})</span>
+                </span>
+                <span [class.text-decoration-line-through]="charge.status !== POS_CHARGE_STATUS_ACTIVE"
+                      [class.text-muted]="charge.payment_status !== POS_PAYMENT_STATUS_CHARGED_TO_ROOM">
+                  {{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ (charge.amount + charge.tax_amount) | number:'1.2-2' }}
+                  <small *ngIf="charge.payment_status !== POS_PAYMENT_STATUS_CHARGED_TO_ROOM">({{ 'POS.PAID_IMMEDIATELY' | translate }})</small>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div class="mb-3" *ngIf="balanceDue > 0">
+            <p class="small text-muted mb-2">{{ 'RESERVATIONS.BALANCE_DUE' | translate }}: {{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ balanceDue | number:'1.2-2' }}</p>
+          </div>
+          <button class="btn btn-primary w-100 mt-2 py-2" *ngIf="canAddPayment" (click)="openPaymentModal()" [disabled]="isSaving">
+            <i class="bi bi-credit-card me-2"></i> {{ 'RESERVATIONS.ADD_PAYMENT' | translate }}
+          </button>
+          <div class="mb-3" *ngIf="canExtend">
+            <p class="small text-muted mb-2" *ngIf="isOverdueInHouse">{{ 'RESERVATIONS.EXTEND_AFTER_ENDED_HINT' | translate }}</p>
+            <label class="small text-muted mb-1">{{ 'RESERVATIONS.EXTEND_TO' | translate }}</label>
+            <div class="d-flex gap-2">
+              <input type="date" class="form-control" [(ngModel)]="extendExpireDate" [min]="minExtendDate" />
+              <button type="button" class="btn btn-outline-primary" (click)="extendStay()" [disabled]="isSaving">{{ 'RESERVATIONS.EXTEND' | translate }}</button>
+            </div>
+          </div>
+          <div class="mb-3" *ngIf="canPartialCancel">
+            <label class="small text-muted mb-1">{{ 'RESERVATIONS.PARTIAL_CANCEL_TITLE' | translate }}</label>
+            <p class="small text-muted mb-2">{{ 'RESERVATIONS.PARTIAL_CANCEL_HINT' | translate }}</p>
+            <div class="d-flex gap-2 flex-wrap">
+              <input type="date" class="form-control" [(ngModel)]="shortenExpireDate" [min]="minShortenDate" [max]="maxShortenDate" (change)="onShortenDateChange()" />
+              <button type="button" class="btn btn-outline-warning" (click)="previewPartialRefund()" [disabled]="isSaving || !shortenExpireDate || partialPreviewLoading">
+                {{ 'RESERVATIONS.PREVIEW_PARTIAL_REFUND' | translate }}
+              </button>
+            </div>
+            <div *ngIf="partialPreviewLoading" class="text-center py-2">
+              <div class="spinner-border spinner-border-sm text-primary"></div>
+            </div>
+            <div *ngIf="partialRefundPreview && !partialPreviewLoading" class="small mt-2 p-2 bg-light rounded">
+              <p class="mb-1"><strong>{{ 'REFUND_POLICIES.NAME' | translate }}:</strong> {{ partialRefundPreview.policy?.name || partialRefundPreview.breakdown?.policy_name }}</p>
+              <p class="mb-1"><strong>{{ 'RESERVATIONS.CANCELLED_NIGHTS' | translate }}:</strong> {{ partialRefundPreview.breakdown?.cancelled_nights_count }}</p>
+              <p class="mb-1" *ngIf="partialRefundPreview.breakdown?.resolved_threshold_days != null">
+                <strong>{{ 'RESERVATIONS.RESOLVED_THRESHOLD' | translate }}:</strong> {{ partialRefundPreview.breakdown?.resolved_threshold_days }}
+              </p>
+              <p class="mb-2"><strong>{{ 'RESERVATIONS.REFUND_AMOUNT' | translate }}:</strong> {{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ partialRefundPreview.refund_amount | number:'1.2-2' }}</p>
+              <button type="button" class="btn btn-warning btn-sm w-100" (click)="confirmPartialRefund()" [disabled]="isSaving">
+                {{ 'RESERVATIONS.CONFIRM_PARTIAL_REFUND' | translate }}
+              </button>
+            </div>
+          </div>
+          <button class="btn btn-outline-secondary w-100 mt-2 py-2" (click)="printInvoice()">
+            <i class="bi bi-printer me-2"></i> {{ 'RESERVATIONS.PRINT_INVOICE' | translate }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div *ngIf="showPaymentModal" class="ui-modal-backdrop" (click)="closePaymentModal()">
+  <div class="ui-modal" (click)="$event.stopPropagation()" role="dialog" aria-modal="true">
+    <div class="ui-modal__header">
+      <div class="ui-modal__title-row">
+        <span class="ui-modal__icon" aria-hidden="true"><i class="bi bi-credit-card"></i></span>
+        <div class="min-w-0">
+          <h3 class="ui-modal__title">{{ 'RESERVATIONS.PAYMENT_MODAL_TITLE' | translate }}</h3>
+          <p class="ui-modal__subtitle">{{ 'RESERVATIONS.PAYMENT_AMOUNT_HINT' | translate:{ max: (balanceDue | number:'1.2-2') } }}</p>
+        </div>
+      </div>
+      <button type="button" class="ui-modal__close" (click)="closePaymentModal()" [disabled]="isSaving" [attr.aria-label]="'COMMON.CANCEL' | translate">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
+    <div class="ui-modal__kpis" style="grid-template-columns: 1fr;">
+      <div class="ui-modal__kpi">
+        <span class="ui-modal__kpi-label">{{ 'RESERVATIONS.BALANCE_DUE' | translate }}</span>
+        <strong class="ui-modal__kpi-value">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ balanceDue | number:'1.2-2' }}</strong>
+      </div>
+    </div>
+    <div class="ui-modal__body">
+      <label class="form-label small fw-bold">{{ 'RESERVATIONS.PAYMENT_AMOUNT' | translate }}</label>
+      <div class="input-group mb-2">
+        <span class="input-group-text">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}</span>
+        <input type="number" class="form-control" [(ngModel)]="paymentAmount" min="0.01" [max]="balanceDue" step="0.01"
+               [disabled]="isSaving" (ngModelChange)="onPaymentAmountChange()" (keyup.enter)="submitPayment()" />
+      </div>
+      <p class="small text-danger mb-2" *ngIf="paymentAmountExceedsBalance">
+        {{ 'RESERVATIONS.PAYMENT_AMOUNT_EXCEEDS_BALANCE' | translate:{ max: (balanceDue | number:'1.2-2') } }}
+      </p>
+      <button type="button" class="btn btn-outline-primary btn-sm w-100" (click)="setFullPaymentAmount()" [disabled]="isSaving">
+        {{ 'RESERVATIONS.PAY_FULL_BALANCE' | translate }} ({{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ balanceDue | number:'1.2-2' }})
+      </button>
+    </div>
+    <div class="ui-modal__footer">
+      <button type="button" class="btn btn-light" (click)="closePaymentModal()" [disabled]="isSaving">{{ 'COMMON.CANCEL' | translate }}</button>
+      <button type="button" class="btn btn-primary" (click)="submitPayment()" [disabled]="isSaving || !paymentAmount || paymentAmount <= 0 || paymentAmountExceedsBalance">
+        <span *ngIf="isSaving" class="spinner-border spinner-border-sm me-1"></span>
+        {{ 'RESERVATIONS.PROCESS_PAYMENT' | translate }}
+      </button>
+    </div>
+  </div>
+</div>
+
+<div *ngIf="showRedeemModal" class="ui-modal-backdrop" (click)="closeRedeemModal()">
+  <div class="ui-modal" (click)="$event.stopPropagation()" role="dialog" aria-modal="true">
+    <div class="ui-modal__header">
+      <div class="ui-modal__title-row">
+        <span class="ui-modal__icon" aria-hidden="true"><i class="bi bi-gift"></i></span>
+        <div class="min-w-0">
+          <h3 class="ui-modal__title">{{ 'RESERVATIONS.REDEEM_MODAL_TITLE' | translate }}</h3>
+          <p class="ui-modal__subtitle">{{ 'RESERVATIONS.REDEEM_POINTS_HINT' | translate:{ max: maxRedeemablePoints } }}</p>
+        </div>
+      </div>
+      <button type="button" class="ui-modal__close" (click)="closeRedeemModal()" [disabled]="isSaving" [attr.aria-label]="'COMMON.CANCEL' | translate">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
+    <div class="ui-modal__kpis" style="grid-template-columns: 1fr;">
+      <div class="ui-modal__kpi">
+        <span class="ui-modal__kpi-label">{{ 'RESERVATIONS.BALANCE_DUE' | translate }}</span>
+        <strong class="ui-modal__kpi-value">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ balanceDue | number:'1.2-2' }}</strong>
+      </div>
+    </div>
+    <div class="ui-modal__body">
+      <label class="form-label small fw-bold">{{ 'RESERVATIONS.REDEEM_POINTS_LABEL' | translate }}</label>
+      <div class="input-group mb-2">
+        <input type="number" class="form-control" [(ngModel)]="redeemPoints" min="1" [max]="maxRedeemablePoints" step="1"
+               [disabled]="isSaving" (ngModelChange)="onRedeemPointsChange()" (keyup.enter)="submitRedeem()" />
+      </div>
+      <p class="small text-danger mb-2" *ngIf="redeemPointsExceedsLimit">
+        {{ 'RESERVATIONS.REDEEM_POINTS_EXCEEDS_LIMIT' | translate:{ max: maxRedeemablePoints } }}
+      </p>
+      <button type="button" class="btn btn-outline-primary btn-sm w-100" (click)="setMaxRedeemPoints()" [disabled]="isSaving">
+        {{ 'RESERVATIONS.REDEEM_ALL_POINTS' | translate }} ({{ maxRedeemablePoints }})
+      </button>
+    </div>
+    <div class="ui-modal__footer">
+      <button type="button" class="btn btn-light" (click)="closeRedeemModal()" [disabled]="isSaving">{{ 'COMMON.CANCEL' | translate }}</button>
+      <button type="button" class="btn btn-primary" (click)="submitRedeem()" [disabled]="isSaving || !redeemPoints || redeemPoints <= 0 || redeemPointsExceedsLimit">
+        <span *ngIf="isSaving" class="spinner-border spinner-border-sm me-1"></span>
+        {{ 'RESERVATIONS.PROCESS_REDEMPTION' | translate }}
+      </button>
+    </div>
+  </div>
+</div>
+
+<div *ngIf="showRefundModal" class="ui-modal-backdrop" (click)="closeRefundModal()">
+  <div class="ui-modal" (click)="$event.stopPropagation()" role="dialog" aria-modal="true">
+    <div class="ui-modal__header">
+      <div class="ui-modal__title-row">
+        <span class="ui-modal__icon ui-modal__icon--warn" aria-hidden="true"><i class="bi bi-arrow-counterclockwise"></i></span>
+        <div class="min-w-0">
+          <h3 class="ui-modal__title">{{ 'RESERVATIONS.REFUND_AND_CANCEL' | translate }}</h3>
+          <p class="ui-modal__subtitle">{{ 'RESERVATIONS.REFUND_CONFIRM_HINT' | translate }}</p>
+        </div>
+      </div>
+      <button type="button" class="ui-modal__close" (click)="closeRefundModal()" [disabled]="isSaving" [attr.aria-label]="'COMMON.CANCEL' | translate"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="ui-modal__kpis" *ngIf="!refundPreviewLoading && refundPreview">
+      <div class="ui-modal__kpi">
+        <span class="ui-modal__kpi-label">{{ 'RESERVATIONS.REFUND_AMOUNT' | translate }}</span>
+        <strong class="ui-modal__kpi-value">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ refundPreview.refund_amount | number:'1.2-2' }}</strong>
+      </div>
+      <div class="ui-modal__kpi">
+        <span class="ui-modal__kpi-label">{{ 'RESERVATIONS.REFUND_NET_PAID' | translate }}</span>
+        <strong class="ui-modal__kpi-value">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ refundPreview.breakdown?.net_paid | number:'1.2-2' }}</strong>
+      </div>
+    </div>
+    <div class="ui-modal__body">
+      <div class="ui-loading" *ngIf="refundPreviewLoading"><span class="spinner-border text-primary"></span></div>
+      <ng-container *ngIf="!refundPreviewLoading && refundPreview">
+        <dl class="rd-dl rd-dl--compact">
+          <div class="rd-dl__item rd-dl__item--full">
+            <dt>{{ 'REFUND_POLICIES.NAME' | translate }}</dt>
+            <dd>{{ refundPreview.policy?.name || refundPreview.breakdown?.policy_name }}</dd>
+          </div>
+          <div class="rd-dl__item rd-dl__item--full" *ngIf="refundPreview.breakdown?.resolved_threshold_days != null">
+            <dt>{{ 'RESERVATIONS.RESOLVED_THRESHOLD' | translate }}</dt>
+            <dd>{{ refundPreview.breakdown?.resolved_threshold_days }}</dd>
+          </div>
+        </dl>
+      </ng-container>
+    </div>
+    <div class="ui-modal__footer">
+      <button type="button" class="btn btn-light" (click)="closeRefundModal()" [disabled]="isSaving">{{ 'COMMON.CANCEL' | translate }}</button>
+      <button type="button" class="btn btn-warning" (click)="confirmRefund()" [disabled]="isSaving || refundPreviewLoading || !refundPreview">
+        <span *ngIf="isSaving" class="spinner-border spinner-border-sm me-1"></span>
+        {{ 'RESERVATIONS.CONFIRM_REFUND' | translate }}
+      </button>
+    </div>
+  </div>
+</div>
+
+<div *ngIf="showDateChangeModal" class="ui-modal-backdrop" (click)="closeDateChangeModal()">
+  <div class="ui-modal ui-modal--lg" (click)="$event.stopPropagation()" role="dialog" aria-modal="true">
+    <div class="ui-modal__header">
+      <div class="ui-modal__title-row">
+        <span class="ui-modal__icon" aria-hidden="true"><i class="bi bi-calendar2-range"></i></span>
+        <div class="min-w-0">
+          <h3 class="ui-modal__title">{{ 'RESERVATIONS.DATE_CHANGE_PREVIEW_TITLE' | translate }}</h3>
+          <p class="ui-modal__subtitle" *ngIf="dateChangePreview">{{ dateChangeActionLabel() }}</p>
+        </div>
+      </div>
+      <button type="button" class="ui-modal__close" (click)="closeDateChangeModal()" [disabled]="isSaving" [attr.aria-label]="'COMMON.CANCEL' | translate"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="ui-modal__kpis" *ngIf="!dateChangePreviewLoading && dateChangePreview">
+      <div class="ui-modal__kpi">
+        <span class="ui-modal__kpi-label">{{ 'RESERVATIONS.DATE_CHANGE_NIGHTS_DELTA' | translate }}</span>
+        <strong class="ui-modal__kpi-value">{{ dateChangePreview.delta?.nights > 0 ? '+' : '' }}{{ dateChangePreview.delta?.nights }}</strong>
+      </div>
+      <div class="ui-modal__kpi">
+        <span class="ui-modal__kpi-label">{{ 'RESERVATIONS.DATE_CHANGE_NEW_TOTAL' | translate }}</span>
+        <strong class="ui-modal__kpi-value">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ dateChangePreview.projected?.total | number:'1.2-2' }}</strong>
+      </div>
+      <div class="ui-modal__kpi">
+        <span class="ui-modal__kpi-label">{{ 'RESERVATIONS.DATE_CHANGE_NEW_BALANCE' | translate }}</span>
+        <strong class="ui-modal__kpi-value">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ dateChangePreview.projected?.balance_due | number:'1.2-2' }}</strong>
+      </div>
+    </div>
+    <div class="ui-modal__body">
+      <div class="ui-loading" *ngIf="dateChangePreviewLoading"><span class="spinner-border text-primary"></span></div>
+      <ng-container *ngIf="!dateChangePreviewLoading && dateChangePreview">
+        <dl class="rd-dl rd-dl--compact">
+          <div class="rd-dl__item">
+            <dt>{{ 'RESERVATIONS.DATE_CHANGE_CURRENT_TOTAL' | translate }}</dt>
+            <dd>{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ dateChangePreview.current?.total | number:'1.2-2' }}</dd>
+          </div>
+          <div class="rd-dl__item">
+            <dt>{{ 'RESERVATIONS.DATE_CHANGE_PAID_NET' | translate }}</dt>
+            <dd>{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ dateChangePreview.current?.paid_net | number:'1.2-2' }}</dd>
+          </div>
+          <div class="rd-dl__item rd-dl__item--full" *ngIf="dateChangePreview.refund_amount > 0">
+            <dt>{{ 'RESERVATIONS.DATE_CHANGE_REFUND_AMOUNT' | translate }}</dt>
+            <dd class="text-success">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ dateChangePreview.refund_amount | number:'1.2-2' }}</dd>
+          </div>
+        </dl>
+        <p class="small text-muted mb-0" *ngIf="dateChangePreview.will_post_accrual_adjustment">
+          {{ 'RESERVATIONS.DATE_CHANGE_ACCRUAL_NOTE' | translate }}
+        </p>
+      </ng-container>
+    </div>
+    <div class="ui-modal__footer">
+      <button type="button" class="btn btn-light" (click)="closeDateChangeModal()" [disabled]="isSaving">{{ 'COMMON.CANCEL' | translate }}</button>
+      <button type="button" class="btn btn-primary" (click)="confirmDateChange()" [disabled]="isSaving || dateChangePreviewLoading || !dateChangePreview">
+        <span *ngIf="isSaving" class="spinner-border spinner-border-sm me-1"></span>
+        {{ 'RESERVATIONS.DATE_CHANGE_CONFIRM' | translate }}
+      </button>
+    </div>
+  </div>
+</div>

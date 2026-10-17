@@ -1,0 +1,107 @@
+<div
+  class="sidebar-mobile-backdrop"
+  [class.show]="mobileOpen"
+  (click)="closeMobileNav()"
+  aria-hidden="true"></div>
+
+<aside
+  class="sidebar d-flex flex-column vh-100 position-sticky top-0"
+  [ngClass]="{
+    'sidebar-collapsed': collapsed && !mobileOpen,
+    'sidebar-expanded': !collapsed || mobileOpen,
+    'sidebar-mobile-open': mobileOpen
+  }"
+  [attr.aria-label]="'SIDEBAR.NAV_ARIA' | translate">
+  <div class="sidebar-mobile-header d-lg-none">
+    <span class="sidebar-mobile-header__title">{{ 'SIDEBAR.MENU' | translate }}</span>
+    <button type="button" class="sidebar-icon-btn" (click)="closeMobileNav()" [attr.aria-label]="'SIDEBAR.CLOSE_MENU' | translate">
+      <i class="bi bi-x-lg" aria-hidden="true"></i>
+    </button>
+  </div>
+
+  <div class="sidebar-brand">
+    <a routerLink="/dashboard" class="sidebar-brand__link" [attr.aria-label]="'OSUS Alalamiah'" (click)="closeMobileNav()">
+      <span class="sidebar-brand__monogram" aria-hidden="true">OS</span>
+      <span class="sidebar-brand__wordmark nav-text">
+        <span class="sidebar-brand__title">OSUS</span>
+        <span class="sidebar-brand__subtitle">Alalamiah</span>
+      </span>
+    </a>
+  </div>
+
+  <div class="sidebar-cta-wrap" *ngIf="canCreateReservation">
+    <button
+      type="button"
+      class="sidebar-cta"
+      (click)="goCreateReservation()"
+      [attr.title]="collapsed && !mobileOpen ? ('RESERVATIONS.NEW_BOOKING' | translate) : null">
+      <i class="bi bi-plus-lg" aria-hidden="true"></i>
+      <span class="nav-text">{{ 'RESERVATIONS.NEW_BOOKING' | translate }}</span>
+    </button>
+  </div>
+
+  <nav class="sidebar-nav sidebar-nav-scroll" [attr.aria-label]="'SIDEBAR.NAV_ARIA' | translate">
+    <div class="sidebar-section" *ngFor="let section of visibleNavSections; trackBy: trackSectionById">
+      <p class="sidebar-section__label nav-text">{{ section.labelKey | translate }}</p>
+      <ul class="sidebar-section__list">
+        <li *ngFor="let item of section.items; trackBy: trackItemByPath">
+          <a
+            [routerLink]="item.path"
+            routerLinkActive="router-link-active"
+            [routerLinkActiveOptions]="{ exact: !!item.exact }"
+            class="sidebar-nav-link"
+            [attr.title]="collapsed && !mobileOpen ? (item.label | translate) : null"
+            (click)="closeMobileNav()">
+            <span class="sidebar-nav-link__icon" aria-hidden="true">
+              <i [class]="'bi ' + item.icon"></i>
+            </span>
+            <span class="nav-text sidebar-nav-link__label">{{ item.label | translate }}</span>
+            <span class="sidebar-nav-link__badge"
+                  *ngIf="item.path === '/admin/airbnb-requests' && airbnbPendingCount > 0">
+              {{ airbnbPendingCount }}
+            </span>
+          </a>
+        </li>
+      </ul>
+    </div>
+  </nav>
+
+  <div class="sidebar-footer">
+    <button
+      type="button"
+      class="sidebar-footer__btn"
+      (click)="switchLanguage()"
+      [attr.title]="collapsed && !mobileOpen ? (currentLang === 'en' ? 'العربية' : 'English') : null">
+      <span class="sidebar-nav-link__icon" aria-hidden="true">
+        <i class="bi bi-translate"></i>
+      </span>
+      <span class="nav-text sidebar-footer__lang">
+        <span class="sidebar-footer__lang-label">{{ 'SIDEBAR.LANGUAGE' | translate }}</span>
+        <span class="sidebar-footer__lang-value">{{ currentLang === 'en' ? 'العربية' : 'English' }}</span>
+      </span>
+    </button>
+
+    <button
+      type="button"
+      class="sidebar-footer__btn d-none d-lg-flex"
+      (click)="toggleCollapse()"
+      [attr.aria-label]="(collapsed ? 'SIDEBAR.EXPAND' : 'SIDEBAR.COLLAPSE') | translate"
+      [attr.title]="collapsed && !mobileOpen ? ((collapsed ? 'SIDEBAR.EXPAND' : 'SIDEBAR.COLLAPSE') | translate) : null">
+      <span class="sidebar-nav-link__icon" aria-hidden="true">
+        <i class="bi" [ngClass]="collapseIcon"></i>
+      </span>
+      <span class="nav-text">{{ (collapsed ? 'SIDEBAR.EXPAND' : 'SIDEBAR.COLLAPSE') | translate }}</span>
+    </button>
+
+    <button
+      type="button"
+      class="sidebar-footer__btn sidebar-footer__btn--danger"
+      (click)="onLogout()"
+      [attr.title]="collapsed && !mobileOpen ? ('SIDEBAR.LOGOUT' | translate) : null">
+      <span class="sidebar-nav-link__icon" aria-hidden="true">
+        <i class="bi bi-box-arrow-right"></i>
+      </span>
+      <span class="nav-text">{{ 'SIDEBAR.LOGOUT' | translate }}</span>
+    </button>
+  </div>
+</aside>

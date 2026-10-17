@@ -1,0 +1,98 @@
+<div class="hotels-page">
+  <section class="dept-hero">
+    <div class="dept-hero__copy">
+      <p class="dept-hero__eyebrow">
+        <i class="bi bi-shop" aria-hidden="true"></i>
+        {{ 'POS.EYEBROW' | translate }}
+      </p>
+      <h1>{{ 'POS.HISTORY_TITLE' | translate }}</h1>
+      <p class="dept-hero__subtitle">{{ 'POS.HISTORY_SUBTITLE' | translate }}</p>
+    </div>
+    <div class="dept-hero__actions">
+      <a class="btn btn-primary" routerLink="/admin/pos-quick-entry">
+        <i class="bi bi-plus-lg" aria-hidden="true"></i>
+        <span>{{ 'POS.NEW_CHARGE' | translate }}</span>
+      </a>
+    </div>
+  </section>
+
+  <div class="card border-0 shadow-sm dept-card">
+    <div class="card-body border-bottom d-flex flex-wrap gap-2 align-items-end">
+      <div>
+        <label class="form-label mb-1">{{ 'POS.CATEGORY' | translate }}</label>
+        <select class="form-select form-select-sm" [(ngModel)]="filters.pos_category_id" (ngModelChange)="applyFilters()">
+          <option [ngValue]="null">{{ 'POS.ALL_CATEGORIES' | translate }}</option>
+          <option *ngFor="let c of categories" [ngValue]="c.id">{{ c.name_en }} / {{ c.name_ar }}</option>
+        </select>
+      </div>
+      <div>
+        <label class="form-label mb-1">{{ 'POS.STATUS' | translate }}</label>
+        <select class="form-select form-select-sm" [(ngModel)]="filters.status" (ngModelChange)="applyFilters()">
+          <option [ngValue]="null">{{ 'POS.ALL_STATUSES' | translate }}</option>
+          <option [ngValue]="0">{{ 'POS.STATUS_ACTIVE' | translate }}</option>
+          <option [ngValue]="1">{{ 'POS.STATUS_VOIDED' | translate }}</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table align-middle mb-0">
+        <thead>
+          <tr>
+            <th>{{ 'POS.DATE' | translate }}</th>
+            <th>{{ 'POS.CATEGORY' | translate }}</th>
+            <th>{{ 'POS.GUEST' | translate }}</th>
+            <th>{{ 'POS.DESCRIPTION' | translate }}</th>
+            <th>{{ 'POS.INVOICE_REFERENCE' | translate }}</th>
+            <th>{{ 'POS.TOTAL' | translate }}</th>
+            <th>{{ 'POS.PAYMENT_TIMING' | translate }}</th>
+            <th>{{ 'POS.STATUS' | translate }}</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let charge of charges">
+            <td>{{ charge.charge_date }}</td>
+            <td>{{ charge.category?.name_en }}</td>
+            <td>{{ guestLabel(charge) }}</td>
+            <td>{{ charge.description || '—' }}</td>
+            <td>{{ charge.invoice_reference || '—' }}</td>
+            <td class="fw-semibold">{{ (charge.amount + charge.tax_amount) | number:'1.2-2' }}</td>
+            <td>
+              <span class="badge border-0" [ngClass]="charge.payment_status === CHARGED_TO_ROOM ? 'badge-active' : 'badge-inactive'">
+                {{ (charge.payment_status === CHARGED_TO_ROOM ? 'POS.CHARGE_TO_ROOM' : 'POS.PAID_IMMEDIATELY') | translate }}
+              </span>
+            </td>
+            <td>
+              <span class="badge border-0" [ngClass]="charge.status === STATUS_ACTIVE ? 'badge-active' : 'badge-inactive'">
+                {{ (charge.status === STATUS_ACTIVE ? 'POS.STATUS_ACTIVE' : 'POS.STATUS_VOIDED') | translate }}
+              </span>
+            </td>
+            <td>
+              <button *ngIf="canVoid && charge.status === STATUS_ACTIVE" type="button"
+                      class="btn btn-sm btn-outline-danger"
+                      [disabled]="voidingId === charge.id"
+                      (click)="voidCharge(charge)">
+                <span *ngIf="voidingId === charge.id" class="spinner-border spinner-border-sm" role="status"></span>
+                <span *ngIf="voidingId !== charge.id">{{ 'POS.VOID' | translate }}</span>
+              </button>
+            </td>
+          </tr>
+          <tr *ngIf="!isLoading && charges.length === 0">
+            <td colspan="9" class="text-center text-muted py-4">{{ 'POS.NO_CHARGES' | translate }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="channex-pagination" *ngIf="charges.length > 0">
+      <button type="button" class="btn btn-sm btn-outline-secondary" (click)="previousPage()" [disabled]="page <= 1">
+        <i class="bi bi-chevron-left" aria-hidden="true"></i>
+      </button>
+      <span class="channex-pagination__page">{{ page }} / {{ lastPage }}</span>
+      <button type="button" class="btn btn-sm btn-outline-secondary" (click)="nextPage()" [disabled]="page >= lastPage">
+        <i class="bi bi-chevron-right" aria-hidden="true"></i>
+      </button>
+    </div>
+  </div>
+</div>

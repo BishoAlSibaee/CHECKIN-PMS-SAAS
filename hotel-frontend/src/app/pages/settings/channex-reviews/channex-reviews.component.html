@@ -1,0 +1,112 @@
+<div class="hotels-page">
+  <section class="dept-hero">
+    <div class="dept-hero__copy">
+      <p class="dept-hero__eyebrow">
+        <i class="bi bi-star" aria-hidden="true"></i>
+        {{ 'CHANNEX_REVIEWS.EYEBROW' | translate }}
+      </p>
+      <h1>{{ 'CHANNEX_REVIEWS.TITLE' | translate }}</h1>
+      <p class="dept-hero__subtitle">{{ 'CHANNEX_REVIEWS.SUBTITLE' | translate }}</p>
+    </div>
+    <div class="dept-hero__actions">
+      <button type="button" class="btn btn-outline-secondary" (click)="loadReviews(); loadScores()" [disabled]="isLoading">
+        <i class="bi bi-arrow-clockwise" [class.spin]="isLoading" aria-hidden="true"></i>
+        <span>{{ 'COMMON.REFRESH' | translate }}</span>
+      </button>
+    </div>
+  </section>
+
+  <!-- Score summary -->
+  <div class="card border-0 shadow-sm dept-card p-4" *ngIf="isLoadingScores">
+    <div class="skeleton skeleton-text" style="width: 40%; height: 22px;"></div>
+  </div>
+
+  <div class="card border-0 shadow-sm dept-card channex-scores-card" *ngIf="!isLoadingScores && scores as s">
+    <div class="channex-scores-summary">
+      <div class="channex-overall-score" [ngClass]="scoreClass(s.overall_score)">
+        <span class="channex-overall-score__value">{{ s.overall_score | number:'1.1-1' }}</span>
+        <span class="channex-overall-score__label">{{ 'CHANNEX_REVIEWS.OVERALL_SCORE' | translate }}</span>
+      </div>
+      <div class="channex-category-scores" *ngIf="s.categories?.length">
+        <div class="channex-category-score" *ngFor="let cat of s.categories">
+          <span class="channex-category-score__name">{{ cat.category }}</span>
+          <span class="channex-category-score__value">{{ cat.score | number:'1.1-1' }}</span>
+        </div>
+      </div>
+    </div>
+    <div class="channex-ota-scores" *ngIf="s.ota_scores?.length">
+      <span class="channex-ota-scores__label">{{ 'CHANNEX_REVIEWS.PER_PLATFORM' | translate }}:</span>
+      <span class="badge border-0 bg-light text-dark" *ngFor="let ota of s.ota_scores">
+        {{ ota.ota }}: {{ ota.overall_score | number:'1.1-1' }}
+      </span>
+    </div>
+  </div>
+
+  <div class="card border-0 shadow-sm dept-card p-4 text-center" *ngIf="!isLoadingScores && !scores">
+    <p class="text-muted small mb-0">{{ 'CHANNEX_REVIEWS.NO_SCORES_YET' | translate }}</p>
+  </div>
+
+  <!-- Reviews list -->
+  <div class="card border-0 shadow-sm dept-card" *ngIf="!loadError">
+    <div class="channex-reviews-list">
+      <ng-container *ngIf="isLoading">
+        <div class="channex-review-item" *ngFor="let i of [1,2,3]">
+          <div class="skeleton skeleton-text" style="width: 100%; height: 60px;"></div>
+        </div>
+      </ng-container>
+
+      <div class="dept-empty py-5" *ngIf="!isLoading && reviews.length === 0">
+        <i class="bi bi-star" aria-hidden="true"></i>
+        <p class="fw-semibold mb-1">{{ 'CHANNEX_REVIEWS.NO_REVIEWS' | translate }}</p>
+      </div>
+
+      <div class="channex-review-item" *ngFor="let review of reviews">
+        <div class="channex-review-item__header">
+          <span class="badge border-0" [ngClass]="scoreClass(review.overall_score)">
+            {{ review.overall_score | number:'1.1-1' }}
+          </span>
+          <span class="fw-semibold">{{ review.guest_name || ('CHANNEX_REVIEWS.ANONYMOUS_GUEST' | translate) }}</span>
+          <span class="badge border-0 bg-light text-dark">{{ review.ota }}</span>
+          <span class="channex-review-item__date">{{ review.received_at | date:'mediumDate' }}</span>
+          <span class="badge border-0 ms-auto" [ngClass]="review.is_replied ? 'bg-success-subtle text-success' : 'bg-warning-subtle text-warning'">
+            {{ (review.is_replied ? 'CHANNEX_REVIEWS.REPLIED' : 'CHANNEX_REVIEWS.NOT_REPLIED') | translate }}
+          </span>
+        </div>
+        <p class="channex-review-item__content">{{ review.content }}</p>
+
+        <div class="channex-review-item__reply" *ngIf="review.reply">
+          <p class="channex-review-item__reply-label">{{ 'CHANNEX_REVIEWS.YOUR_REPLY' | translate }}</p>
+          <p class="channex-review-item__reply-text">{{ review.reply }}</p>
+        </div>
+
+        <div class="channex-review-item__reply-form">
+          <textarea class="form-control form-control-sm" rows="2"
+                    [placeholder]="'CHANNEX_REVIEWS.REPLY_PLACEHOLDER' | translate"
+                    [(ngModel)]="replyDraft[review.id]" [name]="'reply_' + review.id"></textarea>
+          <button type="button" class="btn btn-sm btn-primary mt-2"
+                  (click)="submitReply(review)"
+                  [disabled]="!replyDraft[review.id]?.trim() || submittingReviewId === review.id">
+            <span *ngIf="submittingReviewId === review.id" class="spinner-border spinner-border-sm me-1" role="status"></span>
+            {{ (review.reply ? 'CHANNEX_REVIEWS.UPDATE_REPLY' : 'CHANNEX_REVIEWS.SEND_REPLY') | translate }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="channex-pagination" *ngIf="!isLoading && reviews.length > 0">
+      <button type="button" class="btn btn-sm btn-outline-secondary" (click)="previousPage()" [disabled]="page <= 1">
+        <i class="bi bi-chevron-left" aria-hidden="true"></i> {{ 'COMMON.BACK' | translate }}
+      </button>
+      <span class="channex-pagination__page">{{ 'CHANNEX_REVIEWS.PAGE' | translate }} {{ page }}</span>
+      <button type="button" class="btn btn-sm btn-outline-secondary" (click)="nextPage()" [disabled]="!hasNextPage">
+        {{ 'COMMON.NEXT' | translate }} <i class="bi bi-chevron-right" aria-hidden="true"></i>
+      </button>
+    </div>
+  </div>
+
+  <div class="card border-0 shadow-sm dept-card p-4 text-center" *ngIf="loadError">
+    <i class="bi bi-exclamation-triangle text-warning mb-2" style="font-size: 1.5rem;" aria-hidden="true"></i>
+    <p class="fw-semibold mb-1">{{ 'CHANNEX_REVIEWS.LOAD_ERROR' | translate }}</p>
+    <p class="text-muted small mb-0">{{ loadError }}</p>
+  </div>
+</div>

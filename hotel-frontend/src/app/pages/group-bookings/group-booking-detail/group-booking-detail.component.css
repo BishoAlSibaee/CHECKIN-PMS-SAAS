@@ -1,0 +1,95 @@
+.hotels-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+  padding: 0.25rem 0 1.5rem;
+}
+
+.dept-hero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem 1.35rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(14, 116, 144, 0.16);
+  background: linear-gradient(135deg, rgba(8, 145, 178, 0.1), rgba(236, 254, 255, 0.65) 42%, rgba(248, 250, 252, 0.95));
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.05);
+}
+
+.dept-hero__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0 0 0.45rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #0e7490;
+}
+
+.dept-hero h1 {
+  margin: 0 0 0.35rem;
+  font-size: 1.85rem;
+  font-weight: 800;
+  color: var(--primary, #0f4c4c);
+}
+
+.dept-hero__subtitle {
+  margin: 0;
+  color: #475569;
+  font-size: 0.95rem;
+}
+
+.dept-card {
+  border-radius: 1rem !important;
+}
+
+.channex-scores-card {
+  padding: 1.25rem 1.5rem;
+}
+
+.channex-scores-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.75rem;
+}
+
+.stat-tile {
+  display: flex;
+  flex-direction: column;
+  min-width: 6rem;
+}
+
+.stat-tile__value {
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--primary, #0f4c4c);
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-tile--warn .stat-tile__value {
+  color: #b45309;
+}
+
+.stat-tile__label {
+  font-size: 0.78rem;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.section-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--primary, #0f4c4c);
+}
+
+.clickable-row {
+  cursor: pointer;
+}
+
+.clickable-row:hover {
+  background: #f8fafc;
+}

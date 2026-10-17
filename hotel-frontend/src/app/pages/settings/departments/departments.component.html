@@ -1,0 +1,182 @@
+<div class="departments-page">
+  <section class="dept-hero">
+    <div class="dept-hero__copy">
+      <p class="dept-hero__eyebrow">
+        <i class="bi bi-diagram-3" aria-hidden="true"></i>
+        {{ 'DEPARTMENTS.EYEBROW' | translate }}
+      </p>
+      <h1>{{ 'DEPARTMENTS.TITLE' | translate }}</h1>
+      <p class="dept-hero__subtitle">{{ 'DEPARTMENTS.SUBTITLE' | translate }}</p>
+    </div>
+    <div class="dept-hero__actions">
+      <button type="button" class="btn btn-outline-secondary" (click)="loadDepartments()" [disabled]="isLoading"
+              [attr.aria-label]="'COMMON.REFRESH' | translate">
+        <i class="bi bi-arrow-clockwise" [class.spin]="isLoading" aria-hidden="true"></i>
+        <span>{{ 'COMMON.REFRESH' | translate }}</span>
+      </button>
+      <button type="button" class="btn btn-primary" (click)="openAddModal()">
+        <i class="bi bi-plus-lg" aria-hidden="true"></i>
+        <span>{{ 'DEPARTMENTS.ADD_NEW' | translate }}</span>
+      </button>
+    </div>
+  </section>
+
+  <div class="dept-summary" role="group" [attr.aria-label]="'DEPARTMENTS.SUMMARY_ARIA' | translate">
+    <ng-container *ngIf="isLoading">
+      <div class="dept-stat" *ngFor="let i of [1,2,3]">
+        <div class="skeleton skeleton-text" style="width: 40%;"></div>
+        <div class="skeleton skeleton-text mt-2" style="width: 30%; height: 1.5rem;"></div>
+      </div>
+    </ng-container>
+    <ng-container *ngIf="!isLoading">
+      <div class="dept-stat">
+        <span class="dept-stat__label">{{ 'DEPARTMENTS.STAT_TOTAL' | translate }}</span>
+        <span class="dept-stat__value">{{ departments.length }}</span>
+      </div>
+      <div class="dept-stat dept-stat--described">
+        <span class="dept-stat__label">{{ 'DEPARTMENTS.STAT_WITH_DESC' | translate }}</span>
+        <span class="dept-stat__value">{{ withDescriptionCount }}</span>
+      </div>
+      <div class="dept-stat dept-stat--plain">
+        <span class="dept-stat__label">{{ 'DEPARTMENTS.STAT_WITHOUT_DESC' | translate }}</span>
+        <span class="dept-stat__value">{{ departments.length - withDescriptionCount }}</span>
+      </div>
+    </ng-container>
+  </div>
+
+  <div class="card border-0 shadow-sm dept-card">
+    <div class="dept-toolbar">
+      <div class="ui-search dept-search flex-grow-1">
+        <i class="bi bi-search ui-search__icon" aria-hidden="true"></i>
+        <label class="visually-hidden" for="departmentsSearch">{{ 'DEPARTMENTS.SEARCH' | translate }}</label>
+        <input id="departmentsSearch" type="search" class="form-control ui-search__input"
+               [(ngModel)]="searchTerm"
+               [placeholder]="'DEPARTMENTS.SEARCH' | translate" />
+      </div>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0 dept-table">
+        <thead>
+          <tr>
+            <th>{{ 'DEPARTMENTS.NAME_EN' | translate }}</th>
+            <th>{{ 'DEPARTMENTS.NAME_AR' | translate }}</th>
+            <th>{{ 'DEPARTMENTS.DESCRIPTION' | translate }}</th>
+            <th class="text-end">{{ 'COMMON.ACTIONS' | translate }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <ng-container *ngIf="isLoading">
+            <tr *ngFor="let i of [1,2,3,4,5]">
+              <td><div class="skeleton skeleton-text" style="width: 120px;"></div></td>
+              <td><div class="skeleton skeleton-text" style="width: 100px;"></div></td>
+              <td><div class="skeleton skeleton-text" style="width: 180px;"></div></td>
+              <td class="text-end">
+                <div class="skeleton ms-auto" style="width: 72px; height: 32px; border-radius: 6px;"></div>
+              </td>
+            </tr>
+          </ng-container>
+
+          <tr *ngIf="!isLoading && filteredDepartments.length === 0">
+            <td colspan="4" class="py-5 text-center">
+              <div class="dept-empty">
+                <i class="bi bi-diagram-3" aria-hidden="true"></i>
+                <p class="fw-semibold mb-1">
+                  {{ (departments.length === 0 ? 'DEPARTMENTS.NO_DEPARTMENTS' : 'DEPARTMENTS.NO_RESULTS') | translate }}
+                </p>
+                <p class="text-muted small mb-3">
+                  {{ (departments.length === 0 ? 'DEPARTMENTS.EMPTY_HINT' : 'DEPARTMENTS.NO_RESULTS_HINT') | translate }}
+                </p>
+                <button type="button" class="btn btn-primary btn-sm" *ngIf="departments.length === 0" (click)="openAddModal()">
+                  <i class="bi bi-plus-lg me-1" aria-hidden="true"></i>{{ 'DEPARTMENTS.ADD_NEW' | translate }}
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" *ngIf="departments.length > 0"
+                        (click)="clearFilters()">
+                  {{ 'DEPARTMENTS.CLEAR_FILTERS' | translate }}
+                </button>
+              </div>
+            </td>
+          </tr>
+
+          <tr *ngFor="let dept of filteredDepartments">
+            <td class="fw-semibold">{{ dept.name_en }}</td>
+            <td dir="auto">{{ dept.name_ar }}</td>
+            <td class="text-muted small">{{ dept.description || ('COMMON.NA' | translate) }}</td>
+            <td class="text-end text-nowrap">
+              <button type="button" class="btn btn-sm btn-light text-primary me-1"
+                      (click)="openEditModal(dept)"
+                      [attr.aria-label]="'COMMON.EDIT' | translate"
+                      [attr.title]="'COMMON.EDIT' | translate">
+                <i class="bi bi-pencil" aria-hidden="true"></i>
+              </button>
+              <button type="button" class="btn btn-sm btn-light text-danger"
+                      (click)="deleteDepartment(dept.id)"
+                      [attr.aria-label]="'COMMON.DELETE' | translate"
+                      [attr.title]="'COMMON.DELETE' | translate">
+                <i class="bi bi-trash" aria-hidden="true"></i>
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="dept-footer" *ngIf="!isLoading && filteredDepartments.length > 0">
+      <span class="small text-muted">
+        {{ 'DEPARTMENTS.SHOWING_COUNT' | translate:{ shown: filteredDepartments.length, total: departments.length } }}
+      </span>
+    </div>
+  </div>
+</div>
+
+<div *ngIf="showModal" class="modal-backdrop-custom" (click)="closeModal()">
+  <div class="modal-content-custom card border-0 shadow-lg"
+       (click)="$event.stopPropagation()"
+       role="dialog"
+       aria-modal="true"
+       [attr.aria-labelledby]="'department-modal-title'">
+    <div class="card-header bg-white py-3 border-bottom d-flex align-items-center justify-content-between">
+      <div>
+        <p class="small text-muted text-uppercase fw-semibold mb-1">{{ 'DEPARTMENTS.EYEBROW' | translate }}</p>
+        <h2 class="h5 mb-0" id="department-modal-title">
+          {{ (isEditMode ? 'DEPARTMENTS.EDIT' : 'DEPARTMENTS.ADD_NEW') | translate }}
+        </h2>
+      </div>
+      <button type="button" class="btn btn-sm btn-light" (click)="closeModal()"
+              [attr.aria-label]="'COMMON.CANCEL' | translate" [disabled]="isSaving">
+        <i class="bi bi-x-lg" aria-hidden="true"></i>
+      </button>
+    </div>
+    <div class="card-body p-4">
+      <form (ngSubmit)="saveDepartment()">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label small fw-bold" for="deptNameEn">{{ 'DEPARTMENTS.NAME_EN' | translate }}</label>
+            <input id="deptNameEn" type="text" [(ngModel)]="currentDepartment.name_en" name="name_en"
+                   class="form-control" required autocomplete="off">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small fw-bold" for="deptNameAr">{{ 'DEPARTMENTS.NAME_AR' | translate }}</label>
+            <input id="deptNameAr" type="text" [(ngModel)]="currentDepartment.name_ar" name="name_ar"
+                   class="form-control" dir="rtl" required autocomplete="off">
+          </div>
+          <div class="col-12">
+            <label class="form-label small fw-bold" for="deptDesc">{{ 'DEPARTMENTS.DESCRIPTION' | translate }}</label>
+            <textarea id="deptDesc" [(ngModel)]="currentDepartment.description" name="description"
+                      class="form-control" rows="3"
+                      [placeholder]="'DEPARTMENTS.DESCRIPTION_PLACEHOLDER' | translate"></textarea>
+          </div>
+        </div>
+        <div class="d-flex gap-2 mt-4">
+          <button type="button" class="btn btn-light flex-grow-1" (click)="closeModal()" [disabled]="isSaving">
+            {{ 'COMMON.CANCEL' | translate }}
+          </button>
+          <button type="submit" class="btn btn-primary flex-grow-1" [disabled]="isSaving">
+            <span *ngIf="isSaving" class="spinner-border spinner-border-sm me-2" role="status"></span>
+            {{ (isEditMode ? 'DEPARTMENTS.UPDATE' : 'DEPARTMENTS.SAVE') | translate }}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>

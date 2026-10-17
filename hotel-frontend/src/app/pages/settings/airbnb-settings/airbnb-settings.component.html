@@ -1,0 +1,93 @@
+<div class="hotels-page">
+  <section class="dept-hero">
+    <div class="dept-hero__copy">
+      <p class="dept-hero__eyebrow">
+        <i class="bi bi-house-heart" aria-hidden="true"></i>
+        {{ 'AIRBNB_SETTINGS.EYEBROW' | translate }}
+      </p>
+      <h1>{{ 'AIRBNB_SETTINGS.TITLE' | translate }}</h1>
+      <p class="dept-hero__subtitle">{{ 'AIRBNB_SETTINGS.SUBTITLE' | translate }}</p>
+    </div>
+    <div class="dept-hero__actions">
+      <button type="button" class="btn btn-outline-secondary" (click)="loadSettings()" [disabled]="isLoading">
+        <i class="bi bi-arrow-clockwise" [class.spin]="isLoading" aria-hidden="true"></i>
+        <span>{{ 'COMMON.REFRESH' | translate }}</span>
+      </button>
+    </div>
+  </section>
+
+  <div *ngIf="isLoading" class="card border-0 shadow-sm dept-card p-4">
+    <div class="skeleton skeleton-text" style="width: 60%; height: 22px;"></div>
+    <div class="skeleton skeleton-text mt-2" style="width: 40%; height: 18px;"></div>
+  </div>
+
+  <div *ngIf="!isLoading && settings as s" class="card border-0 shadow-sm dept-card p-4">
+    <h2 class="h6 mb-3">{{ 'AIRBNB_SETTINGS.MODE_LABEL' | translate }}</h2>
+
+    <div class="mode-options mb-4">
+      <button type="button" class="mode-option" *ngFor="let mode of modes"
+              [class.mode-option--active]="s.mode === mode"
+              (click)="setMode(mode)">
+        <i class="bi" [ngClass]="{
+          'bi-check-circle-fill': mode === 'auto_accept',
+          'bi-person-check': mode === 'manual_review',
+          'bi-x-circle-fill': mode === 'auto_decline'
+        }" aria-hidden="true"></i>
+        <div>
+          <p class="fw-semibold mb-1">{{ modeLabelKey(mode) | translate }}</p>
+          <p class="small text-muted mb-0">{{ modeHintKey(mode) | translate }}</p>
+        </div>
+      </button>
+    </div>
+
+    <ng-container *ngIf="s.mode === 'manual_review'">
+      <hr>
+      <div class="row g-3">
+        <div class="col-12 col-md-6">
+          <label class="form-label small fw-bold" for="reminderInterval">{{ 'AIRBNB_SETTINGS.REMINDER_INTERVAL' | translate }}</label>
+          <div class="input-group">
+            <input id="reminderInterval" type="number" min="1" class="form-control"
+                   [(ngModel)]="s.reminder_interval_minutes" name="reminder_interval_minutes">
+            <span class="input-group-text">{{ 'AIRBNB_SETTINGS.MINUTES' | translate }}</span>
+          </div>
+          <div class="form-text">{{ 'AIRBNB_SETTINGS.REMINDER_INTERVAL_HINT' | translate }}</div>
+        </div>
+
+        <div class="col-12 col-md-6">
+          <label class="form-label small fw-bold">{{ 'AIRBNB_SETTINGS.FALLBACK_ACTION' | translate }}</label>
+          <div class="btn-group w-100" role="group">
+            <button type="button" class="btn" [class.btn-success]="s.fallback_action === 'accept'"
+                    [class.btn-outline-success]="s.fallback_action !== 'accept'"
+                    (click)="setFallbackAction('accept')">
+              {{ 'AIRBNB_SETTINGS.FALLBACK_ACCEPT' | translate }}
+            </button>
+            <button type="button" class="btn" [class.btn-danger]="s.fallback_action === 'decline'"
+                    [class.btn-outline-danger]="s.fallback_action !== 'decline'"
+                    (click)="setFallbackAction('decline')">
+              {{ 'AIRBNB_SETTINGS.FALLBACK_DECLINE' | translate }}
+            </button>
+          </div>
+          <div class="form-text">{{ 'AIRBNB_SETTINGS.FALLBACK_ACTION_HINT' | translate }}</div>
+        </div>
+      </div>
+    </ng-container>
+
+    <ng-container *ngIf="s.mode === 'auto_decline' || (s.mode === 'manual_review' && s.fallback_action === 'decline')">
+      <div class="mt-3">
+        <label class="form-label small fw-bold" for="declineReason">{{ 'AIRBNB_SETTINGS.DECLINE_REASON' | translate }}</label>
+        <select id="declineReason" class="form-select" [(ngModel)]="s.decline_reason" name="decline_reason">
+          <option *ngFor="let reason of declineReasons" [value]="reason">
+            {{ reasonLabelKey(reason) | translate }}
+          </option>
+        </select>
+      </div>
+    </ng-container>
+
+    <div class="d-flex justify-content-end mt-4">
+      <button type="button" class="btn btn-primary" (click)="save()" [disabled]="isSaving">
+        <span class="spinner-border spinner-border-sm me-2" *ngIf="isSaving" role="status"></span>
+        {{ 'COMMON.SAVE' | translate }}
+      </button>
+    </div>
+  </div>
+</div>

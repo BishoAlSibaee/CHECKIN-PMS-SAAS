@@ -1,0 +1,115 @@
+<div class="hotels-page">
+  <section class="dept-hero">
+    <div class="dept-hero__copy">
+      <p class="dept-hero__eyebrow">
+        <i class="bi bi-diagram-3" aria-hidden="true"></i>
+        {{ 'PLATFORM_LEDGER.EYEBROW' | translate }}
+      </p>
+      <h1>{{ 'PLATFORM_LEDGER.TITLE' | translate }}</h1>
+      <p class="dept-hero__subtitle">{{ 'PLATFORM_LEDGER.SUBTITLE' | translate }}</p>
+    </div>
+    <div class="dept-hero__actions">
+      <button type="button" class="btn btn-outline-secondary" (click)="loadPlatforms()" [disabled]="isLoading">
+        <i class="bi bi-arrow-clockwise" [class.spin]="isLoading" aria-hidden="true"></i>
+        <span>{{ 'COMMON.REFRESH' | translate }}</span>
+      </button>
+    </div>
+  </section>
+
+  <div class="card border-0 shadow-sm dept-card">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0 dept-table">
+        <thead>
+          <tr>
+            <th>{{ 'PLATFORM_LEDGER.PLATFORM' | translate }}</th>
+            <th>{{ 'PLATFORM_LEDGER.PLATFORM_OWES_HOTEL' | translate }}</th>
+            <th>{{ 'PLATFORM_LEDGER.HOTEL_OWES_PLATFORM' | translate }}</th>
+            <th>{{ 'PLATFORM_LEDGER.NET_BALANCE' | translate }}</th>
+            <th class="text-end">{{ 'COMMON.ACTIONS' | translate }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <ng-container *ngIf="isLoading">
+            <tr *ngFor="let i of [1,2]">
+              <td colspan="5"><div class="skeleton skeleton-text" style="width: 100%; height: 22px;"></div></td>
+            </tr>
+          </ng-container>
+
+          <tr *ngIf="!isLoading && platforms.length === 0">
+            <td colspan="5" class="py-5 text-center">
+              <div class="dept-empty">
+                <i class="bi bi-diagram-3" aria-hidden="true"></i>
+                <p class="fw-semibold mb-1">{{ 'PLATFORM_LEDGER.NO_PLATFORMS' | translate }}</p>
+                <p class="text-muted small mb-0">{{ 'PLATFORM_LEDGER.EMPTY_HINT' | translate }}</p>
+              </div>
+            </td>
+          </tr>
+
+          <tr *ngFor="let platform of platforms">
+            <td class="fw-semibold">{{ platform.name_en }} <span class="text-muted small" dir="auto">({{ platform.name_ar }})</span></td>
+            <td>{{ platform.total_debit | number:'1.2-2' }}</td>
+            <td>{{ platform.total_credit | number:'1.2-2' }}</td>
+            <td>
+              <span class="badge border-0" [ngClass]="platform.balance >= 0 ? 'bg-success-subtle text-success' : 'bg-warning-subtle text-warning'">
+                {{ platform.balance | number:'1.2-2' }}
+              </span>
+            </td>
+            <td class="text-end">
+              <button type="button" class="btn btn-sm btn-light text-primary" (click)="openStatement(platform)">
+                <i class="bi bi-list-ul me-1" aria-hidden="true"></i>{{ 'PLATFORM_LEDGER.VIEW_STATEMENT' | translate }}
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Statement modal -->
+<div *ngIf="selectedPlatform" class="modal-backdrop-custom" (click)="closeStatement()">
+  <div class="modal-content-custom card border-0 shadow-lg" (click)="$event.stopPropagation()"
+       role="dialog" aria-modal="true" style="max-width: 46rem;">
+    <div class="card-header bg-white py-3 border-bottom d-flex align-items-center justify-content-between">
+      <div>
+        <p class="small text-muted text-uppercase fw-semibold mb-1">{{ 'PLATFORM_LEDGER.EYEBROW' | translate }}</p>
+        <h2 class="h5 mb-0">{{ selectedPlatform.name_en }}</h2>
+      </div>
+      <button type="button" class="btn btn-sm btn-light" (click)="closeStatement()">
+        <i class="bi bi-x-lg" aria-hidden="true"></i>
+      </button>
+    </div>
+    <div class="card-body p-4">
+      <div *ngIf="isLoadingStatement" class="text-center py-4">
+        <div class="spinner-border spinner-border-sm" role="status"></div>
+      </div>
+
+      <div *ngIf="!isLoadingStatement && statement">
+        <table class="table table-sm">
+          <thead>
+            <tr>
+              <th>{{ 'PLATFORM_LEDGER.DATE' | translate }}</th>
+              <th>{{ 'PLATFORM_LEDGER.DESCRIPTION' | translate }}</th>
+              <th>{{ 'PLATFORM_LEDGER.PLATFORM_OWES_HOTEL' | translate }}</th>
+              <th>{{ 'PLATFORM_LEDGER.HOTEL_OWES_PLATFORM' | translate }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let line of statement.lines">
+              <td>{{ line.entry_date }}</td>
+              <td>{{ line.description }}</td>
+              <td>{{ line.debit > 0 ? (line.debit | number:'1.2-2') : '—' }}</td>
+              <td>{{ line.credit > 0 ? (line.credit | number:'1.2-2') : '—' }}</td>
+            </tr>
+            <tr *ngIf="statement.lines.length === 0">
+              <td colspan="4" class="text-center text-muted small py-3">{{ 'PLATFORM_LEDGER.NO_ENTRIES' | translate }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="d-flex justify-content-end gap-4 mt-2 fw-semibold">
+          <span>{{ 'PLATFORM_LEDGER.NET_BALANCE' | translate }}: {{ statement.balance | number:'1.2-2' }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

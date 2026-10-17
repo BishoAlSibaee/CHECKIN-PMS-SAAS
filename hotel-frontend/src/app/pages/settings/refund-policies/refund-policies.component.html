@@ -1,0 +1,411 @@
+<div class="refund-policies-page">
+  <section class="rp-hero">
+    <div class="rp-hero__copy">
+      <p class="rp-hero__eyebrow">
+        <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i>
+        {{ 'REFUND_POLICIES.EYEBROW' | translate }}
+      </p>
+      <h1>{{ 'REFUND_POLICIES.TITLE' | translate }}</h1>
+      <p class="rp-hero__subtitle">{{ 'REFUND_POLICIES.SUBTITLE' | translate }}</p>
+    </div>
+    <div class="rp-hero__actions">
+      <button type="button" class="btn btn-outline-secondary" (click)="loadPolicies()" [disabled]="isLoading"
+              [attr.aria-label]="'COMMON.REFRESH' | translate">
+        <i class="bi bi-arrow-clockwise" [class.spin]="isLoading" aria-hidden="true"></i>
+        <span>{{ 'COMMON.REFRESH' | translate }}</span>
+      </button>
+      <button type="button" class="btn btn-primary" (click)="openAddModal()">
+        <i class="bi bi-plus-lg" aria-hidden="true"></i>
+        <span>{{ 'REFUND_POLICIES.ADD_NEW' | translate }}</span>
+      </button>
+    </div>
+  </section>
+
+  <div class="rp-summary" role="group" [attr.aria-label]="'REFUND_POLICIES.SUMMARY_ARIA' | translate">
+    <ng-container *ngIf="isLoading">
+      <div class="rp-stat" *ngFor="let i of [1,2,3]">
+        <div class="skeleton skeleton-text" style="width: 40%;"></div>
+        <div class="skeleton skeleton-text mt-2" style="width: 30%; height: 1.5rem;"></div>
+      </div>
+    </ng-container>
+    <ng-container *ngIf="!isLoading">
+      <div class="rp-stat">
+        <span class="rp-stat__label">{{ 'REFUND_POLICIES.STAT_TOTAL' | translate }}</span>
+        <span class="rp-stat__value">{{ policies.length }}</span>
+      </div>
+      <div class="rp-stat rp-stat--before">
+        <span class="rp-stat__label">{{ 'REFUND_POLICIES.STAT_BEFORE' | translate }}</span>
+        <span class="rp-stat__value">{{ beforeCount }}</span>
+      </div>
+      <div class="rp-stat rp-stat--during">
+        <span class="rp-stat__label">{{ 'REFUND_POLICIES.STAT_DURING' | translate }}</span>
+        <span class="rp-stat__value">{{ duringCount }}</span>
+      </div>
+    </ng-container>
+  </div>
+
+  <div class="card border-0 shadow-sm rp-card">
+    <div class="rp-toolbar">
+      <div class="ui-search rp-search flex-grow-1">
+        <i class="bi bi-search ui-search__icon" aria-hidden="true"></i>
+        <label class="visually-hidden" for="refundPoliciesSearch">{{ 'REFUND_POLICIES.SEARCH' | translate }}</label>
+        <input id="refundPoliciesSearch" type="search" class="form-control ui-search__input"
+               [(ngModel)]="searchTerm"
+               [placeholder]="'REFUND_POLICIES.SEARCH' | translate" />
+      </div>
+      <div class="rp-timing-filter" role="group" [attr.aria-label]="'REFUND_POLICIES.TIMING_FILTER_ARIA' | translate">
+        <button type="button" class="rp-chip"
+                [class.rp-chip--active]="timingFilter === 'all'"
+                (click)="timingFilter = 'all'">{{ 'REFUND_POLICIES.FILTER_ALL' | translate }}</button>
+        <button type="button" class="rp-chip"
+                [class.rp-chip--active]="timingFilter === 'before_start'"
+                (click)="timingFilter = 'before_start'">{{ 'REFUND_POLICIES.BEFORE_START' | translate }}</button>
+        <button type="button" class="rp-chip"
+                [class.rp-chip--active]="timingFilter === 'after_start'"
+                (click)="timingFilter = 'after_start'">{{ 'REFUND_POLICIES.AFTER_START_SHORT' | translate }}</button>
+      </div>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0 rp-table">
+        <thead>
+          <tr>
+            <th>{{ 'REFUND_POLICIES.NAME' | translate }}</th>
+            <th>{{ 'REFUND_POLICIES.RENT_TYPE' | translate }}</th>
+            <th>{{ 'REFUND_POLICIES.TIMING' | translate }}</th>
+            <th>{{ 'REFUND_POLICIES.THRESHOLD' | translate }}</th>
+            <th>{{ 'REFUND_POLICIES.PERCENT' | translate }}</th>
+            <th>{{ 'REFUND_POLICIES.BASIS' | translate }}</th>
+            <th>{{ 'REFUND_POLICIES.PAYMENT' | translate }}</th>
+            <th class="text-end">{{ 'COMMON.ACTIONS' | translate }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <ng-container *ngIf="isLoading">
+            <tr *ngFor="let i of [1,2,3,4,5]">
+              <td><div class="skeleton skeleton-text" style="width: 140px;"></div></td>
+              <td><div class="skeleton" style="width: 70px; height: 22px; border-radius: 999px;"></div></td>
+              <td><div class="skeleton" style="width: 90px; height: 22px; border-radius: 999px;"></div></td>
+              <td><div class="skeleton skeleton-text" style="width: 80px;"></div></td>
+              <td><div class="skeleton skeleton-text" style="width: 50px;"></div></td>
+              <td><div class="skeleton skeleton-text" style="width: 100px;"></div></td>
+              <td><div class="skeleton skeleton-text" style="width: 90px;"></div></td>
+              <td class="text-end">
+                <div class="skeleton ms-auto" style="width: 72px; height: 32px; border-radius: 6px;"></div>
+              </td>
+            </tr>
+          </ng-container>
+
+          <tr *ngIf="!isLoading && filteredPolicies.length === 0">
+            <td colspan="8" class="py-5 text-center">
+              <div class="rp-empty">
+                <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i>
+                <p class="fw-semibold mb-1">
+                  {{ (policies.length === 0 ? 'REFUND_POLICIES.EMPTY' : 'REFUND_POLICIES.NO_RESULTS') | translate }}
+                </p>
+                <p class="text-muted small mb-3">
+                  {{ (policies.length === 0 ? 'REFUND_POLICIES.EMPTY_HINT' : 'REFUND_POLICIES.NO_RESULTS_HINT') | translate }}
+                </p>
+                <button type="button" class="btn btn-primary btn-sm" *ngIf="policies.length === 0" (click)="openAddModal()">
+                  <i class="bi bi-plus-lg me-1" aria-hidden="true"></i>{{ 'REFUND_POLICIES.ADD_NEW' | translate }}
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" *ngIf="policies.length > 0"
+                        (click)="clearFilters()">
+                  {{ 'REFUND_POLICIES.CLEAR_FILTERS' | translate }}
+                </button>
+              </div>
+            </td>
+          </tr>
+
+          <tr *ngFor="let p of filteredPolicies">
+            <td class="fw-semibold">
+              <span>{{ p.name }}</span>
+              <span class="badge tie-priority-badge ms-2" *ngIf="hasTiePriority(p)">
+                {{ 'REFUND_POLICIES.TIE_PRIORITY_BADGE' | translate }}
+              </span>
+            </td>
+            <td>
+              <span class="badge rounded-pill rp-badge--rent">{{ rentTypeLabel(p.rent_type) }}</span>
+            </td>
+            <td>
+              <span class="badge rounded-pill"
+                    [class.rp-badge--before]="isBeforeStart(p)"
+                    [class.rp-badge--during]="!isBeforeStart(p)">
+                {{ timingLabel(p.timing) }}
+              </span>
+            </td>
+            <td>
+              <span class="badge rounded-pill"
+                    [class.rp-badge--fixed]="isFixedThreshold(p)"
+                    [class.rp-badge--percent]="!isFixedThreshold(p)">
+                {{ thresholdLabel(p) }}{{ isFixedThreshold(p) ? (' ' + ('REFUND_POLICIES.DAYS_UNIT' | translate)) : '' }}
+              </span>
+            </td>
+            <td class="fw-bold text-primary text-nowrap">{{ p.refund_percent }}%</td>
+            <td class="small text-muted">{{ basisLabel(p.refund_basis) }}</td>
+            <td class="small">{{ paymentLabels(p) }}</td>
+            <td class="text-end text-nowrap">
+              <button type="button" class="btn btn-sm btn-light text-primary me-1"
+                      (click)="openEditModal(p)"
+                      [attr.aria-label]="'REFUND_POLICIES.EDIT' | translate"
+                      [attr.title]="'COMMON.EDIT' | translate">
+                <i class="bi bi-pencil" aria-hidden="true"></i>
+              </button>
+              <button type="button" class="btn btn-sm btn-light text-danger"
+                      (click)="deletePolicy(p.id)"
+                      [attr.aria-label]="'COMMON.DELETE' | translate"
+                      [attr.title]="'COMMON.DELETE' | translate">
+                <i class="bi bi-trash" aria-hidden="true"></i>
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="rp-footer" *ngIf="!isLoading && filteredPolicies.length > 0">
+      <span class="small text-muted">
+        {{ 'REFUND_POLICIES.SHOWING_COUNT' | translate:{ shown: filteredPolicies.length, total: policies.length } }}
+      </span>
+    </div>
+  </div>
+</div>
+
+<div
+  *ngIf="showModal"
+  class="refund-policy-modal-backdrop"
+  (click)="closeModal()"
+  role="presentation">
+  <div
+    class="refund-policy-modal card border-0 shadow-lg"
+    (click)="$event.stopPropagation()"
+    role="dialog"
+    aria-modal="true"
+    [attr.aria-labelledby]="'refund-policy-modal-title'">
+    <div class="refund-policy-modal__header">
+      <div class="d-flex align-items-start gap-3">
+        <span class="refund-policy-modal__icon" aria-hidden="true">
+          <i class="bi bi-arrow-counterclockwise"></i>
+        </span>
+        <div class="flex-grow-1 min-w-0">
+          <p class="refund-policy-modal__eyebrow mb-1">{{ 'REFUND_POLICIES.EYEBROW' | translate }}</p>
+          <h2 class="h5 mb-1 fw-bold" id="refund-policy-modal-title">
+            {{ (isEditMode ? 'REFUND_POLICIES.EDIT' : 'REFUND_POLICIES.ADD_NEW') | translate }}
+          </h2>
+          <p class="text-muted small mb-0">{{ 'REFUND_POLICIES.MODAL_SUBTITLE' | translate }}</p>
+        </div>
+        <button type="button" class="btn btn-sm btn-light refund-policy-modal__close" (click)="closeModal()" [disabled]="isSaving" [attr.aria-label]="'COMMON.CANCEL' | translate">
+          <i class="bi bi-x-lg"></i>
+        </button>
+      </div>
+    </div>
+
+    <form class="refund-policy-modal__body" (ngSubmit)="savePolicy()" #policyForm="ngForm">
+      <section class="modal-section">
+        <h6 class="modal-section__title">
+          <i class="bi bi-card-text"></i>
+          {{ 'REFUND_POLICIES.SECTION_IDENTITY' | translate }}
+        </h6>
+        <div class="row g-3">
+          <div class="col-12">
+            <label class="form-label small fw-bold" for="policy-name">{{ 'REFUND_POLICIES.NAME' | translate }}</label>
+            <input
+              id="policy-name"
+              type="text"
+              [(ngModel)]="currentPolicy.name"
+              name="name"
+              class="form-control"
+              [class.is-invalid]="policyForm.submitted && !currentPolicy.name.trim()"
+              [placeholder]="'REFUND_POLICIES.NAME_PLACEHOLDER' | translate"
+              required
+              autocomplete="off">
+            <div class="invalid-feedback">{{ 'REFUND_POLICIES.NAME_REQUIRED' | translate }}</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="modal-section">
+        <h6 class="modal-section__title">
+          <i class="bi bi-calendar-event"></i>
+          {{ 'REFUND_POLICIES.SECTION_APPLICABILITY' | translate }}
+        </h6>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label small fw-bold" for="policy-rent-type">{{ 'REFUND_POLICIES.RENT_TYPE' | translate }}</label>
+            <select id="policy-rent-type" [(ngModel)]="currentPolicy.rent_type" name="rent_type" class="form-select">
+              <option [ngValue]="null">{{ 'REFUND_POLICIES.RENT_ALL' | translate }}</option>
+              <option [ngValue]="0">{{ 'REFUND_POLICIES.RENT_DAILY' | translate }}</option>
+              <option [ngValue]="1">{{ 'REFUND_POLICIES.RENT_MONTHLY' | translate }}</option>
+              <option [ngValue]="2">{{ 'REFUND_POLICIES.RENT_ANNUAL' | translate }}</option>
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small fw-bold" for="policy-timing">{{ 'REFUND_POLICIES.TIMING' | translate }}</label>
+            <select id="policy-timing" [(ngModel)]="currentPolicy.timing" name="timing" class="form-select" required>
+              <option value="before_start">{{ 'REFUND_POLICIES.BEFORE_START' | translate }}</option>
+              <option value="after_start">{{ 'REFUND_POLICIES.AFTER_START' | translate }}</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <section class="modal-section">
+        <h6 class="modal-section__title">
+          <i class="bi bi-hourglass-split"></i>
+          {{ 'REFUND_POLICIES.SECTION_THRESHOLD' | translate }}
+        </h6>
+        <p class="text-muted small modal-section__hint">{{ 'REFUND_POLICIES.SECTION_THRESHOLD_HINT' | translate }}</p>
+        <div class="threshold-mode-pills mb-3" role="group" [attr.aria-label]="'REFUND_POLICIES.THRESHOLD_MODE' | translate">
+          <button
+            type="button"
+            class="btn btn-sm"
+            [class.btn-primary]="(currentPolicy.threshold_mode ?? 'fixed_days') === 'fixed_days'"
+            [class.btn-outline-secondary]="(currentPolicy.threshold_mode ?? 'fixed_days') !== 'fixed_days'"
+            (click)="setThresholdMode('fixed_days')">
+            {{ 'REFUND_POLICIES.THRESHOLD_FIXED' | translate }}
+          </button>
+          <button
+            type="button"
+            class="btn btn-sm"
+            [class.btn-primary]="currentPolicy.threshold_mode === 'percent_of_stay'"
+            [class.btn-outline-secondary]="!isPercentThresholdMode"
+            (click)="setThresholdMode('percent_of_stay')">
+            {{ 'REFUND_POLICIES.THRESHOLD_PERCENT' | translate }}
+          </button>
+        </div>
+        <div class="row g-3">
+          <div class="col-md-6" *ngIf="(currentPolicy.threshold_mode ?? 'fixed_days') === 'fixed_days'">
+            <label class="form-label small fw-bold" for="policy-days">{{ 'REFUND_POLICIES.DAYS' | translate }}</label>
+            <div class="input-group">
+              <input
+                id="policy-days"
+                type="number"
+                min="0"
+                [(ngModel)]="currentPolicy.days_threshold"
+                name="days_threshold"
+                class="form-control"
+                required>
+              <span class="input-group-text">{{ 'REFUND_POLICIES.DAYS_UNIT' | translate }}</span>
+            </div>
+          </div>
+          <div class="col-12" *ngIf="isPercentThresholdMode">
+            <label class="form-label small fw-bold" for="policy-stay-pct">{{ 'REFUND_POLICIES.STAY_PERCENT' | translate }}</label>
+            <div class="input-group">
+              <input
+                id="policy-stay-pct"
+                type="number"
+                min="0"
+                max="100"
+                step="0.01"
+                [(ngModel)]="currentPolicy.threshold_percent"
+                name="threshold_percent"
+                class="form-control"
+                required>
+              <span class="input-group-text">%</span>
+            </div>
+            <p class="text-muted small mb-0 mt-1">{{ 'REFUND_POLICIES.STAY_PERCENT_HINT' | translate }}</p>
+
+            <div class="tie-breaker-card mt-3">
+              <p class="tie-breaker-card__title mb-2">{{ 'REFUND_POLICIES.TIE_BREAKER_TITLE' | translate }}</p>
+              <p class="text-muted small mb-3">{{ 'REFUND_POLICIES.TIE_BREAKER_HINT' | translate }}</p>
+              <div class="tie-breaker-options" role="radiogroup" [attr.aria-label]="'REFUND_POLICIES.TIE_BREAKER_TITLE' | translate">
+                <label class="tie-breaker-option">
+                  <input
+                    type="radio"
+                    name="tie_priority"
+                    [checked]="(currentPolicy.priority ?? 0) === 0"
+                    (change)="setTiePriority(0)">
+                  <span>{{ 'REFUND_POLICIES.TIE_BREAKER_PREFER_FIXED' | translate }}</span>
+                </label>
+                <label class="tie-breaker-option">
+                  <input
+                    type="radio"
+                    name="tie_priority"
+                    [checked]="currentPolicy.priority === 1"
+                    (change)="setTiePriority(1)">
+                  <span>{{ 'REFUND_POLICIES.TIE_BREAKER_PREFER_THIS' | translate }}</span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="modal-section">
+        <h6 class="modal-section__title">
+          <i class="bi bi-cash-coin"></i>
+          {{ 'REFUND_POLICIES.SECTION_REFUND' | translate }}
+        </h6>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label small fw-bold" for="policy-refund-pct">{{ 'REFUND_POLICIES.PERCENT' | translate }}</label>
+            <div class="input-group">
+              <input
+                id="policy-refund-pct"
+                type="number"
+                min="0"
+                max="100"
+                step="0.01"
+                [(ngModel)]="currentPolicy.refund_percent"
+                name="refund_percent"
+                class="form-control"
+                required>
+              <span class="input-group-text">%</span>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small fw-bold" for="policy-basis">{{ 'REFUND_POLICIES.BASIS' | translate }}</label>
+            <select id="policy-basis" [(ngModel)]="currentPolicy.refund_basis" name="refund_basis" class="form-select" required>
+              <option value="total">{{ 'REFUND_POLICIES.BASIS_TOTAL' | translate }}</option>
+              <option value="remaining_nights">{{ 'REFUND_POLICIES.BASIS_REMAINING_NIGHTS' | translate }}</option>
+              <option value="paid_net">{{ 'REFUND_POLICIES.BASIS_PAID_NET' | translate }}</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <section class="modal-section">
+        <h6 class="modal-section__title">
+          <i class="bi bi-credit-card"></i>
+          {{ 'REFUND_POLICIES.SECTION_PAYMENT' | translate }}
+        </h6>
+        <p class="text-muted small modal-section__hint">{{ 'REFUND_POLICIES.PAYMENT_HINT' | translate }}</p>
+        <div class="payment-status-pills d-flex flex-wrap gap-2" role="group" [attr.aria-label]="'REFUND_POLICIES.PAYMENT' | translate">
+          <button
+            type="button"
+            class="btn btn-sm payment-pill"
+            *ngFor="let status of paymentStatusOptions"
+            [class.payment-pill--active]="isPaymentStatusSelected(status)"
+            (click)="togglePaymentStatus(status)">
+            <i class="bi" [ngClass]="isPaymentStatusSelected(status) ? 'bi-check-circle-fill' : 'bi-circle'"></i>
+            {{ paymentStatusLabel(status) }}
+          </button>
+        </div>
+        <p class="payment-any-hint small mb-0 mt-2" *ngIf="!resolvePaymentStatuses(currentPolicy).length">
+          <i class="bi bi-info-circle me-1"></i>
+          {{ 'REFUND_POLICIES.PAYMENT_ANY_HINT' | translate }}
+        </p>
+      </section>
+
+      <aside class="policy-preview" *ngIf="policyPreviewLines.length" aria-live="polite">
+        <h6 class="policy-preview__title">
+          <i class="bi bi-eye"></i>
+          {{ 'REFUND_POLICIES.PREVIEW_TITLE' | translate }}
+        </h6>
+        <ul class="policy-preview__list mb-0">
+          <li *ngFor="let line of policyPreviewLines">{{ line }}</li>
+        </ul>
+      </aside>
+
+      <div class="refund-policy-modal__footer">
+        <button type="button" class="btn btn-light" (click)="closeModal()" [disabled]="isSaving">
+          {{ 'COMMON.CANCEL' | translate }}
+        </button>
+        <button type="submit" class="btn btn-primary px-4" [disabled]="isSaving || !canSave">
+          <span *ngIf="isSaving" class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+          {{ (isEditMode ? 'COMMON.SAVE' : 'REFUND_POLICIES.ADD_NEW') | translate }}
+        </button>
+      </div>
+    </form>
+  </div>
+</div>

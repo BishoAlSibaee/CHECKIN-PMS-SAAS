@@ -1,0 +1,40 @@
+<ng-container *ngIf="state$ | async as state">
+  <div
+    *ngIf="state.visible && state.options"
+    class="confirm-backdrop"
+    (click)="onBackdropClick()"
+    role="presentation">
+    <div
+      class="confirm-dialog card border-0 shadow-lg"
+      (click)="$event.stopPropagation()"
+      role="alertdialog"
+      aria-modal="true"
+      [attr.aria-labelledby]="'confirm-dialog-title'"
+      [attr.aria-describedby]="'confirm-dialog-message'">
+      <div class="confirm-dialog-body text-center p-4 pt-5">
+        <div class="confirm-icon-wrap mb-3" [class.confirm-icon-wrap-danger]="state.options!.variant === 'danger'">
+          <i class="bi bi-exclamation-triangle-fill"></i>
+        </div>
+        <h5 id="confirm-dialog-title" class="confirm-title mb-2">
+          {{ state.options!.title }}
+        </h5>
+        <p id="confirm-dialog-message" class="confirm-message text-muted mb-0">
+          {{ state.options!.message }}
+        </p>
+      </div>
+      <div class="confirm-dialog-footer d-flex gap-2 p-3 pt-0">
+        <button type="button" class="btn btn-light flex-grow-1" (click)="onCancel()">
+          {{ state.options!.cancelText }}
+        </button>
+        <button
+          type="button"
+          class="btn flex-grow-1"
+          [class.btn-danger]="state.options!.variant === 'danger'"
+          [class.btn-primary]="state.options!.variant !== 'danger'"
+          (click)="onConfirm()">
+          {{ state.options!.confirmText }}
+        </button>
+      </div>
+    </div>
+  </div>
+</ng-container>

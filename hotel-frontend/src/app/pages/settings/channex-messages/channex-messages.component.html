@@ -1,0 +1,122 @@
+<div class="hotels-page">
+  <section class="dept-hero">
+    <div class="dept-hero__copy">
+      <p class="dept-hero__eyebrow">
+        <i class="bi bi-chat-dots" aria-hidden="true"></i>
+        {{ 'CHANNEX_MESSAGES.EYEBROW' | translate }}
+      </p>
+      <h1>{{ 'CHANNEX_MESSAGES.TITLE' | translate }}</h1>
+      <p class="dept-hero__subtitle">{{ 'CHANNEX_MESSAGES.SUBTITLE' | translate }}</p>
+    </div>
+    <div class="dept-hero__actions">
+      <button type="button" class="btn btn-outline-secondary" (click)="loadThreads()" [disabled]="isLoadingThreads">
+        <i class="bi bi-arrow-clockwise" [class.spin]="isLoadingThreads" aria-hidden="true"></i>
+        <span>{{ 'COMMON.REFRESH' | translate }}</span>
+      </button>
+    </div>
+  </section>
+
+  <div class="card border-0 shadow-sm dept-card p-4 text-center" *ngIf="loadError">
+    <i class="bi bi-exclamation-triangle text-warning mb-2" style="font-size: 1.5rem;" aria-hidden="true"></i>
+    <p class="fw-semibold mb-1">{{ 'CHANNEX_MESSAGES.LOAD_ERROR' | translate }}</p>
+    <p class="text-muted small mb-0">{{ loadError }}</p>
+  </div>
+
+  <div class="channex-inbox" *ngIf="!loadError">
+    <div class="card border-0 shadow-sm dept-card channex-thread-list">
+      <ng-container *ngIf="isLoadingThreads">
+        <div class="channex-thread-item" *ngFor="let i of [1,2,3]">
+          <div class="skeleton skeleton-text" style="width: 100%; height: 44px;"></div>
+        </div>
+      </ng-container>
+
+      <div class="dept-empty py-5" *ngIf="!isLoadingThreads && threads.length === 0">
+        <i class="bi bi-chat-dots" aria-hidden="true"></i>
+        <p class="fw-semibold mb-1">{{ 'CHANNEX_MESSAGES.NO_THREADS' | translate }}</p>
+      </div>
+
+      <button type="button" class="channex-thread-item" *ngFor="let thread of threads"
+              [class.channex-thread-item--active]="selectedThread?.id === thread.id"
+              (click)="selectThread(thread)">
+        <span class="channex-thread-item__icon">
+          <i class="bi" [ngClass]="providerIcon(thread.provider)" aria-hidden="true"></i>
+        </span>
+        <span class="channex-thread-item__body">
+          <span class="channex-thread-item__row">
+            <span class="fw-semibold">{{ thread.title || ('CHANNEX_MESSAGES.ANONYMOUS_GUEST' | translate) }}</span>
+            <span class="badge border-0 bg-light text-dark">{{ thread.provider }}</span>
+          </span>
+          <span class="channex-thread-item__preview">
+            {{ thread.last_message?.message || ('CHANNEX_MESSAGES.NO_PREVIEW' | translate) }}
+          </span>
+        </span>
+        <span class="badge border-0 ms-auto" *ngIf="thread.is_closed" [class.bg-secondary-subtle]="true" [class.text-secondary]="true">
+          {{ 'CHANNEX_MESSAGES.CLOSED' | translate }}
+        </span>
+      </button>
+
+      <div class="channex-pagination" *ngIf="!isLoadingThreads && threads.length > 0">
+        <button type="button" class="btn btn-sm btn-outline-secondary" (click)="previousPage()" [disabled]="page <= 1">
+          <i class="bi bi-chevron-left" aria-hidden="true"></i>
+        </button>
+        <span class="channex-pagination__page">{{ 'CHANNEX_MESSAGES.PAGE' | translate }} {{ page }}</span>
+        <button type="button" class="btn btn-sm btn-outline-secondary" (click)="nextPage()" [disabled]="!hasNextPage">
+          <i class="bi bi-chevron-right" aria-hidden="true"></i>
+        </button>
+      </div>
+    </div>
+
+    <div class="card border-0 shadow-sm dept-card channex-conversation">
+      <div class="dept-empty py-5" *ngIf="!selectedThread">
+        <i class="bi bi-chat-square-text" aria-hidden="true"></i>
+        <p class="fw-semibold mb-1">{{ 'CHANNEX_MESSAGES.SELECT_A_THREAD' | translate }}</p>
+      </div>
+
+      <ng-container *ngIf="selectedThread">
+        <div class="channex-conversation__header">
+          <button type="button" class="btn btn-sm btn-link channex-conversation__back" (click)="closeConversation()">
+            <i class="bi bi-arrow-left" aria-hidden="true"></i>
+          </button>
+          <div class="channex-conversation__title">
+            <span class="fw-semibold">{{ selectedThread.title || ('CHANNEX_MESSAGES.ANONYMOUS_GUEST' | translate) }}</span>
+            <span class="badge border-0 bg-light text-dark">{{ selectedThread.provider }}</span>
+          </div>
+          <div class="channex-conversation__actions">
+            <button type="button" class="btn btn-sm btn-outline-secondary" (click)="markNoReplyNeeded()" [disabled]="isMarkingNoReply">
+              {{ 'CHANNEX_MESSAGES.NO_REPLY_NEEDED' | translate }}
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" (click)="closeThread()" [disabled]="isClosingThread || selectedThread.is_closed">
+              {{ 'CHANNEX_MESSAGES.CLOSE_THREAD' | translate }}
+            </button>
+          </div>
+        </div>
+
+        <div class="channex-conversation__body">
+          <ng-container *ngIf="isLoadingMessages">
+            <div class="skeleton skeleton-text" style="width: 60%; height: 40px; margin-bottom: 0.75rem;"></div>
+            <div class="skeleton skeleton-text" style="width: 45%; height: 40px; margin-left: auto;"></div>
+          </ng-container>
+
+          <div class="dept-empty py-4" *ngIf="!isLoadingMessages && messages.length === 0">
+            <p class="text-muted small mb-0">{{ 'CHANNEX_MESSAGES.NO_MESSAGES' | translate }}</p>
+          </div>
+
+          <div class="channex-bubble" *ngFor="let msg of messages" [class.channex-bubble--mine]="msg.sender === 'property'">
+            <p class="channex-bubble__text">{{ msg.message }}</p>
+            <span class="channex-bubble__time">{{ msg.inserted_at | date:'short' }}</span>
+          </div>
+        </div>
+
+        <div class="channex-conversation__reply">
+          <textarea class="form-control" rows="2"
+                    [placeholder]="'CHANNEX_MESSAGES.REPLY_PLACEHOLDER' | translate"
+                    [(ngModel)]="replyDraft" name="messageReply"></textarea>
+          <button type="button" class="btn btn-primary" (click)="submitReply()" [disabled]="!replyDraft.trim() || isSubmittingReply">
+            <span *ngIf="isSubmittingReply" class="spinner-border spinner-border-sm me-1" role="status"></span>
+            {{ 'CHANNEX_MESSAGES.SEND' | translate }}
+          </button>
+        </div>
+      </ng-container>
+    </div>
+  </div>
+</div>

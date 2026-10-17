@@ -1,0 +1,315 @@
+<div class="discounts-page">
+  <section class="discounts-hero">
+    <div class="discounts-hero__copy">
+      <p class="discounts-hero__eyebrow">
+        <i class="bi bi-percent" aria-hidden="true"></i>
+        {{ 'DISCOUNTS_PAGE.EYEBROW' | translate }}
+      </p>
+      <h1>{{ 'DISCOUNTS_PAGE.TITLE' | translate }}</h1>
+      <p class="discounts-hero__subtitle">{{ 'DISCOUNTS_PAGE.SUBTITLE' | translate }}</p>
+    </div>
+    <div class="discounts-hero__actions">
+      <button type="button" class="btn btn-outline-secondary" (click)="loadDiscounts()" [disabled]="isLoading"
+              [attr.aria-label]="'COMMON.REFRESH' | translate">
+        <i class="bi bi-arrow-clockwise" [class.spin]="isLoading" aria-hidden="true"></i>
+        <span>{{ 'COMMON.REFRESH' | translate }}</span>
+      </button>
+      <button type="button" class="btn btn-primary" (click)="openAddModal()">
+        <i class="bi bi-plus-lg" aria-hidden="true"></i>
+        <span>{{ 'DISCOUNTS_PAGE.ADD_NEW' | translate }}</span>
+      </button>
+    </div>
+  </section>
+
+  <div class="discounts-summary" role="group" [attr.aria-label]="'DISCOUNTS_PAGE.SUMMARY_ARIA' | translate">
+    <ng-container *ngIf="isLoading">
+      <div class="discounts-stat" *ngFor="let i of [1,2,3]">
+        <div class="skeleton skeleton-text" style="width: 40%;"></div>
+        <div class="skeleton skeleton-text mt-2" style="width: 30%; height: 1.5rem;"></div>
+      </div>
+    </ng-container>
+    <ng-container *ngIf="!isLoading">
+      <div class="discounts-stat">
+        <span class="discounts-stat__label">{{ 'DISCOUNTS_PAGE.STAT_TOTAL' | translate }}</span>
+        <span class="discounts-stat__value">{{ pagination.total || discounts.length }}</span>
+      </div>
+      <div class="discounts-stat discounts-stat--active">
+        <span class="discounts-stat__label">{{ 'DISCOUNTS_PAGE.STAT_ACTIVE' | translate }}</span>
+        <span class="discounts-stat__value">{{ activeCount }}</span>
+      </div>
+      <div class="discounts-stat discounts-stat--percent">
+        <span class="discounts-stat__label">{{ 'DISCOUNTS_PAGE.STAT_PERCENT' | translate }}</span>
+        <span class="discounts-stat__value">{{ percentCount }}</span>
+      </div>
+    </ng-container>
+  </div>
+
+  <div class="card border-0 shadow-sm discounts-card">
+    <div class="discounts-toolbar">
+      <div class="ui-search discounts-search flex-grow-1">
+        <i class="bi bi-search ui-search__icon" aria-hidden="true"></i>
+        <label class="visually-hidden" for="discountsSearch">{{ 'DISCOUNTS_PAGE.SEARCH' | translate }}</label>
+        <input id="discountsSearch" type="search" class="form-control ui-search__input"
+               [(ngModel)]="searchTerm"
+               [placeholder]="'DISCOUNTS_PAGE.SEARCH' | translate" />
+      </div>
+      <div class="discounts-filters">
+        <div class="discounts-chip-group" role="group" [attr.aria-label]="'DISCOUNTS_PAGE.TYPE_FILTER_ARIA' | translate">
+          <button type="button" class="discounts-chip"
+                  [class.discounts-chip--active]="typeFilter === 'all'"
+                  (click)="typeFilter = 'all'">{{ 'DISCOUNTS_PAGE.FILTER_ALL' | translate }}</button>
+          <button type="button" class="discounts-chip"
+                  [class.discounts-chip--active]="typeFilter === 'percent'"
+                  (click)="typeFilter = 'percent'">{{ 'DISCOUNTS_PAGE.PERCENTAGE' | translate }}</button>
+          <button type="button" class="discounts-chip"
+                  [class.discounts-chip--active]="typeFilter === 'fixed'"
+                  (click)="typeFilter = 'fixed'">{{ 'DISCOUNTS_PAGE.FIXED' | translate }}</button>
+        </div>
+        <div class="discounts-chip-group" role="group" [attr.aria-label]="'DISCOUNTS_PAGE.STATUS_FILTER_ARIA' | translate">
+          <button type="button" class="discounts-chip"
+                  [class.discounts-chip--active]="statusFilter === 'all'"
+                  (click)="statusFilter = 'all'">{{ 'DISCOUNTS_PAGE.FILTER_ALL_STATUS' | translate }}</button>
+          <button type="button" class="discounts-chip"
+                  [class.discounts-chip--active]="statusFilter === 'active'"
+                  (click)="statusFilter = 'active'">{{ 'DISCOUNTS_PAGE.ACTIVE' | translate }}</button>
+          <button type="button" class="discounts-chip"
+                  [class.discounts-chip--active]="statusFilter === 'inactive'"
+                  (click)="statusFilter = 'inactive'">{{ 'DISCOUNTS_PAGE.INACTIVE' | translate }}</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0 discounts-table">
+        <thead>
+          <tr>
+            <th>{{ 'DISCOUNTS_PAGE.NAME' | translate }}</th>
+            <th>{{ 'DISCOUNTS_PAGE.TYPE' | translate }}</th>
+            <th>{{ 'DISCOUNTS_PAGE.VALUE' | translate }}</th>
+            <th class="status-col">{{ 'DISCOUNTS_PAGE.STATUS' | translate }}</th>
+            <th class="text-end">{{ 'COMMON.ACTIONS' | translate }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <ng-container *ngIf="isLoading">
+            <tr *ngFor="let i of [1,2,3,4,5]">
+              <td><div class="skeleton skeleton-text" style="width: 120px;"></div></td>
+              <td><div class="skeleton" style="width: 80px; height: 22px; border-radius: 999px;"></div></td>
+              <td><div class="skeleton skeleton-text" style="width: 60px;"></div></td>
+              <td class="status-col">
+                <div class="skeleton" style="width: 96px; height: 24px; border-radius: 12px;"></div>
+              </td>
+              <td class="text-end">
+                <div class="skeleton ms-auto" style="width: 72px; height: 32px; border-radius: 6px;"></div>
+              </td>
+            </tr>
+          </ng-container>
+
+          <tr *ngIf="!isLoading && filteredDiscounts.length === 0">
+            <td colspan="5" class="py-5 text-center">
+              <div class="discounts-empty">
+                <i class="bi bi-percent" aria-hidden="true"></i>
+                <p class="fw-semibold mb-1">
+                  {{ (discounts.length === 0 ? 'DISCOUNTS_PAGE.NO_DISCOUNTS' : 'DISCOUNTS_PAGE.NO_RESULTS') | translate }}
+                </p>
+                <p class="text-muted small mb-3">
+                  {{ (discounts.length === 0 ? 'DISCOUNTS_PAGE.EMPTY_HINT' : 'DISCOUNTS_PAGE.NO_RESULTS_HINT') | translate }}
+                </p>
+                <button type="button" class="btn btn-primary btn-sm" *ngIf="discounts.length === 0" (click)="openAddModal()">
+                  <i class="bi bi-plus-lg me-1" aria-hidden="true"></i>{{ 'DISCOUNTS_PAGE.ADD_NEW' | translate }}
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" *ngIf="discounts.length > 0"
+                        (click)="clearFilters()">
+                  {{ 'DISCOUNTS_PAGE.CLEAR_FILTERS' | translate }}
+                </button>
+              </div>
+            </td>
+          </tr>
+
+          <tr *ngFor="let discount of filteredDiscounts">
+            <td class="fw-semibold">{{ discount.name }}</td>
+            <td>
+              <div class="d-flex flex-wrap gap-1">
+                <span class="badge rounded-pill discounts-badge--percent" *ngIf="isPercentage(discount)">
+                  {{ 'DISCOUNTS_PAGE.PERCENTAGE' | translate }}
+                </span>
+                <span class="badge rounded-pill discounts-badge--fixed" *ngIf="isFixed(discount)">
+                  {{ 'DISCOUNTS_PAGE.FIXED' | translate }}
+                </span>
+              </div>
+            </td>
+            <td class="fw-bold text-nowrap">
+              <div *ngIf="isPercentage(discount)" class="text-primary">{{ discount.percent }}%</div>
+              <div *ngIf="isFixed(discount)" class="text-warning-emphasis">
+                {{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ discount.fixed_amount | number:'1.2-2' }}
+              </div>
+            </td>
+            <td class="status-col">
+              <div class="discount-status-cell">
+                <div class="form-check form-switch m-0">
+                  <input class="form-check-input" type="checkbox"
+                         [checked]="isActive(discount)"
+                         (change)="toggleActive(discount)"
+                         [attr.aria-label]="(isActive(discount) ? 'DISCOUNTS_PAGE.ACTIVE' : 'DISCOUNTS_PAGE.INACTIVE') | translate">
+                </div>
+                <span class="badge rounded-pill"
+                      [class.discounts-badge--active]="isActive(discount)"
+                      [class.discounts-badge--inactive]="!isActive(discount)">
+                  {{ (isActive(discount) ? 'DISCOUNTS_PAGE.ACTIVE' : 'DISCOUNTS_PAGE.INACTIVE') | translate }}
+                </span>
+              </div>
+            </td>
+            <td class="text-end text-nowrap">
+              <button type="button" class="btn btn-sm btn-light text-primary me-1"
+                      (click)="openEditModal(discount)"
+                      [attr.aria-label]="'COMMON.EDIT' | translate"
+                      [attr.title]="'COMMON.EDIT' | translate">
+                <i class="bi bi-pencil" aria-hidden="true"></i>
+              </button>
+              <button type="button" class="btn btn-sm btn-light text-danger"
+                      (click)="deleteDiscount(discount.id)"
+                      [attr.aria-label]="'COMMON.DELETE' | translate"
+                      [attr.title]="'COMMON.DELETE' | translate">
+                <i class="bi bi-trash" aria-hidden="true"></i>
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div *ngIf="!isLoading && pagination.total > 0" class="discounts-footer">
+      <div class="d-flex align-items-center gap-3 flex-wrap">
+        <div class="text-muted small">
+          {{ 'RESERVATIONS.PAGINATION_SHOWING' | translate:{ from: paginationFrom, to: paginationTo, total: pagination.total } }}
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          <label class="small text-muted mb-0" for="discountsPerPage">{{ 'GUEST_MGMT.PAGINATION.PER_PAGE' | translate }}</label>
+          <select id="discountsPerPage"
+                  [(ngModel)]="pagination.perPage"
+                  (change)="onPerPageChange()"
+                  class="form-select form-select-sm"
+                  style="width: auto;">
+            <option [ngValue]="5">5</option>
+            <option [ngValue]="10">10</option>
+            <option [ngValue]="25">25</option>
+            <option [ngValue]="50">50</option>
+          </select>
+        </div>
+      </div>
+      <nav [attr.aria-label]="'DISCOUNTS_PAGE.PAGINATION_ARIA' | translate" *ngIf="pagination.last > 1">
+        <ul class="pagination pagination-sm mb-0">
+          <li class="page-item" [class.disabled]="pagination.current === 1">
+            <button class="page-link" type="button" (click)="onPageChange(pagination.current - 1)" [disabled]="pagination.current === 1">
+              <i class="bi bi-chevron-left" aria-hidden="true"></i>
+            </button>
+          </li>
+          <li class="page-item" *ngFor="let p of getPages()" [class.active]="pagination.current === p">
+            <button class="page-link" type="button" (click)="onPageChange(p)">{{ p }}</button>
+          </li>
+          <li class="page-item" [class.disabled]="pagination.current === pagination.last">
+            <button class="page-link" type="button" (click)="onPageChange(pagination.current + 1)" [disabled]="pagination.current === pagination.last">
+              <i class="bi bi-chevron-right" aria-hidden="true"></i>
+            </button>
+          </li>
+        </ul>
+      </nav>
+    </div>
+  </div>
+</div>
+
+<div *ngIf="showModal" class="modal-backdrop-custom" (click)="closeModal()">
+  <div class="modal-content-custom card border-0 shadow-lg"
+       (click)="$event.stopPropagation()"
+       role="dialog"
+       aria-modal="true"
+       [attr.aria-labelledby]="'discount-modal-title'">
+    <div class="card-header bg-white py-3 border-bottom d-flex align-items-center justify-content-between">
+      <div>
+        <p class="small text-muted text-uppercase fw-semibold mb-1">{{ 'DISCOUNTS_PAGE.EYEBROW' | translate }}</p>
+        <h2 class="h5 mb-0" id="discount-modal-title">
+          {{ (isEditMode ? 'DISCOUNTS_PAGE.EDIT' : 'DISCOUNTS_PAGE.ADD_NEW') | translate }}
+        </h2>
+      </div>
+      <button type="button" class="btn btn-sm btn-light" (click)="closeModal()"
+              [attr.aria-label]="'COMMON.CANCEL' | translate" [disabled]="isSaving">
+        <i class="bi bi-x-lg" aria-hidden="true"></i>
+      </button>
+    </div>
+    <div class="card-body p-4">
+      <form #discountForm="ngForm" (ngSubmit)="saveDiscount()">
+        <div class="mb-3">
+          <label class="form-label small fw-bold" for="discountName">{{ 'DISCOUNTS_PAGE.NAME' | translate }}</label>
+          <input id="discountName" type="text" name="name" [(ngModel)]="currentDiscount.name"
+                 class="form-control"
+                 [placeholder]="'DISCOUNTS_PAGE.NAME_PLACEHOLDER' | translate"
+                 required autocomplete="off">
+        </div>
+
+        <div class="mb-3">
+          <p class="form-label small fw-bold mb-2">{{ 'DISCOUNTS_PAGE.TYPE' | translate }}</p>
+          <div class="discounts-type-pills" role="group" [attr.aria-label]="'DISCOUNTS_PAGE.TYPE' | translate">
+            <button type="button" class="btn btn-sm"
+                    [class.btn-primary]="isPercentage(currentDiscount)"
+                    [class.btn-outline-secondary]="!isPercentage(currentDiscount)"
+                    (click)="setDiscountType('percent')">
+              {{ 'DISCOUNTS_PAGE.PERCENTAGE' | translate }}
+            </button>
+            <button type="button" class="btn btn-sm"
+                    [class.btn-primary]="isFixed(currentDiscount)"
+                    [class.btn-outline-secondary]="!isFixed(currentDiscount)"
+                    (click)="setDiscountType('fixed')">
+              {{ 'DISCOUNTS_PAGE.FIXED_AMOUNT' | translate }}
+            </button>
+          </div>
+        </div>
+
+        <div class="mb-3" *ngIf="isPercentage(currentDiscount)">
+          <label class="form-label small fw-bold" for="discountPercent">{{ 'DISCOUNTS_PAGE.PERCENT' | translate }}</label>
+          <div class="input-group">
+            <input id="discountPercent" type="number" name="percent" min="0" max="100" step="any"
+                   [(ngModel)]="currentDiscount.percent" class="form-control" required>
+            <span class="input-group-text">%</span>
+          </div>
+        </div>
+
+        <div class="mb-3" *ngIf="isFixed(currentDiscount)">
+          <label class="form-label small fw-bold" for="discountFixed">{{ 'DISCOUNTS_PAGE.FIXED_AMOUNT' | translate }}</label>
+          <div class="input-group">
+            <span class="input-group-text">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}</span>
+            <input id="discountFixed" type="number" name="fixed_amount" min="0" step="any"
+                   [(ngModel)]="currentDiscount.fixed_amount" class="form-control" required>
+          </div>
+        </div>
+
+        <div class="mb-4">
+          <div class="discount-status-cell discount-status-modal">
+            <label class="form-check-label small fw-bold mb-0" for="is_active">{{ 'DISCOUNTS_PAGE.STATUS' | translate }}</label>
+            <div class="d-flex align-items-center gap-2">
+              <span class="badge rounded-pill"
+                    [class.discounts-badge--active]="currentDiscount.is_active"
+                    [class.discounts-badge--inactive]="!currentDiscount.is_active">
+                {{ (currentDiscount.is_active ? 'DISCOUNTS_PAGE.ACTIVE' : 'DISCOUNTS_PAGE.INACTIVE') | translate }}
+              </span>
+              <div class="form-check form-switch m-0">
+                <input class="form-check-input" type="checkbox" id="is_active" name="is_active"
+                       [(ngModel)]="currentDiscount.is_active">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-light flex-grow-1" (click)="closeModal()" [disabled]="isSaving">
+            {{ 'COMMON.CANCEL' | translate }}
+          </button>
+          <button type="submit" class="btn btn-primary flex-grow-1"
+                  [disabled]="isSaving || !discountForm.valid || (!isPercentage(currentDiscount) && !isFixed(currentDiscount))">
+            <span class="spinner-border spinner-border-sm me-2" *ngIf="isSaving" role="status"></span>
+            {{ (isEditMode ? 'DISCOUNTS_PAGE.UPDATE' : 'DISCOUNTS_PAGE.SAVE') | translate }}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,197 @@
+<ng-container *ngIf="!isLoginRoute; else authLayout">
+  <div class="d-flex min-vh-100 app-shell">
+    <app-sidebar #sidebarRef class="flex-shrink-0"></app-sidebar>
+
+    <div class="flex-grow-1 d-flex flex-column min-w-0 app-shell__main">
+      <header
+        class="app-topbar"
+        [class.app-topbar--elevated]="topbarElevated"
+        [attr.aria-label]="'TOPBAR.ARIA' | translate">
+        <div class="app-topbar__start">
+          <button
+            type="button"
+            class="app-topbar__icon-btn d-lg-none"
+            (click)="sidebarRef.toggleMobileNav()"
+            [attr.aria-label]="'SIDEBAR.OPEN_MENU' | translate">
+            <i class="bi bi-list" aria-hidden="true"></i>
+          </button>
+
+          <div class="app-topbar__context min-w-0">
+            <p class="app-topbar__eyebrow" *ngIf="pageSectionKey">{{ pageSectionKey | translate }}</p>
+            <h1 class="app-topbar__title text-truncate">{{ pageTitleKey | translate }}</h1>
+          </div>
+        </div>
+
+        <div class="app-topbar__end">
+          <div class="app-topbar__date" *ngIf="todayLabel" [attr.title]="todayLabel">
+            <i class="bi bi-calendar3" aria-hidden="true"></i>
+            <span class="app-topbar__date-text">{{ todayLabel }}</span>
+          </div>
+
+          <div ngbDropdown class="app-topbar__user" display="dynamic" container="body" *ngIf="hotelContext.hasMultipleHotels">
+            <button
+              type="button"
+              class="app-topbar__icon-btn"
+              ngbDropdownToggle
+              [attr.aria-label]="'TOPBAR.SWITCH_HOTEL' | translate"
+              [attr.title]="currentHotelName">
+              <i class="bi bi-building" aria-hidden="true"></i>
+              <span class="app-topbar__lang-code text-truncate" style="max-width: 8rem;">{{ currentHotelName }}</span>
+            </button>
+            <div ngbDropdownMenu class="app-topbar__menu dropdown-menu">
+              <button
+                type="button"
+                ngbDropdownItem
+                class="app-topbar__menu-item"
+                *ngFor="let hotel of hotelContext.availableHotels"
+                [class.active]="hotel.id === hotelContext.current"
+                (click)="switchHotel(hotel.id)">
+                <i class="bi bi-building" aria-hidden="true"></i>
+                <span>{{ hotelName(hotel) }}</span>
+              </button>
+            </div>
+          </div>
+
+          <div ngbDropdown class="app-topbar__notifications" display="dynamic" container="body"
+               (openChange)="onNotificationsToggle($event)">
+            <button
+              type="button"
+              class="app-topbar__icon-btn app-topbar__bell"
+              ngbDropdownToggle
+              [attr.aria-label]="'NOTIFICATIONS.TITLE' | translate"
+              [attr.title]="'NOTIFICATIONS.TITLE' | translate">
+              <i class="bi bi-bell" aria-hidden="true"></i>
+              <span class="app-topbar__bell-badge" *ngIf="unreadNotificationCount > 0">
+                {{ unreadNotificationCount > 99 ? '99+' : unreadNotificationCount }}
+              </span>
+            </button>
+            <div ngbDropdownMenu class="app-topbar__menu dropdown-menu app-topbar__notifications-menu">
+              <div class="app-topbar__notifications-header">
+                <span>{{ 'NOTIFICATIONS.TITLE' | translate }}</span>
+              </div>
+              <div class="app-topbar__notifications-list">
+                <button type="button" class="app-topbar__notification-item" *ngFor="let n of notifications"
+                        (click)="openNotification(n)">
+                  <span class="app-topbar__notification-icon" aria-hidden="true">
+                    <i class="bi" [ngClass]="notificationIcon(n.type)"></i>
+                  </span>
+                  <span class="min-w-0">
+                    <span class="app-topbar__notification-title">{{ notificationTitle(n) }}</span>
+                    <span class="app-topbar__notification-time">{{ n.created_at | date:'short' }}</span>
+                  </span>
+                </button>
+                <p class="app-topbar__notifications-empty" *ngIf="notifications.length === 0">
+                  {{ 'NOTIFICATIONS.EMPTY' | translate }}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            class="app-topbar__icon-btn"
+            (click)="switchLanguage()"
+            [attr.aria-label]="'SIDEBAR.LANGUAGE' | translate"
+            [attr.title]="currentLang === 'en' ? 'العربية' : 'English'">
+            <i class="bi bi-translate" aria-hidden="true"></i>
+            <span class="app-topbar__lang-code">{{ currentLang === 'en' ? 'AR' : 'EN' }}</span>
+          </button>
+
+          <div ngbDropdown class="app-topbar__user" display="dynamic" container="body">
+            <button
+              type="button"
+              class="app-topbar__user-btn"
+              ngbDropdownToggle
+              [attr.aria-label]="'TOPBAR.ACCOUNT_MENU' | translate">
+              <span class="app-topbar__avatar" aria-hidden="true">{{ userInitials }}</span>
+              <span class="app-topbar__user-meta d-none d-sm-flex">
+                <span class="app-topbar__user-name text-truncate">{{ user?.name || ('TOPBAR.GUEST_USER' | translate) }}</span>
+                <span class="app-topbar__user-role text-truncate">{{ userRoleLabel }}</span>
+              </span>
+              <i class="bi bi-chevron-down app-topbar__chevron" aria-hidden="true"></i>
+            </button>
+
+            <div ngbDropdownMenu class="app-topbar__menu dropdown-menu">
+              <div class="app-topbar__menu-header">
+                <span class="app-topbar__avatar app-topbar__avatar--lg" aria-hidden="true">{{ userInitials }}</span>
+                <div class="min-w-0">
+                  <p class="app-topbar__menu-name text-truncate mb-0">{{ user?.name || ('TOPBAR.GUEST_USER' | translate) }}</p>
+                  <p class="app-topbar__menu-role text-truncate mb-0">{{ userRoleLabel }}</p>
+                </div>
+              </div>
+              <div class="dropdown-divider"></div>
+              <button type="button" ngbDropdownItem class="app-topbar__menu-item" (click)="openChangePassword()">
+                <i class="bi bi-key" aria-hidden="true"></i>
+                <span>{{ 'AUTH.CHANGE_PASSWORD' | translate }}</span>
+              </button>
+              <button type="button" ngbDropdownItem class="app-topbar__menu-item app-topbar__menu-item--danger" (click)="logout()">
+                <i class="bi bi-box-arrow-right" aria-hidden="true"></i>
+                <span>{{ 'SIDEBAR.LOGOUT' | translate }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main
+        class="flex-grow-1 p-3 p-md-4 overflow-auto app-main-content space-y-6"
+        [attr.data-lang-epoch]="langEpoch"
+        (scroll)="onMainScroll($event)">
+        <router-outlet></router-outlet>
+      </main>
+    </div>
+  </div>
+</ng-container>
+
+<!-- Change Password Modal -->
+<div *ngIf="showChangePasswordModal" class="modal-backdrop" (click)="closeChangePassword()">
+  <div class="modal-content card" style="max-width: 400px;" (click)="$event.stopPropagation()">
+    <div class="card-header d-flex align-items-center justify-content-between">
+      <h6 class="mb-0">{{ 'AUTH.CHANGE_PASSWORD' | translate }}</h6>
+      <button type="button" class="btn btn-sm btn-light" (click)="closeChangePassword()" [attr.aria-label]="'COMMON.CANCEL' | translate">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
+    <div class="card-body">
+      <form [formGroup]="passwordForm" (ngSubmit)="onChangePassword()">
+        <div class="mb-3">
+          <label class="form-label">{{ 'AUTH.OLD_PASSWORD' | translate }}</label>
+          <input type="password" class="form-control" formControlName="old_password" autocomplete="current-password">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">{{ 'AUTH.NEW_PASSWORD' | translate }}</label>
+          <input type="password" class="form-control" formControlName="new_password" autocomplete="new-password">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">{{ 'AUTH.CONFIRM_PASSWORD' | translate }}</label>
+          <input type="password" class="form-control" formControlName="new_password_confirmation" autocomplete="new-password">
+        </div>
+        <div class="d-flex gap-2 mt-4">
+          <button type="button" class="btn btn-outline-secondary flex-grow-1" (click)="closeChangePassword()">{{ 'AUTH.CANCEL' | translate }}</button>
+          <button type="submit" class="btn btn-primary flex-grow-1" [disabled]="passwordForm.invalid || isChangingPassword">
+            <span *ngIf="!isChangingPassword">{{ 'AUTH.UPDATE' | translate }}</span>
+            <span *ngIf="isChangingPassword"><i class="bi bi-hourglass-split me-1"></i>{{ 'AUTH.UPDATING' | translate }}</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Global Toast -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 2000;">
+  <div class="toast show" [ngClass]="'text-bg-' + (toastType === 'error' ? 'danger' : toastType)" *ngIf="showToast">
+    <div class="d-flex align-items-center">
+      <div class="toast-body">
+        {{ toastMessage }}
+      </div>
+      <button type="button" class="btn-close btn-close-white ms-auto me-2" (click)="showToast = false"></button>
+    </div>
+  </div>
+</div>
+
+<ng-template #authLayout>
+  <router-outlet></router-outlet>
+</ng-template>
+
+<app-confirm-dialog></app-confirm-dialog>

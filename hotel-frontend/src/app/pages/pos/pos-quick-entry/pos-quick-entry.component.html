@@ -1,0 +1,129 @@
+<div class="hotels-page">
+  <section class="dept-hero">
+    <div class="dept-hero__copy">
+      <p class="dept-hero__eyebrow">
+        <i class="bi bi-shop" aria-hidden="true"></i>
+        {{ 'POS.EYEBROW' | translate }}
+      </p>
+      <h1>{{ 'POS.QUICK_ENTRY_TITLE' | translate }}</h1>
+      <p class="dept-hero__subtitle">{{ 'POS.QUICK_ENTRY_SUBTITLE' | translate }}</p>
+    </div>
+    <div class="dept-hero__actions">
+      <a class="btn btn-outline-secondary" routerLink="/admin/pos-charges">
+        <i class="bi bi-journal-text" aria-hidden="true"></i>
+        <span>{{ 'POS.VIEW_HISTORY' | translate }}</span>
+      </a>
+    </div>
+  </section>
+
+  <div class="card border-0 shadow-sm dept-card">
+    <div class="card-body p-4">
+
+      <!-- Step 1: room search / walk-in toggle -->
+      <div *ngIf="!lookupResult && !isWalkin" class="pos-room-search">
+        <label class="form-label">{{ 'POS.ROOM_NUMBER' | translate }}</label>
+        <div class="input-group">
+          <input type="text" class="form-control" [(ngModel)]="roomNumber" name="roomNumber"
+                 (keyup.enter)="lookupRoom()" [placeholder]="'POS.ROOM_NUMBER_PLACEHOLDER' | translate">
+          <button type="button" class="btn btn-primary" (click)="lookupRoom()" [disabled]="!roomNumber.trim() || isLookingUp">
+            <span *ngIf="isLookingUp" class="spinner-border spinner-border-sm me-1" role="status"></span>
+            {{ 'POS.SEARCH' | translate }}
+          </button>
+        </div>
+        <button type="button" class="btn btn-link px-0 mt-2" (click)="startWalkin()">
+          {{ 'POS.WALKIN_TOGGLE' | translate }}
+        </button>
+      </div>
+
+      <!-- Room lookup result -->
+      <div *ngIf="lookupResult" class="pos-guest-banner">
+        <div>
+          <div class="fw-semibold">{{ 'POS.ROOM' | translate }} {{ lookupResult.room_number }}</div>
+          <div *ngIf="lookupResult.guest_name" class="text-success">
+            <i class="bi bi-person-check" aria-hidden="true"></i> {{ lookupResult.guest_name }}
+          </div>
+          <div *ngIf="!lookupResult.guest_name" class="text-muted">
+            <i class="bi bi-exclamation-circle" aria-hidden="true"></i> {{ 'POS.NO_GUEST_CHECKED_IN' | translate }}
+          </div>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-secondary" (click)="backToRoomSearch()">
+          {{ 'POS.CHANGE_ROOM' | translate }}
+        </button>
+      </div>
+
+      <!-- Walk-in banner -->
+      <div *ngIf="isWalkin" class="pos-guest-banner">
+        <div class="fw-semibold"><i class="bi bi-cup-hot" aria-hidden="true"></i> {{ 'POS.WALKIN_GUEST' | translate }}</div>
+        <button type="button" class="btn btn-sm btn-outline-secondary" (click)="backToRoomSearch()">
+          {{ 'POS.CHANGE_ROOM' | translate }}
+        </button>
+      </div>
+
+      <!-- Step 2: item entry -->
+      <div *ngIf="lookupResult || isWalkin" class="row g-3 mt-1">
+        <div class="col-12">
+          <label class="form-label">{{ 'POS.CATEGORY' | translate }} *</label>
+          <select class="form-select" [(ngModel)]="form.pos_category_id" name="posCategory">
+            <option [ngValue]="null">—</option>
+            <option *ngFor="let c of categories" [ngValue]="c.id">{{ c.name_en }} / {{ c.name_ar }}</option>
+          </select>
+        </div>
+        <div class="col-12">
+          <label class="form-label">{{ 'POS.DESCRIPTION' | translate }}</label>
+          <input type="text" class="form-control" [(ngModel)]="form.description" name="description">
+        </div>
+        <div class="col-12">
+          <label class="form-label">{{ 'POS.INVOICE_REFERENCE' | translate }}</label>
+          <input type="text" class="form-control" [(ngModel)]="form.invoice_reference" name="invoiceReference"
+                 [placeholder]="'POS.INVOICE_REFERENCE_PLACEHOLDER' | translate">
+          <p class="form-text text-muted mb-0">{{ 'POS.INVOICE_REFERENCE_HINT' | translate }}</p>
+        </div>
+        <div class="col-4">
+          <label class="form-label">{{ 'POS.QUANTITY' | translate }}</label>
+          <input type="number" min="0.01" step="1" class="form-control" [(ngModel)]="form.quantity" name="quantity">
+        </div>
+        <div class="col-4">
+          <label class="form-label">{{ 'POS.UNIT_PRICE' | translate }}</label>
+          <input type="number" min="0" step="0.01" class="form-control" [(ngModel)]="form.unit_price" name="unitPrice">
+        </div>
+        <div class="col-4">
+          <label class="form-label">{{ 'POS.TOTAL' | translate }}</label>
+          <input type="text" class="form-control" disabled [value]="total | number:'1.2-2'">
+        </div>
+
+        <div class="col-12" *ngIf="isWalkin">
+          <label class="form-label">{{ 'POS.WALKIN_REFERENCE' | translate }}</label>
+          <input type="text" class="form-control" [(ngModel)]="form.walkin_reference" name="walkinReference"
+                 [placeholder]="'POS.WALKIN_REFERENCE_PLACEHOLDER' | translate">
+        </div>
+
+        <div class="col-12">
+          <label class="form-label d-block">{{ 'POS.PAYMENT_TIMING' | translate }}</label>
+          <div class="btn-group" role="group">
+            <button type="button" class="btn"
+                    [class.btn-primary]="form.payment_status === PAID_IMMEDIATELY"
+                    [class.btn-outline-secondary]="form.payment_status !== PAID_IMMEDIATELY"
+                    (click)="form.payment_status = PAID_IMMEDIATELY">
+              {{ 'POS.PAID_IMMEDIATELY' | translate }}
+            </button>
+            <button type="button" class="btn"
+                    [class.btn-primary]="form.payment_status === CHARGED_TO_ROOM"
+                    [class.btn-outline-secondary]="form.payment_status !== CHARGED_TO_ROOM"
+                    [disabled]="!canChargeToRoom()"
+                    (click)="form.payment_status = CHARGED_TO_ROOM">
+              {{ 'POS.CHARGE_TO_ROOM' | translate }}
+            </button>
+          </div>
+          <p *ngIf="!canChargeToRoom()" class="text-muted small mt-1 mb-0">{{ 'POS.CHARGE_TO_ROOM_UNAVAILABLE' | translate }}</p>
+        </div>
+
+        <div class="col-12 d-flex justify-content-end">
+          <button type="button" class="btn btn-primary btn-lg" (click)="submit()" [disabled]="!canSubmit()">
+            <span *ngIf="isSaving" class="spinner-border spinner-border-sm me-1" role="status"></span>
+            {{ 'POS.ADD_CHARGE' | translate }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

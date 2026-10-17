@@ -1,0 +1,169 @@
+<div class="hotels-page">
+  <section class="dept-hero">
+    <div class="dept-hero__copy">
+      <p class="dept-hero__eyebrow">
+        <i class="bi bi-globe2" aria-hidden="true"></i>
+        {{ 'OTA_ALLOCATIONS.EYEBROW' | translate }}
+      </p>
+      <h1>{{ 'OTA_ALLOCATIONS.TITLE' | translate }}</h1>
+      <p class="dept-hero__subtitle">{{ 'OTA_ALLOCATIONS.SUBTITLE' | translate }}</p>
+    </div>
+    <div class="dept-hero__actions">
+      <button type="button" class="btn btn-outline-secondary" (click)="loadRows()" [disabled]="isLoading">
+        <i class="bi bi-arrow-clockwise" [class.spin]="isLoading" aria-hidden="true"></i>
+        <span>{{ 'COMMON.REFRESH' | translate }}</span>
+      </button>
+    </div>
+  </section>
+
+  <div class="card border-0 shadow-sm dept-card">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0 dept-table">
+        <thead>
+          <tr>
+            <th>{{ 'OTA_ALLOCATIONS.ROOM_TYPE' | translate }}</th>
+            <th>{{ 'OTA_ALLOCATIONS.TOTAL_ROOMS' | translate }}</th>
+            <th>{{ 'OTA_ALLOCATIONS.OTA_BOOKED' | translate }}</th>
+            <th>{{ 'OTA_ALLOCATIONS.ALLOCATED' | translate }}</th>
+            <th>{{ 'OTA_ALLOCATIONS.HEADROOM' | translate }}</th>
+            <th class="rate-plans-col">{{ 'OTA_ALLOCATIONS.RATE_PLANS' | translate }}</th>
+            <th class="text-end">{{ 'COMMON.ACTIONS' | translate }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <ng-container *ngIf="isLoading">
+            <tr *ngFor="let i of [1,2,3]">
+              <td colspan="7"><div class="skeleton skeleton-text" style="width: 100%; height: 22px;"></div></td>
+            </tr>
+          </ng-container>
+
+          <tr *ngIf="!isLoading && rows.length === 0">
+            <td colspan="7" class="py-5 text-center">
+              <div class="dept-empty">
+                <i class="bi bi-globe2" aria-hidden="true"></i>
+                <p class="fw-semibold mb-1">{{ 'OTA_ALLOCATIONS.NO_ROOM_TYPES' | translate }}</p>
+              </div>
+            </td>
+          </tr>
+
+          <tr *ngFor="let row of rows">
+            <td class="fw-semibold">
+              {{ row.room_type_name_en }} <span class="text-muted small" dir="auto">({{ row.room_type_name_ar }})</span>
+              <div class="ota-alloc-warning" *ngIf="needsRatePlanWarning(row)">
+                <i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i>
+                {{ 'OTA_ALLOCATIONS.NO_RATE_PLAN_WARNING' | translate }}
+              </div>
+            </td>
+            <td>{{ row.total_rooms }}</td>
+            <td>
+              <span class="badge border-0" [ngClass]="row.ota_booked > 0 ? 'bg-info-subtle text-info' : 'bg-secondary-subtle text-secondary'">
+                {{ row.ota_booked }}
+              </span>
+            </td>
+            <td style="max-width: 140px;">
+              <input type="number" min="0" class="form-control form-control-sm"
+                     [(ngModel)]="draftAllocation[row.room_type_id]" [name]="'allocated_' + row.room_type_id">
+            </td>
+            <td>
+              <span class="badge border-0" [ngClass]="remainingHeadroom(row) > 0 ? 'bg-success-subtle text-success' : 'bg-warning-subtle text-warning'">
+                {{ remainingHeadroom(row) }}
+              </span>
+            </td>
+            <td class="rate-plans-col">
+              <div class="ota-alloc-plans">
+                <button type="button" class="ota-alloc-plan-badge" *ngFor="let plan of row.rate_plans"
+                        [class.ota-alloc-plan-badge--inactive]="!plan.is_active"
+                        (click)="openEditPlanModal(plan)"
+                        [attr.title]="'COMMON.EDIT' | translate">
+                  {{ plan.name_en }}
+                  <span class="ota-alloc-plan-badge__pct">{{ plan.price_adjustment_percent > 0 ? '+' : '' }}{{ plan.price_adjustment_percent }}%</span>
+                </button>
+                <button type="button" class="ota-alloc-plan-add" (click)="openAddPlanModal(row)"
+                        [attr.aria-label]="'OTA_RATE_PLANS.ADD_NEW' | translate" [attr.title]="'OTA_RATE_PLANS.ADD_NEW' | translate">
+                  <i class="bi bi-plus-lg" aria-hidden="true"></i>
+                </button>
+              </div>
+            </td>
+            <td class="text-end">
+              <button type="button" class="btn btn-sm btn-primary" (click)="save(row)"
+                      [disabled]="!isDirty(row) || savingRoomTypeId === row.room_type_id">
+                <span *ngIf="savingRoomTypeId === row.room_type_id" class="spinner-border spinner-border-sm me-1" role="status"></span>
+                {{ 'COMMON.SAVE' | translate }}
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div *ngIf="showPlanModal" class="modal-backdrop-custom" (click)="closePlanModal()">
+  <div class="modal-content-custom card border-0 shadow-lg" (click)="$event.stopPropagation()"
+       role="dialog" aria-modal="true" [attr.aria-labelledby]="'rate-plan-modal-title'">
+    <div class="card-header bg-white py-3 border-bottom d-flex align-items-center justify-content-between">
+      <div>
+        <p class="small text-muted text-uppercase fw-semibold mb-1">{{ 'OTA_RATE_PLANS.EYEBROW' | translate }}</p>
+        <h2 class="h5 mb-0" id="rate-plan-modal-title">
+          {{ (isEditMode ? 'OTA_RATE_PLANS.EDIT' : 'OTA_RATE_PLANS.ADD_NEW') | translate }}
+        </h2>
+      </div>
+      <button type="button" class="btn btn-sm btn-light" (click)="closePlanModal()"
+              [attr.aria-label]="'COMMON.CANCEL' | translate" [disabled]="isSavingPlan">
+        <i class="bi bi-x-lg" aria-hidden="true"></i>
+      </button>
+    </div>
+    <div class="card-body p-4">
+      <form #planForm="ngForm" (ngSubmit)="savePlan()">
+        <div class="mb-3">
+          <label class="form-label small fw-bold" for="planNameEn">{{ 'OTA_RATE_PLANS.NAME_EN' | translate }}</label>
+          <input id="planNameEn" type="text" name="name_en" [(ngModel)]="currentPlan.name_en"
+                 class="form-control" required autocomplete="off">
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label small fw-bold" for="planNameAr">{{ 'OTA_RATE_PLANS.NAME_AR' | translate }}</label>
+          <input id="planNameAr" type="text" name="name_ar" dir="auto" [(ngModel)]="currentPlan.name_ar"
+                 class="form-control" required autocomplete="off">
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label small fw-bold" for="planAdjustment">{{ 'OTA_RATE_PLANS.ADJUSTMENT' | translate }}</label>
+          <div class="input-group">
+            <input id="planAdjustment" type="number" name="price_adjustment_percent" min="-100" max="100" step="any"
+                   [(ngModel)]="currentPlan.price_adjustment_percent" class="form-control" required>
+            <span class="input-group-text">%</span>
+          </div>
+          <div class="form-text">{{ 'OTA_RATE_PLANS.ADJUSTMENT_HINT' | translate }}</div>
+        </div>
+
+        <div class="mb-3 form-check form-switch">
+          <input class="form-check-input" type="checkbox" id="planRefundable" name="is_refundable"
+                 [(ngModel)]="currentPlan.is_refundable">
+          <label class="form-check-label" for="planRefundable">{{ 'OTA_RATE_PLANS.REFUNDABLE' | translate }}</label>
+        </div>
+
+        <ng-container *ngIf="isEditMode">
+          <div class="mb-4 form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="planActive" name="is_active"
+                   [(ngModel)]="currentPlan.is_active">
+            <label class="form-check-label" for="planActive">{{ 'OTA_RATE_PLANS.ACTIVE' | translate }}</label>
+          </div>
+          <button type="button" class="btn btn-outline-danger btn-sm mb-3" (click)="deleteCurrentPlan()">
+            <i class="bi bi-trash me-1" aria-hidden="true"></i>{{ 'COMMON.DELETE' | translate }}
+          </button>
+        </ng-container>
+
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-light flex-grow-1" (click)="closePlanModal()" [disabled]="isSavingPlan">
+            {{ 'COMMON.CANCEL' | translate }}
+          </button>
+          <button type="submit" class="btn btn-primary flex-grow-1" [disabled]="isSavingPlan || !planForm.valid">
+            <span class="spinner-border spinner-border-sm me-2" *ngIf="isSavingPlan" role="status"></span>
+            {{ (isEditMode ? 'OTA_RATE_PLANS.UPDATE' : 'OTA_RATE_PLANS.SAVE') | translate }}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>

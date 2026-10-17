@@ -1,0 +1,221 @@
+<div class="penalties-page">
+  <section class="penalties-hero">
+    <div class="penalties-hero__copy">
+      <p class="penalties-hero__eyebrow">
+        <i class="bi bi-exclamation-triangle" aria-hidden="true"></i>
+        {{ 'PENALTIES.EYEBROW' | translate }}
+      </p>
+      <h1>{{ 'PENALTIES.TITLE' | translate }}</h1>
+      <p class="penalties-hero__subtitle">{{ 'PENALTIES.SUBTITLE' | translate }}</p>
+    </div>
+    <div class="penalties-hero__actions">
+      <button type="button" class="btn btn-outline-secondary" (click)="loadPenalties()" [disabled]="isLoading"
+              [attr.aria-label]="'COMMON.REFRESH' | translate">
+        <i class="bi bi-arrow-clockwise" [class.spin]="isLoading" aria-hidden="true"></i>
+        <span>{{ 'COMMON.REFRESH' | translate }}</span>
+      </button>
+      <button type="button" class="btn btn-primary" (click)="openAddModal()">
+        <i class="bi bi-plus-lg" aria-hidden="true"></i>
+        <span>{{ 'PENALTIES.ADD_NEW' | translate }}</span>
+      </button>
+    </div>
+  </section>
+
+  <div class="penalties-summary" role="group" [attr.aria-label]="'PENALTIES.SUMMARY_ARIA' | translate">
+    <ng-container *ngIf="isLoading">
+      <div class="penalties-stat" *ngFor="let i of [1,2,3]">
+        <div class="skeleton skeleton-text" style="width: 40%;"></div>
+        <div class="skeleton skeleton-text mt-2" style="width: 30%; height: 1.5rem;"></div>
+      </div>
+    </ng-container>
+    <ng-container *ngIf="!isLoading">
+      <div class="penalties-stat">
+        <span class="penalties-stat__label">{{ 'PENALTIES.STAT_TOTAL' | translate }}</span>
+        <span class="penalties-stat__value">{{ penalties.length }}</span>
+      </div>
+      <div class="penalties-stat penalties-stat--fixed">
+        <span class="penalties-stat__label">{{ 'PENALTIES.STAT_FIXED' | translate }}</span>
+        <span class="penalties-stat__value">{{ fixedCount }}</span>
+      </div>
+      <div class="penalties-stat penalties-stat--percent">
+        <span class="penalties-stat__label">{{ 'PENALTIES.STAT_PERCENT' | translate }}</span>
+        <span class="penalties-stat__value">{{ percentCount }}</span>
+      </div>
+    </ng-container>
+  </div>
+
+  <div class="card border-0 shadow-sm penalties-card">
+    <div class="penalties-toolbar">
+      <div class="ui-search penalties-search flex-grow-1">
+        <i class="bi bi-search ui-search__icon" aria-hidden="true"></i>
+        <label class="visually-hidden" for="penaltiesSearch">{{ 'PENALTIES.SEARCH' | translate }}</label>
+        <input id="penaltiesSearch" type="search" class="form-control ui-search__input"
+               [(ngModel)]="searchTerm"
+               [placeholder]="'PENALTIES.SEARCH' | translate" />
+      </div>
+      <div class="penalties-type-filter" role="group" [attr.aria-label]="'PENALTIES.TYPE_FILTER_ARIA' | translate">
+        <button type="button" class="penalties-chip"
+                [class.penalties-chip--active]="typeFilter === 'all'"
+                (click)="typeFilter = 'all'">{{ 'PENALTIES.FILTER_ALL' | translate }}</button>
+        <button type="button" class="penalties-chip"
+                [class.penalties-chip--active]="typeFilter === 'fixed'"
+                (click)="typeFilter = 'fixed'">{{ 'PENALTIES.FIXED' | translate }}</button>
+        <button type="button" class="penalties-chip"
+                [class.penalties-chip--active]="typeFilter === 'percent'"
+                (click)="typeFilter = 'percent'">{{ 'PENALTIES.PERCENTAGE' | translate }}</button>
+      </div>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0 penalties-table">
+        <thead>
+          <tr>
+            <th>{{ 'PENALTIES.NAME_EN' | translate }}</th>
+            <th>{{ 'PENALTIES.NAME_AR' | translate }}</th>
+            <th>{{ 'PENALTIES.TYPE' | translate }}</th>
+            <th>{{ 'PENALTIES.VALUE' | translate }}</th>
+            <th>{{ 'PENALTIES.DESCRIPTION' | translate }}</th>
+            <th class="text-end">{{ 'COMMON.ACTIONS' | translate }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <ng-container *ngIf="isLoading">
+            <tr *ngFor="let i of [1,2,3,4,5]">
+              <td><div class="skeleton skeleton-text" style="width: 120px;"></div></td>
+              <td><div class="skeleton skeleton-text" style="width: 100px;"></div></td>
+              <td><div class="skeleton" style="width: 70px; height: 22px; border-radius: 999px;"></div></td>
+              <td><div class="skeleton skeleton-text" style="width: 60px;"></div></td>
+              <td><div class="skeleton skeleton-text" style="width: 160px;"></div></td>
+              <td class="text-end">
+                <div class="skeleton ms-auto" style="width: 72px; height: 32px; border-radius: 6px;"></div>
+              </td>
+            </tr>
+          </ng-container>
+
+          <tr *ngIf="!isLoading && filteredPenalties.length === 0">
+            <td colspan="6" class="py-5 text-center">
+              <div class="penalties-empty">
+                <i class="bi bi-exclamation-triangle" aria-hidden="true"></i>
+                <p class="fw-semibold mb-1">
+                  {{ (penalties.length === 0 ? 'PENALTIES.NO_PENALTIES' : 'PENALTIES.NO_RESULTS') | translate }}
+                </p>
+                <p class="text-muted small mb-3">
+                  {{ (penalties.length === 0 ? 'PENALTIES.EMPTY_HINT' : 'PENALTIES.NO_RESULTS_HINT') | translate }}
+                </p>
+                <button type="button" class="btn btn-primary btn-sm" *ngIf="penalties.length === 0" (click)="openAddModal()">
+                  <i class="bi bi-plus-lg me-1" aria-hidden="true"></i>{{ 'PENALTIES.ADD_NEW' | translate }}
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" *ngIf="penalties.length > 0"
+                        (click)="searchTerm = ''; typeFilter = 'all'">
+                  {{ 'PENALTIES.CLEAR_FILTERS' | translate }}
+                </button>
+              </div>
+            </td>
+          </tr>
+
+          <tr *ngFor="let penalty of filteredPenalties">
+            <td class="fw-semibold">{{ penalty.name_en }}</td>
+            <td dir="auto">{{ penalty.name_ar }}</td>
+            <td>
+              <span class="badge rounded-pill"
+                    [class.penalties-badge--fixed]="isFixed(penalty)"
+                    [class.penalties-badge--percent]="!isFixed(penalty)">
+                {{ (isFixed(penalty) ? 'PENALTIES.FIXED' : 'PENALTIES.PERCENTAGE') | translate }}
+              </span>
+            </td>
+            <td class="fw-bold text-danger text-nowrap">{{ formatValue(penalty) }}</td>
+            <td class="text-muted small">{{ penalty.description || ('COMMON.NA' | translate) }}</td>
+            <td class="text-end text-nowrap">
+              <button type="button" class="btn btn-sm btn-light text-primary me-1"
+                      (click)="openEditModal(penalty)"
+                      [attr.aria-label]="'COMMON.EDIT' | translate"
+                      [attr.title]="'COMMON.EDIT' | translate">
+                <i class="bi bi-pencil" aria-hidden="true"></i>
+              </button>
+              <button type="button" class="btn btn-sm btn-light text-danger"
+                      (click)="deletePenalty(penalty.id)"
+                      [attr.aria-label]="'COMMON.DELETE' | translate"
+                      [attr.title]="'COMMON.DELETE' | translate">
+                <i class="bi bi-trash" aria-hidden="true"></i>
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="penalties-footer" *ngIf="!isLoading && filteredPenalties.length > 0">
+      <span class="small text-muted">
+        {{ 'PENALTIES.SHOWING_COUNT' | translate:{ shown: filteredPenalties.length, total: penalties.length } }}
+      </span>
+    </div>
+  </div>
+</div>
+
+<div *ngIf="showModal" class="modal-backdrop-custom" (click)="closeModal()">
+  <div class="modal-content-custom card border-0 shadow-lg"
+       (click)="$event.stopPropagation()"
+       role="dialog"
+       aria-modal="true"
+       [attr.aria-labelledby]="'penalty-modal-title'">
+    <div class="card-header bg-white py-3 border-bottom d-flex align-items-center justify-content-between">
+      <div>
+        <p class="small text-muted text-uppercase fw-semibold mb-1">{{ 'PENALTIES.EYEBROW' | translate }}</p>
+        <h2 class="h5 mb-0" id="penalty-modal-title">
+          {{ (isEditMode ? 'PENALTIES.EDIT' : 'PENALTIES.ADD_NEW') | translate }}
+        </h2>
+      </div>
+      <button type="button" class="btn btn-sm btn-light" (click)="closeModal()"
+              [attr.aria-label]="'COMMON.CANCEL' | translate" [disabled]="isSaving">
+        <i class="bi bi-x-lg" aria-hidden="true"></i>
+      </button>
+    </div>
+    <div class="card-body p-4">
+      <form (ngSubmit)="savePenalty()">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label small fw-bold" for="penaltyNameEn">{{ 'PENALTIES.NAME_EN' | translate }}</label>
+            <input id="penaltyNameEn" type="text" [(ngModel)]="currentPenalty.name_en" name="name_en"
+                   class="form-control" required autocomplete="off">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small fw-bold" for="penaltyNameAr">{{ 'PENALTIES.NAME_AR' | translate }}</label>
+            <input id="penaltyNameAr" type="text" [(ngModel)]="currentPenalty.name_ar" name="name_ar"
+                   class="form-control" dir="rtl" required autocomplete="off">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small fw-bold" for="penaltyType">{{ 'PENALTIES.TYPE' | translate }}</label>
+            <select id="penaltyType" [(ngModel)]="currentPenalty.type" name="type" class="form-select" required>
+              <option [ngValue]="1">{{ 'PENALTIES.FIXED' | translate }}</option>
+              <option [ngValue]="0">{{ 'PENALTIES.PERCENTAGE' | translate }}</option>
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small fw-bold" for="penaltyAmount">{{ 'PENALTIES.VALUE' | translate }}</label>
+            <div class="input-group">
+              <span class="input-group-text" *ngIf="Number(currentPenalty.type) === 1">{{ 'COMMON.CURRENCY_SYMBOL' | translate }}</span>
+              <input id="penaltyAmount" type="number" min="0" step="any"
+                     [(ngModel)]="currentPenalty.amount" name="amount" class="form-control" required>
+              <span class="input-group-text" *ngIf="Number(currentPenalty.type) === 0">%</span>
+            </div>
+          </div>
+          <div class="col-12">
+            <label class="form-label small fw-bold" for="penaltyDesc">{{ 'PENALTIES.DESCRIPTION' | translate }}</label>
+            <textarea id="penaltyDesc" [(ngModel)]="currentPenalty.description" name="description"
+                      class="form-control" rows="3"
+                      [placeholder]="'PENALTIES.DESCRIPTION_PLACEHOLDER' | translate"></textarea>
+          </div>
+        </div>
+        <div class="d-flex gap-2 mt-4">
+          <button type="button" class="btn btn-light flex-grow-1" (click)="closeModal()" [disabled]="isSaving">
+            {{ 'COMMON.CANCEL' | translate }}
+          </button>
+          <button type="submit" class="btn btn-primary flex-grow-1" [disabled]="isSaving">
+            <span *ngIf="isSaving" class="spinner-border spinner-border-sm me-2" role="status"></span>
+            {{ (isEditMode ? 'PENALTIES.UPDATE' : 'PENALTIES.SAVE') | translate }}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>

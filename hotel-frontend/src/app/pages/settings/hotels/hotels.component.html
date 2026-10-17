@@ -1,0 +1,265 @@
+<div class="hotels-page">
+  <section class="dept-hero">
+    <div class="dept-hero__copy">
+      <p class="dept-hero__eyebrow">
+        <i class="bi bi-building" aria-hidden="true"></i>
+        {{ 'HOTELS.EYEBROW' | translate }}
+      </p>
+      <h1>{{ 'HOTELS.TITLE' | translate }}</h1>
+      <p class="dept-hero__subtitle">{{ 'HOTELS.SUBTITLE' | translate }}</p>
+    </div>
+    <div class="dept-hero__actions">
+      <button type="button" class="btn btn-outline-secondary" (click)="loadHotels()" [disabled]="isLoading"
+              [attr.aria-label]="'COMMON.REFRESH' | translate">
+        <i class="bi bi-arrow-clockwise" [class.spin]="isLoading" aria-hidden="true"></i>
+        <span>{{ 'COMMON.REFRESH' | translate }}</span>
+      </button>
+      <button type="button" class="btn btn-primary" (click)="openAddModal()">
+        <i class="bi bi-plus-lg" aria-hidden="true"></i>
+        <span>{{ 'HOTELS.ADD_NEW' | translate }}</span>
+      </button>
+    </div>
+  </section>
+
+  <div class="card border-0 shadow-sm dept-card">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0 dept-table">
+        <thead>
+          <tr>
+            <th>{{ 'HOTELS.NAME_EN' | translate }}</th>
+            <th>{{ 'HOTELS.NAME_AR' | translate }}</th>
+            <th>{{ 'HOTELS.BUILDINGS' | translate }}</th>
+            <th>{{ 'HOTELS.USERS' | translate }}</th>
+            <th>{{ 'HOTELS.STATUS' | translate }}</th>
+            <th class="text-end">{{ 'COMMON.ACTIONS' | translate }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <ng-container *ngIf="isLoading">
+            <tr *ngFor="let i of [1,2,3]">
+              <td><div class="skeleton skeleton-text" style="width: 120px;"></div></td>
+              <td><div class="skeleton skeleton-text" style="width: 100px;"></div></td>
+              <td><div class="skeleton skeleton-text" style="width: 40px;"></div></td>
+              <td><div class="skeleton skeleton-text" style="width: 40px;"></div></td>
+              <td><div class="skeleton skeleton-text" style="width: 60px;"></div></td>
+              <td class="text-end"><div class="skeleton ms-auto" style="width: 90px; height: 32px; border-radius: 6px;"></div></td>
+            </tr>
+          </ng-container>
+
+          <tr *ngIf="!isLoading && hotels.length === 0">
+            <td colspan="6" class="py-5 text-center">
+              <div class="dept-empty">
+                <i class="bi bi-building" aria-hidden="true"></i>
+                <p class="fw-semibold mb-1">{{ 'HOTELS.NO_HOTELS' | translate }}</p>
+                <p class="text-muted small mb-3">{{ 'HOTELS.EMPTY_HINT' | translate }}</p>
+                <button type="button" class="btn btn-primary btn-sm" (click)="openAddModal()">
+                  <i class="bi bi-plus-lg me-1" aria-hidden="true"></i>{{ 'HOTELS.ADD_NEW' | translate }}
+                </button>
+              </div>
+            </td>
+          </tr>
+
+          <tr *ngFor="let hotel of hotels">
+            <td class="fw-semibold">
+              {{ hotel.name_en }}
+              <div class="small text-muted fw-normal" *ngIf="hotel.shares_tax_with; else ownTax">
+                <i class="bi bi-link-45deg" aria-hidden="true"></i>
+                {{ 'HOTELS.TAX_MODE_SHARED' | translate }} — {{ hotel.shares_tax_with.name_en }}
+              </div>
+              <ng-template #ownTax>
+                <div class="small text-muted fw-normal" *ngIf="hotel.tax_profile">
+                  <i class="bi bi-patch-check" aria-hidden="true"></i> {{ hotel.tax_profile.vat_number }}
+                </div>
+              </ng-template>
+            </td>
+            <td dir="auto">{{ hotel.name_ar }}</td>
+            <td>{{ hotel.buildings_count ?? 0 }}</td>
+            <td>
+              <button type="button" class="btn btn-sm btn-light" (click)="openUsersModal(hotel)">
+                <i class="bi bi-people me-1" aria-hidden="true"></i>{{ hotel.users_count ?? 0 }}
+              </button>
+            </td>
+            <td>
+              <button type="button" class="badge border-0"
+                      [ngClass]="hotel.is_active ? 'bg-success-subtle text-success' : 'bg-secondary-subtle text-secondary'"
+                      (click)="toggleActive(hotel)">
+                {{ (hotel.is_active ? 'HOTELS.ACTIVE' : 'HOTELS.INACTIVE') | translate }}
+              </button>
+            </td>
+            <td class="text-end text-nowrap">
+              <button type="button" class="btn btn-sm btn-light text-primary me-1"
+                      (click)="openEditModal(hotel)"
+                      [attr.aria-label]="'COMMON.EDIT' | translate"
+                      [attr.title]="'COMMON.EDIT' | translate">
+                <i class="bi bi-pencil" aria-hidden="true"></i>
+              </button>
+              <button type="button" class="btn btn-sm btn-light text-primary"
+                      (click)="openUsersModal(hotel)"
+                      [attr.aria-label]="'HOTELS.MANAGE_USERS' | translate"
+                      [attr.title]="'HOTELS.MANAGE_USERS' | translate">
+                <i class="bi bi-people" aria-hidden="true"></i>
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Add/Edit hotel modal -->
+<div *ngIf="showModal" class="modal-backdrop-custom" (click)="closeModal()">
+  <div class="modal-content-custom card border-0 shadow-lg"
+       (click)="$event.stopPropagation()"
+       role="dialog"
+       aria-modal="true"
+       [attr.aria-labelledby]="'hotel-modal-title'">
+    <div class="card-header bg-white py-3 border-bottom d-flex align-items-center justify-content-between">
+      <div>
+        <p class="small text-muted text-uppercase fw-semibold mb-1">{{ 'HOTELS.EYEBROW' | translate }}</p>
+        <h2 class="h5 mb-0" id="hotel-modal-title">
+          {{ (isEditMode ? 'HOTELS.EDIT' : 'HOTELS.ADD_NEW') | translate }}
+        </h2>
+      </div>
+      <button type="button" class="btn btn-sm btn-light" (click)="closeModal()"
+              [attr.aria-label]="'COMMON.CANCEL' | translate" [disabled]="isSaving">
+        <i class="bi bi-x-lg" aria-hidden="true"></i>
+      </button>
+    </div>
+    <div class="card-body p-4">
+      <form (ngSubmit)="saveHotel()">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label small fw-bold" for="hotelNameEn">{{ 'HOTELS.NAME_EN' | translate }}</label>
+            <input id="hotelNameEn" type="text" [(ngModel)]="currentHotel.name_en" name="name_en"
+                   class="form-control" required autocomplete="off">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small fw-bold" for="hotelNameAr">{{ 'HOTELS.NAME_AR' | translate }}</label>
+            <input id="hotelNameAr" type="text" [(ngModel)]="currentHotel.name_ar" name="name_ar"
+                   class="form-control" dir="rtl" required autocomplete="off">
+          </div>
+        </div>
+
+        <hr class="my-4">
+
+        <p class="small fw-bold text-muted text-uppercase mb-2">{{ 'HOTELS.TAX_SECTION_TITLE' | translate }}</p>
+
+        <div class="d-flex gap-3 mb-3">
+          <div class="form-check">
+            <input class="form-check-input" type="radio" id="taxModeSeparate" name="tax_mode"
+                   value="separate" [(ngModel)]="taxForm.tax_mode">
+            <label class="form-check-label" for="taxModeSeparate">{{ 'HOTELS.TAX_MODE_SEPARATE' | translate }}</label>
+          </div>
+          <div class="form-check" *ngIf="taxOwnerOptions.length > 0">
+            <input class="form-check-input" type="radio" id="taxModeShared" name="tax_mode"
+                   value="shared" [(ngModel)]="taxForm.tax_mode">
+            <label class="form-check-label" for="taxModeShared">{{ 'HOTELS.TAX_MODE_SHARED' | translate }}</label>
+          </div>
+        </div>
+
+        <div class="row g-3" *ngIf="taxForm.tax_mode === 'shared'">
+          <div class="col-12">
+            <label class="form-label small fw-bold" for="taxShareTarget">{{ 'HOTELS.TAX_SHARE_WITH' | translate }}</label>
+            <select id="taxShareTarget" class="form-select" [(ngModel)]="taxForm.shares_tax_with_hotel_id" name="shares_tax_with_hotel_id">
+              <option [ngValue]="null">{{ 'HOTELS.SELECT_HOTEL' | translate }}</option>
+              <option *ngFor="let h of taxOwnerOptions" [ngValue]="h.id">{{ h.name_en }}</option>
+            </select>
+            <p class="form-text small text-muted mb-0">{{ 'HOTELS.TAX_SHARE_HINT' | translate }}</p>
+          </div>
+        </div>
+
+        <div class="row g-3" *ngIf="taxForm.tax_mode === 'separate'">
+          <div class="col-md-6">
+            <label class="form-label small fw-bold" for="taxVatNumber">{{ 'HOTELS.VAT_NUMBER' | translate }}</label>
+            <input id="taxVatNumber" type="text" [(ngModel)]="taxForm.vat_number" name="vat_number"
+                   class="form-control" required autocomplete="off">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small fw-bold" for="taxCrNumber">{{ 'HOTELS.CR_NUMBER' | translate }}</label>
+            <input id="taxCrNumber" type="text" [(ngModel)]="taxForm.cr_number" name="cr_number"
+                   class="form-control" autocomplete="off">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small fw-bold" for="taxOrgNameEn">{{ 'HOTELS.ORG_NAME_EN' | translate }}</label>
+            <input id="taxOrgNameEn" type="text" [(ngModel)]="taxForm.org_name_en" name="org_name_en"
+                   class="form-control" required autocomplete="off">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small fw-bold" for="taxOrgNameAr">{{ 'HOTELS.ORG_NAME_AR' | translate }}</label>
+            <input id="taxOrgNameAr" type="text" [(ngModel)]="taxForm.org_name_ar" name="org_name_ar"
+                   class="form-control" dir="rtl" required autocomplete="off">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small fw-bold" for="taxOrgUnit">{{ 'HOTELS.ORG_UNIT_NAME' | translate }}</label>
+            <input id="taxOrgUnit" type="text" [(ngModel)]="taxForm.org_unit_name" name="org_unit_name"
+                   class="form-control" autocomplete="off">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small fw-bold" for="taxLocation">{{ 'HOTELS.LOCATION' | translate }}</label>
+            <input id="taxLocation" type="text" [(ngModel)]="taxForm.location" name="location"
+                   class="form-control" autocomplete="off">
+          </div>
+        </div>
+
+        <div class="d-flex gap-2 mt-4">
+          <button type="button" class="btn btn-light flex-grow-1" (click)="closeModal()" [disabled]="isSaving">
+            {{ 'COMMON.CANCEL' | translate }}
+          </button>
+          <button type="submit" class="btn btn-primary flex-grow-1" [disabled]="isSaving">
+            <span *ngIf="isSaving" class="spinner-border spinner-border-sm me-2" role="status"></span>
+            {{ (isEditMode ? 'HOTELS.UPDATE' : 'HOTELS.SAVE') | translate }}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Manage hotel users modal -->
+<div *ngIf="showUsersModal" class="modal-backdrop-custom" (click)="closeUsersModal()">
+  <div class="modal-content-custom card border-0 shadow-lg"
+       (click)="$event.stopPropagation()"
+       role="dialog"
+       aria-modal="true"
+       [attr.aria-labelledby]="'hotel-users-modal-title'">
+    <div class="card-header bg-white py-3 border-bottom d-flex align-items-center justify-content-between">
+      <div>
+        <p class="small text-muted text-uppercase fw-semibold mb-1">{{ usersModalHotel?.name_en }}</p>
+        <h2 class="h5 mb-0" id="hotel-users-modal-title">{{ 'HOTELS.MANAGE_USERS' | translate }}</h2>
+      </div>
+      <button type="button" class="btn btn-sm btn-light" (click)="closeUsersModal()"
+              [attr.aria-label]="'COMMON.CANCEL' | translate" [disabled]="isSavingUser">
+        <i class="bi bi-x-lg" aria-hidden="true"></i>
+      </button>
+    </div>
+    <div class="card-body p-4">
+      <div class="d-flex gap-2 mb-3">
+        <select class="form-select" [(ngModel)]="selectedUserId" [disabled]="isSavingUser || availableUsers.length === 0">
+          <option [ngValue]="null">{{ 'HOTELS.SELECT_USER' | translate }}</option>
+          <option *ngFor="let u of availableUsers" [ngValue]="u.id">{{ u.name }} ({{ u.job_number }})</option>
+        </select>
+        <button type="button" class="btn btn-primary text-nowrap" (click)="assignUser()" [disabled]="isSavingUser || !selectedUserId">
+          {{ 'HOTELS.GRANT_ACCESS' | translate }}
+        </button>
+      </div>
+
+      <div *ngIf="isLoadingUsers" class="text-center py-4">
+        <div class="spinner-border spinner-border-sm" role="status"></div>
+      </div>
+
+      <ul class="list-group" *ngIf="!isLoadingUsers">
+        <li class="list-group-item d-flex align-items-center justify-content-between" *ngFor="let u of assignedUsers">
+          <span>{{ u.name }} <span class="text-muted small">({{ u.job_number }})</span></span>
+          <button type="button" class="btn btn-sm btn-light text-danger" (click)="removeUser(u.id)" [disabled]="isSavingUser"
+                  [attr.aria-label]="'COMMON.DELETE' | translate" [attr.title]="'COMMON.DELETE' | translate">
+            <i class="bi bi-trash" aria-hidden="true"></i>
+          </button>
+        </li>
+        <li class="list-group-item text-muted small" *ngIf="assignedUsers.length === 0">
+          {{ 'HOTELS.NO_ASSIGNED_USERS' | translate }}
+        </li>
+      </ul>
+    </div>
+  </div>
+</div>

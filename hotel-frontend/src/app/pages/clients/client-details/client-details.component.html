@@ -1,0 +1,466 @@
+<div class="client-details-page">
+  <section class="client-details-hero">
+    <div class="client-details-hero__start">
+      <button
+        type="button"
+        class="client-details-hero__back"
+        (click)="goBack()"
+        [attr.aria-label]="'COMMON.BACK' | translate">
+        <i class="bi bi-arrow-left" aria-hidden="true"></i>
+      </button>
+      <div class="client-details-hero__copy min-w-0">
+        <p class="client-details-hero__eyebrow">
+          <i class="bi bi-person-badge" aria-hidden="true"></i>
+          {{ 'CLIENT_DETAILS.EYEBROW' | translate }}
+        </p>
+        <h1>{{ clientDisplayName || ('CLIENT_DETAILS.TITLE' | translate) }}</h1>
+        <p class="client-details-hero__subtitle">{{ 'CLIENT_DETAILS.SUBTITLE' | translate }}</p>
+      </div>
+    </div>
+    <div class="client-details-hero__actions" *ngIf="client">
+      <button type="button" class="btn btn-outline-secondary" (click)="editClient()">
+        <i class="bi bi-pencil" aria-hidden="true"></i>
+        <span>{{ 'CLIENT_DETAILS.EDIT_PROFILE' | translate }}</span>
+      </button>
+      <button type="button" class="btn btn-primary" (click)="newBooking()">
+        <i class="bi bi-plus-lg" aria-hidden="true"></i>
+        <span>{{ 'RESERVATIONS.NEW_BOOKING' | translate }}</span>
+      </button>
+    </div>
+  </section>
+
+  <div *ngIf="isLoading" class="client-details-loading" role="status">
+    <div class="spinner-border text-primary" aria-hidden="true"></div>
+    <span>{{ 'COMMON.LOADING' | translate }}</span>
+  </div>
+
+  <ng-container *ngIf="client && !isLoading">
+    <div class="client-details-summary" role="group" [attr.aria-label]="'CLIENT_DETAILS.SUMMARY_ARIA' | translate">
+      <div class="client-details-stat">
+        <span class="client-details-stat__label">{{ 'CLIENT_DETAILS.TOTAL_BOOKINGS' | translate }}</span>
+        <span class="client-details-stat__value">{{ client.totalBookings || bookingsTotal || 0 }}</span>
+      </div>
+      <div class="client-details-stat client-details-stat--visit">
+        <span class="client-details-stat__label">{{ 'CLIENT_DETAILS.LAST_VISIT' | translate }}</span>
+        <span class="client-details-stat__value client-details-stat__value--sm">
+          {{ client.lastVisit ? (client.lastVisit | date:'mediumDate') : ('COMMON.NA' | translate) }}
+        </span>
+      </div>
+      <div class="client-details-stat client-details-stat--spent">
+        <span class="client-details-stat__label">{{ 'CLIENT_DETAILS.TOTAL_SPENT' | translate }}</span>
+        <span class="client-details-stat__value">
+          {{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ (client.totalSpent ?? 0) | number:'1.2-2' }}
+        </span>
+      </div>
+      <div class="client-details-stat client-details-stat--notes">
+        <span class="client-details-stat__label">{{ 'CLIENT_DETAILS.NOTES_COUNT_LABEL' | translate }}</span>
+        <span class="client-details-stat__value">{{ notes.length }}</span>
+      </div>
+    </div>
+
+    <div class="client-details-layout">
+      <aside class="client-profile-card card border-0 shadow-sm">
+        <div class="client-profile-card__header">
+          <div class="client-profile-card__avatar" aria-hidden="true">{{ clientInitials }}</div>
+          <h2 class="client-profile-card__name">{{ clientDisplayName }}</h2>
+          <p class="client-profile-card__since">
+            {{ 'CLIENT_DETAILS.MEMBER_SINCE' | translate }}
+            {{ client.created_at ? (client.created_at | date:'mediumDate') : ('COMMON.NA' | translate) }}
+          </p>
+          <span
+            class="client-profile-card__status"
+            [class.client-profile-card__status--active]="client.status === 'active'"
+            [class.client-profile-card__status--inactive]="client.status !== 'active'">
+            {{ (client.status === 'active' ? 'CLIENT_DETAILS.ACTIVE' : 'CLIENT_DETAILS.INACTIVE') | translate }}
+          </span>
+        </div>
+
+        <ul class="client-profile-card__list">
+          <li>
+            <span class="client-profile-card__icon" aria-hidden="true"><i class="bi bi-envelope"></i></span>
+            <div>
+              <span class="client-profile-card__label">{{ 'CLIENT_DETAILS.EMAIL' | translate }}</span>
+              <span class="client-profile-card__value">{{ client.email || ('CLIENT_DETAILS.NOT_PROVIDED' | translate) }}</span>
+            </div>
+          </li>
+          <li>
+            <span class="client-profile-card__icon" aria-hidden="true"><i class="bi bi-telephone"></i></span>
+            <div>
+              <span class="client-profile-card__label">{{ 'CLIENT_DETAILS.PHONE' | translate }}</span>
+              <span class="client-profile-card__value" dir="ltr">
+                <span *ngIf="client.international_code">{{ client.international_code }} </span>{{ client.mobile || ('CLIENT_DETAILS.NOT_PROVIDED' | translate) }}
+              </span>
+            </div>
+          </li>
+          <li>
+            <span class="client-profile-card__icon" aria-hidden="true"><i class="bi bi-card-text"></i></span>
+            <div>
+              <span class="client-profile-card__label">{{ 'CLIENT_DETAILS.IDENTIFICATION' | translate }}</span>
+              <span class="client-profile-card__value">
+                {{ client.IdType || 'ID' }}: {{ client.IdNumber || ('CLIENT_DETAILS.NOT_PROVIDED' | translate) }}
+              </span>
+            </div>
+          </li>
+          <li>
+            <span class="client-profile-card__icon" aria-hidden="true"><i class="bi bi-person-badge"></i></span>
+            <div>
+              <span class="client-profile-card__label">{{ 'CLIENT_DETAILS.GUEST_TYPE' | translate }}</span>
+              <span class="client-profile-card__value">
+                {{ client.guest_type ? ('CLIENTS.' + (client.guest_type.split(' ').join('_') | uppercase) | translate) : ('COMMON.NA' | translate) }}
+                <span class="text-muted"> · {{ client.nationality || ('COMMON.UNKNOWN' | translate) }}</span>
+              </span>
+            </div>
+          </li>
+          <li>
+            <span class="client-profile-card__icon" aria-hidden="true"><i class="bi bi-gender-ambiguous"></i></span>
+            <div>
+              <span class="client-profile-card__label">{{ 'CLIENT_DETAILS.GENDER_BIRTH' | translate }}</span>
+              <span class="client-profile-card__value">
+                {{ (client.gender === 'MALE' ? 'CLIENTS.MALE' : (client.gender === 'FEMALE' ? 'CLIENTS.FEMALE' : client.gender)) | translate }}
+                · {{ client.birth_date ? (client.birth_date | date:'mediumDate') : ('COMMON.NA' | translate) }}
+              </span>
+            </div>
+          </li>
+        </ul>
+      </aside>
+
+      <div class="client-details-main">
+        <section class="card border-0 shadow-sm client-bookings-card">
+          <div class="client-section-header">
+            <div class="min-w-0">
+              <h3 class="client-section-header__title">{{ 'CLIENT_DETAILS.BOOKING_HISTORY' | translate }}</h3>
+              <p class="client-section-header__meta" *ngIf="bookingsTotal > 0">
+                {{ 'CLIENT_DETAILS.BOOKING_COUNT' | translate:{ count: bookingsTotal } }}
+              </p>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-primary" (click)="viewAllBookings()">
+              {{ 'CLIENT_DETAILS.VIEW_ALL' | translate }}
+              <i class="bi bi-arrow-up-right ms-1" aria-hidden="true"></i>
+            </button>
+          </div>
+
+          <div *ngIf="bookingsError" class="alert alert-warning mx-3 mt-3 mb-0 py-2 small" role="alert">
+            {{ bookingsError }}
+          </div>
+
+          <div class="table-responsive">
+            <table class="table align-middle mb-0 client-bookings-table">
+              <thead>
+                <tr>
+                  <th>{{ 'CLIENT_DETAILS.BOOKING_ID' | translate }}</th>
+                  <th>{{ 'CLIENT_DETAILS.DATES' | translate }}</th>
+                  <th>{{ 'CLIENT_DETAILS.ROOM' | translate }}</th>
+                  <th class="text-center">{{ 'CLIENT_DETAILS.STATUS' | translate }}</th>
+                  <th class="text-end">{{ 'CLIENT_DETAILS.AMOUNT' | translate }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngIf="isLoadingBookings">
+                  <td colspan="5" class="text-center py-4 text-muted">
+                    <span class="spinner-border spinner-border-sm text-primary me-2" role="status" aria-hidden="true"></span>
+                    {{ 'COMMON.LOADING' | translate }}
+                  </td>
+                </tr>
+                <tr
+                  *ngFor="let b of recentBookings"
+                  class="client-bookings-table__row"
+                  (click)="viewBooking(b.id)"
+                  (keydown.enter)="viewBooking(b.id)"
+                  tabindex="0"
+                  role="link"
+                  [attr.aria-label]="'CLIENT_DETAILS.OPEN_BOOKING' | translate:{ id: b.id }">
+                  <td class="fw-semibold text-primary">#{{ b.id }}</td>
+                  <td>{{ b.checkIn | date:'mediumDate' }} – {{ b.checkOut | date:'mediumDate' }}</td>
+                  <td class="text-muted">{{ b.room }}</td>
+                  <td class="text-center">
+                    <span class="badge rounded-pill" [ngClass]="bookingStatusClass(b.status)">
+                      {{ bookingStatusLabel(b.status) }}
+                    </span>
+                  </td>
+                  <td class="text-end fw-bold">
+                    {{ 'COMMON.CURRENCY_SYMBOL' | translate }}{{ b.amount | number:'1.2-2' }}
+                  </td>
+                </tr>
+                <tr *ngIf="!isLoadingBookings && recentBookings.length === 0 && !bookingsError">
+                  <td colspan="5" class="client-empty-cell">
+                    <i class="bi bi-calendar-x" aria-hidden="true"></i>
+                    <span>{{ 'CLIENT_DETAILS.NO_HISTORY' | translate }}</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div *ngIf="bookingsLastPage > 1" class="client-bookings-pager">
+            <span class="text-muted small">
+              {{ 'RESERVATIONS.PAGINATION_SHOWING' | translate:{
+                from: ((bookingsPage - 1) * bookingsPageSize) + 1,
+                to: ((bookingsPage - 1) * bookingsPageSize) + recentBookings.length,
+                total: bookingsTotal
+              } }}
+            </span>
+            <div class="btn-group btn-group-sm">
+              <button
+                type="button"
+                class="btn btn-light border"
+                [disabled]="bookingsPage <= 1 || isLoadingBookings"
+                (click)="goToBookingsPage(bookingsPage - 1)">
+                {{ 'RESERVATIONS.PREV_PAGE' | translate }}
+              </button>
+              <button
+                type="button"
+                class="btn btn-light border"
+                [disabled]="bookingsPage >= bookingsLastPage || isLoadingBookings"
+                (click)="goToBookingsPage(bookingsPage + 1)">
+                {{ 'RESERVATIONS.NEXT_PAGE' | translate }}
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card border-0 shadow-sm client-notes-card">
+          <div class="client-section-header">
+            <div class="min-w-0">
+              <h3 class="client-section-header__title">{{ 'CLIENT_DETAILS.NOTES_PREFERENCES' | translate }}</h3>
+              <p class="client-section-header__meta">
+                {{ 'CLIENT_DETAILS.NOTES_HINT' | translate }}
+              </p>
+            </div>
+            <button type="button" class="btn btn-sm btn-primary" (click)="addNote()">
+              <i class="bi bi-plus-lg" aria-hidden="true"></i>
+              {{ 'CLIENT_DETAILS.ADD_NOTE' | translate }}
+            </button>
+          </div>
+
+          <div class="client-notes-list">
+            <button
+              type="button"
+              *ngFor="let note of notes"
+              class="client-note"
+              (click)="viewNote(note)">
+              <div class="client-note__top">
+                <span class="client-note__title">{{ note.title }}</span>
+                <span class="client-note__meta">
+                  <span>{{ note.created_at | date:'mediumDate' }}</span>
+                  <span
+                    class="client-note__delete"
+                    role="button"
+                    tabindex="0"
+                    (click)="deleteNote(note.id, $event)"
+                    (keydown.enter)="deleteNote(note.id, $event)"
+                    [attr.title]="'CLIENT_DETAILS.DELETE_NOTE' | translate"
+                    [attr.aria-label]="'CLIENT_DETAILS.DELETE_NOTE' | translate">
+                    <i class="bi bi-trash" aria-hidden="true"></i>
+                  </span>
+                </span>
+              </div>
+              <p class="client-note__body">{{ note.description }}</p>
+            </button>
+
+            <div *ngIf="notes.length === 0 && !isLoadingNotes" class="client-empty-notes">
+              <i class="bi bi-sticky" aria-hidden="true"></i>
+              <span>{{ 'CLIENT_DETAILS.NO_NOTES' | translate }}</span>
+            </div>
+            <div *ngIf="isLoadingNotes" class="client-empty-notes">
+              <span class="spinner-border spinner-border-sm text-primary" role="status" aria-hidden="true"></span>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </ng-container>
+
+  <div *ngIf="!client && !isLoading" class="client-not-found card border-0 shadow-sm">
+    <i class="bi bi-person-slash" aria-hidden="true"></i>
+    <h2>{{ 'CLIENT_DETAILS.CLIENT_NOT_FOUND' | translate }}</h2>
+    <p>{{ 'CLIENT_DETAILS.CLIENT_NOT_FOUND_DESC' | translate }}</p>
+    <button type="button" class="btn btn-primary" (click)="goBack()">
+      {{ 'CLIENT_DETAILS.BACK_TO_CLIENTS' | translate }}
+    </button>
+  </div>
+
+  <!-- View Note Modal -->
+  <div *ngIf="showViewNoteModal && selectedNote" class="user-modal-backdrop" (click)="closeViewNoteModal()">
+    <div class="user-modal card" (click)="$event.stopPropagation()">
+      <div class="card-header d-flex align-items-center justify-content-between bg-white py-3">
+        <h6 class="mb-0 fw-bold">{{ selectedNote.title }}</h6>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-sm btn-light text-danger" (click)="deleteNote(selectedNote.id, $event)">
+            <i class="bi bi-trash"></i>
+          </button>
+          <button type="button" class="btn btn-sm btn-light" (click)="closeViewNoteModal()">
+            <i class="bi bi-x-lg"></i>
+          </button>
+        </div>
+      </div>
+      <div class="card-body p-4">
+        <div class="text-muted small mb-3">{{ 'CLIENT_DETAILS.ADDED_ON' | translate }} {{ selectedNote.created_at | date:'medium' }}</div>
+        <div class="client-note-view-body">{{ selectedNote.description }}</div>
+      </div>
+      <div class="card-footer bg-light d-flex justify-content-end py-3">
+        <button type="button" (click)="closeViewNoteModal()" class="btn btn-primary px-4">{{ 'CLIENT_DETAILS.CLOSE' | translate }}</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Note Modal -->
+  <div *ngIf="showNoteModal" class="user-modal-backdrop" (click)="closeNoteModal()">
+    <div class="user-modal card" (click)="$event.stopPropagation()">
+      <div class="card-header d-flex align-items-center justify-content-between bg-white py-3">
+        <h6 class="mb-0 fw-bold">{{ 'CLIENT_DETAILS.ADD_CLIENT_NOTE' | translate }}</h6>
+        <button type="button" class="btn btn-sm btn-light" (click)="closeNoteModal()"><i class="bi bi-x-lg"></i></button>
+      </div>
+      <div class="card-body p-4">
+        <div class="mb-3">
+          <label class="form-label small fw-bold text-muted">{{ 'CLIENT_DETAILS.TITLE_LABEL' | translate }}</label>
+          <input type="text" [(ngModel)]="newNote.title" class="form-control" [placeholder]="'CLIENT_DETAILS.TITLE_PLACEHOLDER' | translate">
+        </div>
+        <div>
+          <label class="form-label small fw-bold text-muted">{{ 'CLIENT_DETAILS.DESCRIPTION_LABEL' | translate }}</label>
+          <textarea [(ngModel)]="newNote.description" class="form-control" rows="4" [placeholder]="'CLIENT_DETAILS.DESCRIPTION_PLACEHOLDER' | translate"></textarea>
+        </div>
+      </div>
+      <div class="card-footer bg-light d-flex justify-content-end gap-2 py-3">
+        <button type="button" (click)="closeNoteModal()" class="btn btn-light border px-4">{{ 'COMMON.CANCEL' | translate }}</button>
+        <button type="button" (click)="saveNote()" class="btn btn-primary px-4" [disabled]="!newNote.title || !newNote.description">
+          {{ 'CLIENT_DETAILS.SAVE_NOTE' | translate }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit Client Modal -->
+  <div
+    *ngIf="showEditModal"
+    class="client-edit-modal-backdrop user-modal-backdrop"
+    (click)="closeEditModal()"
+    role="presentation">
+    <div
+      class="client-edit-modal user-modal card border-0 shadow-lg"
+      (click)="$event.stopPropagation()"
+      role="dialog"
+      aria-modal="true"
+      [attr.aria-labelledby]="'client-edit-modal-title'">
+      <div class="client-edit-modal__header">
+        <div class="d-flex align-items-start gap-3">
+          <span class="client-edit-modal__icon" aria-hidden="true">
+            <i class="bi bi-person-gear"></i>
+          </span>
+          <div class="flex-grow-1 min-w-0">
+            <h5 class="mb-1 fw-bold" id="client-edit-modal-title">{{ 'CLIENTS.EDIT_CLIENT' | translate }}</h5>
+            <p class="text-muted small mb-0">{{ 'CLIENT_DETAILS.EDIT_MODAL_SUBTITLE' | translate }}</p>
+          </div>
+          <button type="button" class="btn btn-sm btn-light client-edit-modal__close" (click)="closeEditModal()" [disabled]="isSavingEdit" [attr.aria-label]="'COMMON.CANCEL' | translate">
+            <i class="bi bi-x-lg"></i>
+          </button>
+        </div>
+      </div>
+
+      <form class="client-edit-modal__body" (ngSubmit)="saveClientEdit()" #editClientForm="ngForm">
+        <section class="modal-section">
+          <h6 class="modal-section__title">
+            <i class="bi bi-person"></i>
+            {{ 'CLIENT_DETAILS.SECTION_IDENTITY' | translate }}
+          </h6>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label small fw-bold" for="edit-first-name">{{ 'CLIENTS.FIRST_NAME' | translate }} *</label>
+              <input id="edit-first-name" type="text" name="first_name" [(ngModel)]="editClientData.first_name" class="form-control" [class.is-invalid]="isSubmitted && !editClientData.first_name.trim()" required autocomplete="given-name">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-bold" for="edit-last-name">{{ 'CLIENTS.LAST_NAME' | translate }} *</label>
+              <input id="edit-last-name" type="text" name="last_name" [(ngModel)]="editClientData.last_name" class="form-control" [class.is-invalid]="isSubmitted && !editClientData.last_name.trim()" required autocomplete="family-name">
+            </div>
+          </div>
+        </section>
+
+        <section class="modal-section">
+          <h6 class="modal-section__title">
+            <i class="bi bi-envelope"></i>
+            {{ 'CLIENT_DETAILS.SECTION_CONTACT' | translate }}
+          </h6>
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label small fw-bold" for="edit-email">{{ 'CLIENTS.EMAIL' | translate }}</label>
+              <div class="input-group">
+                <span class="input-group-text"><i class="bi bi-at"></i></span>
+                <input id="edit-email" type="email" name="email" [(ngModel)]="editClientData.email" class="form-control" autocomplete="email" [placeholder]="'CLIENTS.EMAIL' | translate">
+              </div>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small fw-bold" for="edit-country-code">{{ 'CLIENTS.COUNTRY_CODE' | translate }}</label>
+              <div class="position-relative">
+                <input id="edit-country-code" type="text" name="international_code" [(ngModel)]="editClientData.international_code" (input)="filterCountryCodes()" (focus)="showCountryDropdown = true" (blur)="onBlurCountry()" class="form-control text-center" placeholder="+966">
+                <div *ngIf="showCountryDropdown && filteredCountryCodes.length > 0" class="country-dropdown shadow-sm border rounded">
+                  <div *ngFor="let country of filteredCountryCodes" (mousedown)="selectCountryCode(country.code)" class="country-option p-2 small d-flex justify-content-between">
+                    <span class="fw-medium">{{ country.code }}</span>
+                    <span class="text-muted">{{ country.key | translate }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-8">
+              <label class="form-label small fw-bold" for="edit-mobile">{{ 'CLIENTS.MOBILE' | translate }} *</label>
+              <div class="input-group">
+                <span class="input-group-text"><i class="bi bi-telephone"></i></span>
+                <input id="edit-mobile" type="tel" name="mobile" [(ngModel)]="editClientData.mobile" class="form-control" [class.is-invalid]="isSubmitted && !editClientData.mobile.trim()" required autocomplete="tel">
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="modal-section">
+          <h6 class="modal-section__title">
+            <i class="bi bi-card-text"></i>
+            {{ 'CLIENT_DETAILS.SECTION_DOCUMENTS' | translate }}
+          </h6>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label small fw-bold" for="edit-id-type">{{ 'CLIENTS.ID_TYPE' | translate }}</label>
+              <select id="edit-id-type" name="IdType" [(ngModel)]="editClientData.IdType" class="form-select">
+                <option value="ID">{{ 'CLIENTS.ID_CARD' | translate }}</option>
+                <option value="PASSPORT">{{ 'CLIENTS.PASSPORT' | translate }}</option>
+                <option value="DRIVING_LICENSE">{{ 'CLIENTS.DRIVING_LICENSE' | translate }}</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-bold" for="edit-id-number">{{ 'CLIENTS.ID_NUMBER' | translate }} *</label>
+              <input id="edit-id-number" type="text" name="IdNumber" [(ngModel)]="editClientData.IdNumber" class="form-control" [class.is-invalid]="isSubmitted && !editClientData.IdNumber.trim()" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-bold" for="edit-birth-date">{{ 'CLIENTS.BIRTH_DATE' | translate }}</label>
+              <input id="edit-birth-date" type="date" name="birth_date" [(ngModel)]="editClientData.birth_date" class="form-control">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-bold" for="edit-gender">{{ 'CLIENTS.GENDER' | translate }}</label>
+              <select id="edit-gender" name="gender" [(ngModel)]="editClientData.gender" class="form-select">
+                <option value="MALE">{{ 'CLIENTS.GENDER_MALE' | translate }}</option>
+                <option value="FEMALE">{{ 'CLIENTS.GENDER_FEMALE' | translate }}</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-bold" for="edit-guest-type">{{ 'CLIENTS.GUEST_TYPE' | translate }}</label>
+              <select id="edit-guest-type" name="guest_type" [(ngModel)]="editClientData.guest_type" class="form-select">
+                <option value="CITIZEN">{{ 'CLIENTS.GUEST_CITIZEN' | translate }}</option>
+                <option value="RESIDENT">{{ 'CLIENTS.RESIDENT' | translate }}</option>
+                <option value="VISITOR">{{ 'CLIENTS.VISITOR' | translate }}</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-bold" for="edit-nationality">{{ 'CLIENTS.NATIONALITY' | translate }}</label>
+              <input id="edit-nationality" type="text" name="nationality" [(ngModel)]="editClientData.nationality" class="form-control" [placeholder]="'CLIENTS.NATIONALITY_PLACEHOLDER' | translate">
+            </div>
+          </div>
+        </section>
+
+        <div class="client-edit-modal__footer">
+          <button type="button" class="btn btn-light" (click)="closeEditModal()" [disabled]="isSavingEdit">{{ 'COMMON.CANCEL' | translate }}</button>
+          <button type="submit" class="btn btn-primary px-4" [disabled]="isSavingEdit || !canSaveEdit">
+            <span *ngIf="isSavingEdit" class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+            {{ 'COMMON.SAVE_CHANGES' | translate }}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>

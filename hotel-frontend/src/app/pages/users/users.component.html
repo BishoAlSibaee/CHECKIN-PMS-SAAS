@@ -1,0 +1,642 @@
+<div class="users-page">
+  <section class="users-hero">
+    <div class="users-hero__copy">
+      <p class="users-hero__eyebrow">
+        <i class="bi bi-shield-lock" aria-hidden="true"></i>
+        {{ 'USERS.EYEBROW' | translate }}
+      </p>
+      <h1>{{ 'USERS.TITLE' | translate }}</h1>
+      <p class="users-hero__subtitle">{{ 'USERS.SUBTITLE' | translate }}</p>
+    </div>
+    <div class="users-hero__actions">
+      <button type="button" class="btn btn-outline-secondary" (click)="refreshData()" [disabled]="isLoading"
+              [attr.aria-label]="'COMMON.REFRESH' | translate">
+        <i class="bi bi-arrow-clockwise" [class.spin]="isLoading" aria-hidden="true"></i>
+        <span>{{ 'COMMON.REFRESH' | translate }}</span>
+      </button>
+      <button type="button" class="btn btn-primary d-none d-md-inline-flex" *ngIf="canShowPrimaryAction"
+              (click)="openPrimaryAction()">
+        <i class="bi" [ngClass]="activeTab === 'roles' ? 'bi-plus-lg' : 'bi-person-plus'" aria-hidden="true"></i>
+        <span>{{ primaryActionLabel | translate }}</span>
+      </button>
+    </div>
+  </section>
+
+  <div class="users-summary" role="group" [attr.aria-label]="'USERS.SUMMARY_ARIA' | translate">
+    <ng-container *ngIf="isLoading && users.length === 0">
+      <div class="users-stat" *ngFor="let i of [1,2,3]">
+        <div class="skeleton skeleton-text" style="width: 45%;"></div>
+        <div class="skeleton skeleton-text mt-2" style="width: 30%; height: 1.5rem;"></div>
+      </div>
+    </ng-container>
+    <ng-container *ngIf="!(isLoading && users.length === 0)">
+      <button type="button" class="users-stat" [class.users-stat--active]="activeTab === 'users'"
+              (click)="switchTab('users')">
+        <span class="users-stat__label">{{ 'USERS.STAT_STAFF' | translate }}</span>
+        <span class="users-stat__value">{{ pagination.total || users.length }}</span>
+      </button>
+      <button type="button" class="users-stat users-stat--perms" [class.users-stat--active]="activeTab === 'permissions'"
+              (click)="switchTab('permissions')">
+        <span class="users-stat__label">{{ 'USERS.STAT_PERMISSIONS' | translate }}</span>
+        <span class="users-stat__value">{{ permissions.length }}</span>
+      </button>
+      <button type="button" class="users-stat users-stat--roles" [class.users-stat--active]="activeTab === 'roles'"
+              (click)="switchTab('roles')">
+        <span class="users-stat__label">{{ 'USERS.STAT_ROLES' | translate }}</span>
+        <span class="users-stat__value">{{ roles.length }}</span>
+      </button>
+    </ng-container>
+  </div>
+
+  <div class="users-tabs" role="tablist" [attr.aria-label]="'USERS.TABS_ARIA' | translate">
+    <button type="button" role="tab" class="users-tab"
+            [class.users-tab--active]="activeTab === 'users'"
+            [attr.aria-selected]="activeTab === 'users'"
+            (click)="switchTab('users')">
+      <i class="bi bi-people" aria-hidden="true"></i>
+      {{ 'USERS.TABS.STAFF' | translate }}
+    </button>
+    <button type="button" role="tab" class="users-tab"
+            [class.users-tab--active]="activeTab === 'permissions'"
+            [attr.aria-selected]="activeTab === 'permissions'"
+            (click)="switchTab('permissions')">
+      <i class="bi bi-shield" aria-hidden="true"></i>
+      {{ 'USERS.TABS.ACCESS' | translate }}
+    </button>
+    <button type="button" role="tab" class="users-tab"
+            [class.users-tab--active]="activeTab === 'roles'"
+            [attr.aria-selected]="activeTab === 'roles'"
+            (click)="switchTab('roles')">
+      <i class="bi bi-person-badge" aria-hidden="true"></i>
+      {{ 'USERS.TABS.ROLES' | translate }}
+    </button>
+  </div>
+
+  <!-- Staff tab -->
+  <div *ngIf="activeTab === 'users'" class="card border-0 shadow-sm users-card">
+    <div class="users-toolbar">
+      <div class="ui-search users-search flex-grow-1">
+        <i class="bi bi-search ui-search__icon" aria-hidden="true"></i>
+        <label class="visually-hidden" for="usersSearch">{{ 'USERS.SEARCH_PLACEHOLDER' | translate }}</label>
+        <input id="usersSearch" type="search" class="form-control ui-search__input"
+               [(ngModel)]="search"
+               (ngModelChange)="onSearchChange()"
+               [placeholder]="'USERS.SEARCH_PLACEHOLDER' | translate" />
+      </div>
+      <div class="users-chip-group" role="group" [attr.aria-label]="'USERS.STATUS_FILTER_ARIA' | translate">
+        <button type="button" class="users-chip"
+                [class.users-chip--active]="statusFilter === 'all'"
+                (click)="statusFilter = 'all'">{{ 'USERS.FILTER_ALL' | translate }}</button>
+        <button type="button" class="users-chip"
+                [class.users-chip--active]="statusFilter === 'active'"
+                (click)="statusFilter = 'active'">{{ 'USERS.STATUS_ACTIVE' | translate }}</button>
+        <button type="button" class="users-chip"
+                [class.users-chip--active]="statusFilter === 'inactive'"
+                (click)="statusFilter = 'inactive'">{{ 'USERS.STATUS_INACTIVE' | translate }}</button>
+      </div>
+      <button type="button" class="btn btn-outline-primary btn-sm d-none d-lg-inline-flex"
+              *ngIf="selectedUsers.size > 0 && canManageRoles"
+              (click)="openRoleAssignment('bulk')">
+        <i class="bi bi-person-plus me-1" aria-hidden="true"></i>
+        {{ 'USERS.ASSIGN_ROLE_SELECTED' | translate:{count: selectedUsers.size} }}
+      </button>
+    </div>
+
+    <div class="table-responsive d-none d-lg-block">
+      <table class="table table-hover align-middle mb-0 users-table">
+        <thead>
+          <tr>
+            <th style="width: 40px;">
+              <input type="checkbox" class="form-check-input"
+                     [checked]="selectedUsers.size === filteredUsers.length && filteredUsers.length > 0"
+                     (change)="selectAllUsers()"
+                     [attr.aria-label]="'USERS.SELECT_ALL' | translate" />
+            </th>
+            <th>{{ 'USERS.TABLE.STAFF_MEMBER' | translate }}</th>
+            <th>{{ 'USERS.TABLE.DEPT_TITLE' | translate }}</th>
+            <th>{{ 'USERS.TABLE.CONTACT_ROLE' | translate }}</th>
+            <th>{{ 'USERS.TABLE.STATUS' | translate }}</th>
+            <th>{{ 'USERS.TABLE.TIMELINE' | translate }}</th>
+            <th class="text-end">{{ 'COMMON.ACTIONS' | translate }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <ng-container *ngIf="isLoading">
+            <tr *ngFor="let i of [1,2,3,4,5]">
+              <td><div class="skeleton" style="width: 18px; height: 18px;"></div></td>
+              <td>
+                <div class="d-flex align-items-center gap-3">
+                  <div class="skeleton" style="width: 36px; height: 36px; border-radius: 999px;"></div>
+                  <div class="skeleton skeleton-text" style="width: 120px;"></div>
+                </div>
+              </td>
+              <td><div class="skeleton skeleton-text" style="width: 100px;"></div></td>
+              <td><div class="skeleton skeleton-text" style="width: 140px;"></div></td>
+              <td><div class="skeleton" style="width: 70px; height: 22px; border-radius: 999px;"></div></td>
+              <td><div class="skeleton skeleton-text" style="width: 80px;"></div></td>
+              <td class="text-end"><div class="skeleton ms-auto" style="width: 72px; height: 32px; border-radius: 6px;"></div></td>
+            </tr>
+          </ng-container>
+
+          <tr *ngIf="!isLoading && filteredUsers.length === 0">
+            <td colspan="7" class="py-5 text-center">
+              <div class="users-empty">
+                <i class="bi bi-people" aria-hidden="true"></i>
+                <p class="fw-semibold mb-1">{{ 'USERS.NO_STAFF' | translate }}</p>
+                <p class="text-muted small mb-3">{{ 'USERS.NO_STAFF_HINT' | translate }}</p>
+                <button type="button" class="btn btn-outline-secondary btn-sm" *ngIf="search || statusFilter !== 'all'"
+                        (click)="clearFilters()">
+                  {{ 'USERS.CLEAR_FILTERS' | translate }}
+                </button>
+                <button type="button" class="btn btn-primary btn-sm" *ngIf="!search && statusFilter === 'all' && canManageUsers"
+                        (click)="openUserCreate()">
+                  <i class="bi bi-person-plus me-1" aria-hidden="true"></i>{{ 'USERS.ADD_USER' | translate }}
+                </button>
+              </div>
+            </td>
+          </tr>
+
+          <tr *ngFor="let user of filteredUsers" [class.table-active]="isUserSelected(user.id)">
+            <td>
+              <input type="checkbox" class="form-check-input"
+                     [checked]="isUserSelected(user.id)"
+                     (change)="toggleUserSelection(user.id)"
+                     [attr.aria-label]="'USERS.SELECT_USER' | translate" />
+            </td>
+            <td>
+              <div class="d-flex align-items-center gap-3">
+                <div class="user-avatar">{{ user.avatar }}</div>
+                <div>
+                  <div class="fw-semibold">{{ displayName(user) }}</div>
+                  <div class="small text-muted">{{ 'USERS.JOB_NUMBER' | translate }} {{ user.jobNumber || user.id }}</div>
+                </div>
+              </div>
+            </td>
+            <td>
+              <div class="fw-medium">{{ jobTitleLabel(user) }}</div>
+              <div class="small text-muted">{{ departmentLabel(user) }}</div>
+            </td>
+            <td>
+              <div class="small text-muted text-nowrap mb-1">
+                <i class="bi bi-envelope me-1" aria-hidden="true"></i>{{ user.email }}
+              </div>
+              <span class="badge rounded-pill border" [ngClass]="getRoleBadgeClass(user.roleId)">
+                <i class="bi me-1" [class]="getRoleIcon(user.roleId)" aria-hidden="true"></i>
+                {{ getRoleName(user.roleId) }}
+              </span>
+            </td>
+            <td>
+              <span class="badge rounded-pill"
+                    [class.users-badge--active]="user.status === 'active'"
+                    [class.users-badge--inactive]="user.status !== 'active'">
+                {{ (user.status === 'active' ? 'USERS.STATUS_ACTIVE' : 'USERS.STATUS_INACTIVE') | translate }}
+              </span>
+            </td>
+            <td class="small text-muted text-nowrap">
+              {{ 'USERS.JOINED' | translate }} {{ user.createdAt | date:'shortDate' }}
+            </td>
+            <td class="text-end text-nowrap">
+              <button type="button" *ngIf="canManageRoles" class="btn btn-sm btn-light text-primary me-1"
+                      (click)="openRoleAssignment('single', user.id)"
+                      [attr.title]="'USERS.CHANGE_ROLE' | translate"
+                      [attr.aria-label]="'USERS.CHANGE_ROLE' | translate">
+                <i class="bi bi-shield-lock" aria-hidden="true"></i>
+              </button>
+              <button type="button" class="btn btn-sm btn-light"
+                      (click)="openUserDetails(user)"
+                      [attr.title]="'USERS.VIEW_DETAILS' | translate"
+                      [attr.aria-label]="'USERS.VIEW_DETAILS' | translate">
+                <i class="bi bi-eye" aria-hidden="true"></i>
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="users-cards d-lg-none">
+      <ng-container *ngIf="isLoading">
+        <div class="users-card-item" *ngFor="let i of [1,2,3]">
+          <div class="skeleton skeleton-text" style="width: 45%;"></div>
+          <div class="skeleton skeleton-text mt-2" style="width: 70%;"></div>
+          <div class="skeleton skeleton-text mt-2" style="width: 55%;"></div>
+        </div>
+      </ng-container>
+
+      <ng-container *ngIf="!isLoading">
+        <div *ngIf="filteredUsers.length === 0" class="users-empty py-4">
+          <i class="bi bi-people" aria-hidden="true"></i>
+          <p class="fw-semibold mb-1">{{ 'USERS.NO_STAFF' | translate }}</p>
+          <p class="text-muted small mb-3">{{ 'USERS.NO_STAFF_HINT' | translate }}</p>
+          <button type="button" class="btn btn-outline-secondary btn-sm" *ngIf="search || statusFilter !== 'all'"
+                  (click)="clearFilters()">
+            {{ 'USERS.CLEAR_FILTERS' | translate }}
+          </button>
+          <button type="button" class="btn btn-primary btn-sm" *ngIf="!search && statusFilter === 'all' && canManageUsers"
+                  (click)="openUserCreate()">
+            <i class="bi bi-person-plus me-1" aria-hidden="true"></i>{{ 'USERS.ADD_USER' | translate }}
+          </button>
+        </div>
+
+        <article class="users-card-item" *ngFor="let user of filteredUsers"
+                 [class.users-card-item--selected]="isUserSelected(user.id)">
+          <div class="users-card-item__select">
+            <input type="checkbox" class="form-check-input"
+                   [checked]="isUserSelected(user.id)"
+                   (change)="toggleUserSelection(user.id)"
+                   [attr.aria-label]="'USERS.SELECT_USER' | translate" />
+          </div>
+          <button type="button" class="users-card-item__main" (click)="openUserDetails(user)">
+            <div class="users-card-item__top">
+              <div class="d-flex align-items-center gap-3 min-w-0">
+                <div class="user-avatar" aria-hidden="true">{{ user.avatar }}</div>
+                <div class="min-w-0">
+                  <div class="fw-semibold text-truncate">{{ displayName(user) }}</div>
+                  <div class="small text-muted text-truncate">
+                    {{ 'USERS.JOB_NUMBER' | translate }} {{ user.jobNumber || user.id }}
+                  </div>
+                </div>
+              </div>
+              <span class="badge rounded-pill"
+                    [class.users-badge--active]="user.status === 'active'"
+                    [class.users-badge--inactive]="user.status !== 'active'">
+                {{ (user.status === 'active' ? 'USERS.STATUS_ACTIVE' : 'USERS.STATUS_INACTIVE') | translate }}
+              </span>
+            </div>
+            <div class="users-card-item__meta">
+              <span class="badge rounded-pill border" [ngClass]="getRoleBadgeClass(user.roleId)">
+                {{ getRoleName(user.roleId) }}
+              </span>
+              <span class="text-muted text-truncate">{{ jobTitleLabel(user) }}</span>
+            </div>
+            <div class="users-card-item__dept text-muted small text-truncate">
+              {{ departmentLabel(user) }} · {{ user.email }}
+            </div>
+          </button>
+          <div class="users-card-item__actions">
+            <button type="button" class="btn btn-sm btn-outline-secondary flex-grow-1"
+                    (click)="openUserDetails(user)">
+              <i class="bi bi-eye" aria-hidden="true"></i>
+              {{ 'USERS.VIEW_DETAILS' | translate }}
+            </button>
+            <button type="button" class="btn btn-sm btn-primary flex-grow-1" *ngIf="canManageRoles"
+                    (click)="openRoleAssignment('single', user.id)">
+              <i class="bi bi-shield-lock" aria-hidden="true"></i>
+              {{ 'USERS.CHANGE_ROLE' | translate }}
+            </button>
+          </div>
+        </article>
+      </ng-container>
+    </div>
+
+    <div class="users-footer" *ngIf="!isLoading && pagination.total > 0">
+      <div class="d-flex align-items-center gap-3 flex-wrap">
+        <span class="small text-muted">
+          {{ 'USERS.SHOWING_COUNT' | translate:{ from: pagination.from || 0, to: pagination.to || 0, total: pagination.total } }}
+        </span>
+        <div class="d-flex align-items-center gap-2">
+          <label class="small text-muted mb-0" for="usersPerPage">{{ 'GUEST_MGMT.PAGINATION.PER_PAGE' | translate }}</label>
+          <select id="usersPerPage" [(ngModel)]="perPage" (ngModelChange)="currentPage = 1; loadUsersPublic()"
+                  class="form-select form-select-sm" style="width: 5rem;">
+            <option [ngValue]="5">5</option>
+            <option [ngValue]="10">10</option>
+            <option [ngValue]="25">25</option>
+            <option [ngValue]="50">50</option>
+          </select>
+        </div>
+      </div>
+      <nav [attr.aria-label]="'USERS.PAGINATION_ARIA' | translate" *ngIf="pagination.last_page > 1">
+        <ul class="pagination pagination-sm mb-0">
+          <li class="page-item" [class.disabled]="pagination.current_page === 1">
+            <button type="button" class="page-link" (click)="onPageChange(pagination.current_page - 1)"
+                    [disabled]="pagination.current_page === 1">
+              <i class="bi bi-chevron-left" aria-hidden="true"></i>
+            </button>
+          </li>
+          <li class="page-item" *ngFor="let p of getPages()" [class.active]="pagination.current_page === p">
+            <button type="button" class="page-link" (click)="onPageChange(p)">{{ p }}</button>
+          </li>
+          <li class="page-item" [class.disabled]="pagination.current_page === pagination.last_page">
+            <button type="button" class="page-link" (click)="onPageChange(pagination.current_page + 1)"
+                    [disabled]="pagination.current_page === pagination.last_page">
+              <i class="bi bi-chevron-right" aria-hidden="true"></i>
+            </button>
+          </li>
+        </ul>
+      </nav>
+    </div>
+  </div>
+
+  <!-- Permissions / Access Control tab -->
+  <div *ngIf="activeTab === 'permissions'" class="users-access">
+    <div class="users-access__bar card border-0 shadow-sm">
+      <div class="users-access__intro">
+        <div class="users-access__intro-copy">
+          <h2 class="users-access__title">{{ 'USERS.ACCESS.TITLE' | translate }}</h2>
+          <p class="users-access__hint">{{ 'USERS.ACCESS.HINT' | translate }}</p>
+        </div>
+        <div class="users-access__meta" *ngIf="!isLoadingPermissions">
+          <span class="users-access__meta-pill">
+            <i class="bi bi-shield-check" aria-hidden="true"></i>
+            {{ 'USERS.ACCESS.TOTAL' | translate:{ count: permissions.length } }}
+          </span>
+          <span class="users-access__meta-pill users-access__meta-pill--muted"
+                *ngIf="permissionSearch || permissionCategoryFilter !== 'all'">
+            {{ 'USERS.ACCESS.SHOWING' | translate:{ count: filteredPermissions.length } }}
+          </span>
+        </div>
+      </div>
+
+      <div class="users-toolbar users-access__toolbar">
+        <div class="ui-search users-search flex-grow-1">
+          <i class="bi bi-search ui-search__icon" aria-hidden="true"></i>
+          <label class="visually-hidden" for="permSearch">{{ 'USERS.ACCESS.SEARCH_PLACEHOLDER' | translate }}</label>
+          <input id="permSearch" type="search" class="form-control ui-search__input"
+                 [(ngModel)]="permissionSearch"
+                 [placeholder]="'USERS.ACCESS.SEARCH_PLACEHOLDER' | translate" />
+        </div>
+        <button type="button" class="btn btn-outline-secondary btn-sm"
+                *ngIf="permissionSearch || permissionCategoryFilter !== 'all'"
+                (click)="clearPermissionFilters()">
+          {{ 'USERS.CLEAR_FILTERS' | translate }}
+        </button>
+      </div>
+
+      <div class="users-access__cats" role="group" [attr.aria-label]="'USERS.ACCESS.CATEGORY_FILTER_ARIA' | translate"
+           *ngIf="!isLoadingPermissions && permissions.length > 0">
+        <button type="button" class="users-chip"
+                [class.users-chip--active]="permissionCategoryFilter === 'all'"
+                (click)="permissionCategoryFilter = 'all'">
+          {{ 'USERS.FILTER_ALL' | translate }}
+          <span class="users-chip__count">{{ permissions.length }}</span>
+        </button>
+        <button type="button" class="users-chip" *ngFor="let category of categories"
+                [class.users-chip--active]="permissionCategoryFilter === category.key"
+                [disabled]="permissionCount(category.key) === 0"
+                (click)="permissionCategoryFilter = category.key">
+          <i class="bi" [class]="category.icon" aria-hidden="true"></i>
+          {{ category.label | translate }}
+          <span class="users-chip__count">{{ permissionCount(category.key) }}</span>
+        </button>
+      </div>
+    </div>
+
+    <ng-container *ngIf="isLoadingPermissions">
+      <div class="users-access__grid">
+        <div class="users-access__card" *ngFor="let i of [1,2,3,4,5,6]">
+          <div class="users-access__group-head">
+            <div class="skeleton skeleton-text" style="width: 8rem;"></div>
+          </div>
+          <div class="users-access__row" *ngFor="let j of [1,2,3]">
+            <div class="flex-grow-1">
+              <div class="skeleton skeleton-text" style="width: 70%;"></div>
+              <div class="skeleton skeleton-text mt-2" style="width: 90%;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </ng-container>
+
+    <ng-container *ngIf="!isLoadingPermissions">
+      <div class="users-access__grid" *ngIf="visiblePermissionCategories.length > 0; else noPerms">
+        <article class="users-access__card" *ngFor="let category of visiblePermissionCategories; let ci = index"
+                 [attr.aria-labelledby]="'perm-cat-' + ci">
+          <header class="users-access__group-head">
+            <div class="users-access__group-title" [id]="'perm-cat-' + ci">
+              <span class="users-access__group-icon" aria-hidden="true">
+                <i class="bi" [class]="category.icon"></i>
+              </span>
+              <span>{{ category.label | translate }}</span>
+            </div>
+            <span class="users-access__group-count">
+              {{ getFilteredPermissionsByCategory(category.key).length }}
+            </span>
+          </header>
+          <ul class="users-access__list">
+            <li class="users-access__row" *ngFor="let perm of getFilteredPermissionsByCategory(category.key)">
+              <div class="users-access__row-body">
+                <div class="users-access__row-top">
+                  <p class="users-access__row-label">{{ permLabel(perm) }}</p>
+                  <span class="badge users-badge--immutable" *ngIf="perm.isImmutable">
+                    {{ 'USERS.MESSAGES.IMMUTABLE' | translate }}
+                  </span>
+                </div>
+                <p class="users-access__row-desc" *ngIf="permDescription(perm)">{{ permDescription(perm) }}</p>
+              </div>
+            </li>
+          </ul>
+        </article>
+      </div>
+
+      <ng-template #noPerms>
+        <div class="ui-empty ui-empty--compact users-access__empty">
+          <div class="ui-empty__icon" aria-hidden="true"><i class="bi bi-shield"></i></div>
+          <p class="ui-empty__title">{{ 'USERS.ACCESS.EMPTY_TITLE' | translate }}</p>
+          <p class="ui-empty__text">{{ 'USERS.ACCESS.EMPTY_HINT' | translate }}</p>
+          <button type="button" class="btn btn-outline-secondary btn-sm mt-2"
+                  *ngIf="permissionSearch || permissionCategoryFilter !== 'all'"
+                  (click)="clearPermissionFilters()">
+            {{ 'USERS.CLEAR_FILTERS' | translate }}
+          </button>
+        </div>
+      </ng-template>
+    </ng-container>
+  </div>
+
+  <!-- Roles tab -->
+  <div *ngIf="activeTab === 'roles'" class="users-roles">
+    <ng-container *ngIf="isLoading">
+      <div class="row g-3">
+        <div class="col-md-6" *ngFor="let i of [1,2,3,4]">
+          <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white d-flex justify-content-between">
+              <div class="skeleton skeleton-text" style="width: 100px;"></div>
+              <div class="skeleton" style="width: 20px; height: 20px;"></div>
+            </div>
+            <div class="card-body">
+              <div class="skeleton skeleton-text" style="width: 90%;"></div>
+              <div class="skeleton skeleton-text" style="width: 80%;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </ng-container>
+
+    <ng-container *ngIf="!isLoading">
+      <div class="row g-3" *ngIf="roles.length > 0; else noRoles">
+        <div class="col-12 col-md-6" *ngFor="let role of roles">
+          <div class="card border-0 shadow-sm h-100 users-role-card">
+            <div class="card-header bg-white d-flex justify-content-between align-items-start border-bottom-0">
+              <div>
+                <span class="badge rounded-pill mb-2"
+                      [class.users-badge--system]="role.isSystem"
+                      [class.users-badge--custom]="!role.isSystem">
+                  {{ (role.isSystem ? 'USERS.SYSTEM' : 'USERS.CUSTOM') | translate }}
+                </span>
+                <h6 class="mb-0 fw-bold">{{ currentLang === 'ar' ? (role.name_ar || role.name) : (role.name || role.name_ar) }}</h6>
+              </div>
+              <div class="users-role-card__actions" *ngIf="!role.isSystem && canManageRoles">
+                <button type="button" class="btn btn-sm btn-light text-primary" (click)="openRoleCreate(role)"
+                        [attr.aria-label]="'USERS.EDIT_ROLE' | translate">
+                  <i class="bi bi-pencil" aria-hidden="true"></i>
+                </button>
+                <button type="button" class="btn btn-sm btn-light text-danger" (click)="deleteRole(role.id)"
+                        [attr.aria-label]="'USERS.DELETE_ROLE' | translate">
+                  <i class="bi bi-trash" aria-hidden="true"></i>
+                </button>
+              </div>
+            </div>
+            <div class="card-body pt-0">
+              <p class="text-muted small mb-3">
+                {{ currentLang === 'ar' ? (role.description_ar || role.description) : (role.description || role.description_ar) || role.description }}
+              </p>
+              <p class="small mb-2 fw-semibold">{{ 'USERS.PERMISSIONS' | translate }} ({{ role.permissions.length }})</p>
+              <div class="d-flex flex-wrap gap-1">
+                <span class="badge bg-light text-dark border" *ngFor="let permKey of role.permissions.slice(0, 8)">
+                  {{ getPermissionLabel(permKey) }}
+                </span>
+                <span class="badge bg-secondary" *ngIf="role.permissions.length > 8">
+                  +{{ role.permissions.length - 8 }} {{ 'USERS.MORE' | translate }}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <ng-template #noRoles>
+        <div class="users-empty py-5">
+          <i class="bi bi-person-badge" aria-hidden="true"></i>
+          <p class="fw-semibold mb-1">{{ 'USERS.NO_ROLES' | translate }}</p>
+          <p class="text-muted small mb-3">{{ 'USERS.NO_ROLES_HINT' | translate }}</p>
+          <button type="button" class="btn btn-primary btn-sm" *ngIf="canManageRoles" (click)="openRoleCreate()">
+            <i class="bi bi-plus-lg me-1" aria-hidden="true"></i>{{ 'USERS.CREATE_ROLE' | translate }}
+          </button>
+        </div>
+      </ng-template>
+    </ng-container>
+  </div>
+
+  <div class="users-bulk-bar d-lg-none" *ngIf="activeTab === 'users' && selectedUsers.size > 0 && canManageRoles">
+    <span class="users-bulk-bar__count">
+      {{ 'USERS.ASSIGN_ROLE_SELECTED' | translate:{count: selectedUsers.size} }}
+    </span>
+    <button type="button" class="btn btn-primary btn-sm" (click)="openRoleAssignment('bulk')">
+      <i class="bi bi-person-plus" aria-hidden="true"></i>
+      {{ 'USERS.CHANGE_ROLE' | translate }}
+    </button>
+  </div>
+
+  <div class="users-sticky-cta d-md-none" *ngIf="canShowPrimaryAction && selectedUsers.size === 0">
+    <button type="button" class="btn btn-primary w-100" (click)="openPrimaryAction()">
+      <i class="bi" [ngClass]="activeTab === 'roles' ? 'bi-plus-lg' : 'bi-person-plus'" aria-hidden="true"></i>
+      {{ primaryActionLabel | translate }}
+    </button>
+  </div>
+</div>
+
+<app-role-create-modal *ngIf="showRoleCreateModal" [roleToEdit]="selectedRoleForEdit" (closeModal)="closeRoleCreate()" (roleCreated)="onRoleCreated($event)" (roleUpdated)="onRoleUpdated($event)"></app-role-create-modal>
+
+<app-role-assignment-modal *ngIf="showRoleAssignmentModal" [mode]="roleAssignmentMode" [selectedUserIds]="bulkAssignmentUserIds" [preselectedUserId]="preselectedUserId" (closeModal)="closeRoleAssignment()" (assignmentComplete)="onRoleAssignmentComplete($event)"></app-role-assignment-modal>
+
+<app-user-create-modal *ngIf="showUserCreateModal" (closeModal)="closeUserCreate()" (userCreated)="onUserCreated($event)"></app-user-create-modal>
+
+<div *ngIf="selectedUser" class="ui-modal-backdrop" (click)="closeUserDetails()">
+  <div class="ui-modal ui-modal--lg" (click)="$event.stopPropagation()" role="dialog" aria-modal="true"
+       [attr.aria-labelledby]="'user-details-title'">
+    <div class="ui-modal__header">
+      <div class="ui-modal__title-row">
+        <span class="ui-modal__icon" aria-hidden="true"><i class="bi bi-person-badge"></i></span>
+        <div class="min-w-0">
+          <h3 class="ui-modal__title" id="user-details-title">{{ 'USERS.STAFF_DETAILS' | translate }}</h3>
+          <p class="ui-modal__subtitle">{{ displayName(selectedUser) }}</p>
+        </div>
+      </div>
+      <button type="button" class="ui-modal__close" (click)="closeUserDetails()"
+              [attr.aria-label]="'COMMON.CANCEL' | translate">
+        <i class="bi bi-x-lg" aria-hidden="true"></i>
+      </button>
+    </div>
+    <div class="ui-modal__kpis">
+      <div class="ui-modal__kpi">
+        <span class="ui-modal__kpi-label">{{ 'USERS.ROLE' | translate }}</span>
+        <strong class="ui-modal__kpi-value">{{ getRoleName(selectedUser.roleId) }}</strong>
+      </div>
+      <div class="ui-modal__kpi">
+        <span class="ui-modal__kpi-label">{{ 'USERS.STATUS' | translate }}</span>
+        <span class="badge rounded-pill"
+              [class.users-badge--active]="selectedUser.status === 'active'"
+              [class.users-badge--inactive]="selectedUser.status !== 'active'">
+          {{ (selectedUser.status === 'active' ? 'USERS.STATUS_ACTIVE' : 'USERS.STATUS_INACTIVE') | translate }}
+        </span>
+      </div>
+      <div class="ui-modal__kpi">
+        <span class="ui-modal__kpi-label">{{ 'LOGIN.JOB_NUMBER' | translate }}</span>
+        <strong class="ui-modal__kpi-value">{{ selectedUser.jobNumber || ('COMMON.NA' | translate) }}</strong>
+      </div>
+    </div>
+    <div class="ui-modal__body">
+      <div class="d-flex align-items-center gap-3 mb-3">
+        <div class="user-avatar user-avatar-lg">{{ selectedUser.avatar }}</div>
+        <div class="min-w-0">
+          <p class="mb-0 fw-bold">{{ displayName(selectedUser) }}</p>
+          <p class="text-muted mb-0 text-truncate">{{ selectedUser.email }}</p>
+        </div>
+      </div>
+
+      <div class="users-details-grid mb-3">
+        <div>
+          <div class="text-muted small">{{ 'USERS.USER_SINCE' | translate }}</div>
+          <div class="fw-medium">{{ selectedUser.createdAt | date:'mediumDate' }}</div>
+        </div>
+        <div>
+          <div class="text-muted small">{{ 'JOB_TITLES.DEPARTMENT' | translate }}</div>
+          <div class="fw-medium">{{ departmentLabel(selectedUser) }}</div>
+        </div>
+        <div>
+          <div class="text-muted small">{{ 'SIDEBAR.JOB_TITLES' | translate }}</div>
+          <div class="fw-medium">{{ jobTitleLabel(selectedUser) }}</div>
+        </div>
+        <div>
+          <div class="text-muted small">{{ 'CLIENT_DETAILS.PHONE' | translate }}</div>
+          <div class="fw-medium">{{ selectedUser.mobile || ('COMMON.NA' | translate) }}</div>
+        </div>
+        <div>
+          <div class="text-muted small">{{ 'SIDEBAR.DISCOUNTS' | translate }}</div>
+          <div class="fw-medium" *ngIf="selectedUser.discount">
+            {{ (currentLang === 'ar' ? selectedUser.discount.name_ar : selectedUser.discount.name) || selectedUser.discount.name }}
+            <span class="badge bg-info-subtle text-info" *ngIf="selectedUser.discount.percent">
+              {{ selectedUser.discount.percent }}%
+            </span>
+          </div>
+          <div class="fw-medium" *ngIf="!selectedUser.discount">{{ 'USERS.NONE' | translate }}</div>
+        </div>
+        <div>
+          <div class="text-muted small">{{ 'USERS.LAST_UPDATED' | translate }}</div>
+          <div class="fw-medium">{{ selectedUser.updatedAt | date:'short' }}</div>
+        </div>
+      </div>
+
+      <div class="mb-1">
+        <p class="small fw-semibold mb-2">{{ 'USERS.PERMISSIONS' | translate }}</p>
+        <div class="d-flex flex-wrap gap-1">
+          <span class="badge bg-light text-dark border" *ngFor="let perm of getRolePermissions(selectedUser)">
+            {{ getPermissionLabel(perm) }}
+          </span>
+        </div>
+      </div>
+    </div>
+    <div class="ui-modal__footer">
+      <button type="button" *ngIf="canManageRoles" class="btn btn-outline-primary"
+              (click)="openRoleAssignment('single', selectedUser!.id)">
+        <i class="bi bi-person-plus me-1" aria-hidden="true"></i>{{ 'USERS.CHANGE_ROLE' | translate }}
+      </button>
+      <button type="button" *ngIf="canManageUsers" class="btn"
+              [ngClass]="selectedUser.status === 'active' ? 'btn-outline-danger' : 'btn-outline-success'"
+              (click)="toggleUserStatus(selectedUser)">
+        <i class="bi me-1" [ngClass]="selectedUser.status === 'active' ? 'bi-slash-circle' : 'bi-check-circle'" aria-hidden="true"></i>
+        {{ (selectedUser.status === 'active' ? 'USERS.DEACTIVATE' : 'USERS.ACTIVATE') | translate }}
+      </button>
+      <button type="button" class="btn btn-light" (click)="closeUserDetails()">{{ 'COMMON.CANCEL' | translate }}</button>
+    </div>
+  </div>
+</div>

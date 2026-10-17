@@ -1,0 +1,64 @@
+<div class="hotels-page">
+  <section class="dept-hero">
+    <div class="dept-hero__copy">
+      <p class="dept-hero__eyebrow">
+        <i class="bi bi-people" aria-hidden="true"></i>
+        {{ 'GROUP_BOOKINGS.EYEBROW' | translate }}
+      </p>
+      <h1>{{ 'GROUP_BOOKINGS.TITLE' | translate }}</h1>
+      <p class="dept-hero__subtitle">{{ 'GROUP_BOOKINGS.SUBTITLE' | translate }}</p>
+    </div>
+    <div class="dept-hero__actions">
+      <button type="button" class="btn btn-primary" (click)="goCreate()">
+        <i class="bi bi-plus-lg" aria-hidden="true"></i>
+        <span>{{ 'GROUP_BOOKINGS.NEW_GROUP' | translate }}</span>
+      </button>
+    </div>
+  </section>
+
+  <div class="card border-0 shadow-sm dept-card p-4 text-center" *ngIf="loadError">
+    <p class="fw-semibold mb-0">{{ loadError }}</p>
+  </div>
+
+  <div class="card border-0 shadow-sm dept-card" *ngIf="!loadError">
+    <div class="table-responsive">
+      <table class="table align-middle mb-0">
+        <thead>
+          <tr>
+            <th>{{ 'GROUP_BOOKINGS.NAME' | translate }}</th>
+            <th>{{ 'GROUP_BOOKINGS.COMPANY' | translate }}</th>
+            <th>{{ 'GROUP_BOOKINGS.MEMBER_COUNT' | translate }}</th>
+            <th>{{ 'GROUP_BOOKINGS.STATUS' | translate }}</th>
+            <th>{{ 'GROUP_BOOKINGS.CREATED_AT' | translate }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let group of groups" (click)="goDetail(group.id)" class="clickable-row">
+            <td class="fw-semibold">{{ group.name }}</td>
+            <td>{{ group.company_name || '—' }}</td>
+            <td>{{ group.reservations_count ?? '—' }}</td>
+            <td>
+              <span class="badge border-0" [ngClass]="statusClass(group.status)">
+                {{ (group.status === STATUS_CANCELLED ? 'GROUP_BOOKINGS.CANCELLED' : 'GROUP_BOOKINGS.ACTIVE') | translate }}
+              </span>
+            </td>
+            <td>{{ group.created_at | date:'mediumDate' }}</td>
+          </tr>
+          <tr *ngIf="!isLoading && groups.length === 0">
+            <td colspan="5" class="text-center text-muted py-4">{{ 'GROUP_BOOKINGS.NO_GROUPS' | translate }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="channex-pagination" *ngIf="groups.length > 0">
+      <button type="button" class="btn btn-sm btn-outline-secondary" (click)="previousPage()" [disabled]="page <= 1">
+        <i class="bi bi-chevron-left" aria-hidden="true"></i>
+      </button>
+      <span class="channex-pagination__page">{{ page }} / {{ lastPage }}</span>
+      <button type="button" class="btn btn-sm btn-outline-secondary" (click)="nextPage()" [disabled]="page >= lastPage">
+        <i class="bi bi-chevron-right" aria-hidden="true"></i>
+      </button>
+    </div>
+  </div>
+</div>
