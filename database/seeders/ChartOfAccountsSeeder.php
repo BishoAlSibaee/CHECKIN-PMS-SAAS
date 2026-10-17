@@ -20,6 +20,13 @@ class ChartOfAccountsSeeder extends Seeder
             ['code' => '4020', 'name_en' => 'Extras Revenue', 'name_ar' => 'إيراد الإضافات', 'type' => 'revenue'],
             ['code' => '5010', 'name_en' => 'Discounts', 'name_ar' => 'خصومات', 'type' => 'expense'],
             ['code' => '5020', 'name_en' => 'Refunds', 'name_ar' => 'مرتجعات', 'type' => 'expense'],
+            ['code' => '1150', 'name_en' => 'OTA Platforms Clearing', 'name_ar' => 'تسوية منصات الحجز', 'type' => 'asset'],
+            ['code' => '5030', 'name_en' => 'OTA Commission Expense', 'name_ar' => 'عمولات منصات الحجز', 'type' => 'expense'],
+            ['code' => '1160', 'name_en' => 'Corporate Accounts Receivable', 'name_ar' => 'ذمم الشركات المدينة', 'type' => 'asset'],
+            ['code' => '4030', 'name_en' => 'Restaurant Revenue', 'name_ar' => 'إيراد المطعم', 'type' => 'revenue'],
+            ['code' => '4040', 'name_en' => 'Cafe Revenue', 'name_ar' => 'إيراد الكافيه', 'type' => 'revenue'],
+            ['code' => '4050', 'name_en' => 'Laundry Revenue', 'name_ar' => 'إيراد المغسلة', 'type' => 'revenue'],
+            ['code' => '4060', 'name_en' => 'Minibar Revenue', 'name_ar' => 'إيراد الميني بار', 'type' => 'revenue'],
         ];
 
         foreach ($accounts as $account) {

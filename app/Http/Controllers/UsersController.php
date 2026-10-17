@@ -48,8 +48,37 @@ class UsersController extends Controller
                 return \Failed('Wrong Password', 401);
             }
 
+            // Spatie "teams" is enabled with team_foreign_key=hotel_id (multi-hotel
+            // support) — role/permission lookups are scoped to whichever hotel is
+            // "current". At login there's no X-Hotel-Id yet, so default to the
+            // user's first accessible hotel (same fallback ResolveCurrentHotel
+            // uses on every later request) so the response isn't empty.
+            $availableHotels = $user->hotels()->with('tenant')->get(['hotels.id', 'hotels.name_ar', 'hotels.name_en', 'hotels.tenant_id']);
+
+            // Reject before a token is ever issued — a deactivated tenant or
+            // a trial/subscription past its end date must not let the
+            // customer in at all, not just fail their next click.
+            // ResolveCurrentHotel re-checks both on every later request for
+            // sessions already in progress.
+            $deactivatedTenant = $availableHotels->first(fn ($h) => $h->tenant && !$h->tenant->is_active);
+            if ($deactivatedTenant) {
+                return \Failed('This account has been deactivated.', 403);
+            }
+            $expiredTenant = $availableHotels->first(fn ($h) => $h->tenant && !$h->tenant->isSubscriptionActive());
+            if ($expiredTenant) {
+                return \Failed('This subscription has expired.', 403);
+            }
+
             $token = $user->createToken('authToken');
             $user->setAttribute('token', $token);
+
+            $defaultHotelId = (int) ($availableHotels->first()->id ?? 0);
+            if ($defaultHotelId) {
+                app(\Spatie\Permission\PermissionRegistrar::class)->setPermissionsTeamId($defaultHotelId);
+            }
+            $user->setAttribute('availableHotels', $availableHotels);
+            $user->setAttribute('currentHotelId', $defaultHotelId);
+
             $user->load(['roles.permissions', 'permissions']);
 
             return \SuccessData('Logged In Success', new LoginResource($user));
@@ -259,7 +288,8 @@ class UsersController extends Controller
             }
 
             if ($request->filled('role_id')) {
-                $role = Role::find($request->role_id);
+                $currentHotelId = (int) app(\Spatie\Permission\PermissionRegistrar::class)->getPermissionsTeamId();
+                $role = Role::where('id', $request->role_id)->where('hotel_id', $currentHotelId)->first();
                 if ($role) {
                     $user->syncRoles([$role->name]);
                     $user->forgetCachedPermissions();
@@ -342,11 +372,13 @@ class UsersController extends Controller
     /**
      * Get all users info
      */
-    public function index()
+    public function index(Request $request)
     {
         try {
             $perPage = \returnPerPage();
+            $tenantId = (int) $request->attributes->get('currentTenantId');
             $activeUsers = User::with(['jobtitle', 'department', 'discount', 'permissions'])
+                ->whereHas('hotels', fn ($q) => $q->where('hotels.tenant_id', $tenantId))
                 ->where('active', 1)
                 ->paginate($perPage);
             return \Pagination($activeUsers);
@@ -360,8 +392,10 @@ class UsersController extends Controller
         try {
             $perPage = $request->input('per_page', 10);
             $search = $request->input('search');
+            $tenantId = (int) $request->attributes->get('currentTenantId');
 
-            $query = User::with(['roles.permissions', 'permissions', 'jobtitle', 'department', 'discount']);
+            $query = User::with(['roles.permissions', 'permissions', 'jobtitle', 'department', 'discount'])
+                ->whereHas('hotels', fn ($q) => $q->where('hotels.tenant_id', $tenantId));
 
             if ($search) {
                 $query->where(function($q) use ($search) {

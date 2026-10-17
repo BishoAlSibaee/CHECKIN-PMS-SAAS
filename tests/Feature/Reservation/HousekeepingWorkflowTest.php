@@ -308,7 +308,17 @@ class HousekeepingWorkflowTest extends TestCase
 
     private function findFreeRoom(string $start, string $end): Room
     {
+        $roomStatusService = app(ReservationRoomStatusService::class);
+
         foreach (Room::where('active', 1)->whereHas('roomType')->get() as $candidate) {
+            // A room with a guest still checked in blocks ANY future booking
+            // (not just overlapping dates) until checkout is registered —
+            // same date-blind rule ReservationController::makeReservation()
+            // enforces.
+            if ($roomStatusService->findActiveInHouseReservationId($candidate->id) !== null) {
+                continue;
+            }
+
             $overlap = ReservationRoom::where('room_id', $candidate->id)
                 ->whereHas('reservation', function ($query) use ($start, $end) {
                     $query->whereNotIn('reservation_status', Reservation::nonBlockingInventoryStatuses())

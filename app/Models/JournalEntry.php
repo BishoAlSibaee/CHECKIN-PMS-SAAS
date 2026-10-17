@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class JournalEntry extends Model
 {
     protected $fillable = [
-        'entry_date', 'reference', 'description', 'accounting_period_id',
+        'hotel_id', 'entry_date', 'reference', 'description', 'accounting_period_id',
         'user_id', 'source_type', 'source_id',
     ];
 

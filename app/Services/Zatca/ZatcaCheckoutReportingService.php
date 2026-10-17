@@ -45,7 +45,11 @@ class ZatcaCheckoutReportingService
 {
     private const FIRST_PIH = 'NWZlY2ViNjZmZmM4NmYzOGQ5NTI3ODZjNmQ2OTZjNzljMmRiYzIzOWRkNGU5MWI0NjcyOWQ3M2EyN2ZiNTdlOQ==';
 
-    public function __construct(private ZatcaCredentialStore $store) {}
+    public function __construct(
+        private ZatcaCredentialStore $store,
+        private HotelTaxResolver $taxResolver,
+        private \App\Services\HotelResolverService $hotelResolver,
+    ) {}
 
     public function shouldReportOnCheckout(): bool
     {
@@ -56,8 +60,11 @@ class ZatcaCheckoutReportingService
     public function reportReservationCheckout(int $reservationId): ZatcaInvoice
     {
         $reservation = Reservation::query()
-            ->with(['client', 'reservationRooms.room'])
+            ->with(['client', 'reservationRooms.room.building'])
             ->findOrFail($reservationId);
+
+        $hotelId = $this->hotelResolver->forReservation($reservation);
+        $taxHotelId = $this->taxResolver->resolveEffectiveTaxHotelId($hotelId);
 
         $subtotal = round((float) $reservation->subtotal, 2);
         $tax = round((float) $reservation->taxes, 2);
@@ -95,6 +102,8 @@ class ZatcaCheckoutReportingService
         $invoiceRecord = InvoiceRecord::query()->firstOrCreate(
             ['reservation_id' => $reservationId, 'type' => InvoiceRecord::TYPE_TAX_INVOICE],
             [
+                'hotel_id' => $hotelId,
+                'tax_hotel_id' => $taxHotelId,
                 'status' => InvoiceRecord::STATUS_ISSUED,
                 'subtotal' => $subtotal,
                 'tax_amount' => $tax,
@@ -111,7 +120,7 @@ class ZatcaCheckoutReportingService
             ]
         );
         if ($invoiceRecord->wasRecentlyCreated) {
-            $invoiceRecord->invoice_number = 'INV-'.str_pad((string) $invoiceRecord->id, 6, '0', STR_PAD_LEFT);
+            $invoiceRecord->invoice_number = $this->taxResolver->nextInvoiceNumber($taxHotelId, 'INV-');
             $invoiceRecord->save();
         }
 
@@ -129,7 +138,7 @@ class ZatcaCheckoutReportingService
         ]);
         $invoice->invoice_id = $invoiceRecord->id;
 
-        $credentials = $this->store->load();
+        $credentials = $this->store->load($taxHotelId);
         if ($credentials === null) {
             $invoice->fill([
                 'status' => ZatcaInvoice::STATUS_SKIPPED,
@@ -158,9 +167,9 @@ class ZatcaCheckoutReportingService
             throw new RuntimeException('Invalid production binarySecurityToken.');
         }
 
-        $seller = $this->sellerFromCertificate($decodedCertificate);
-        $icv = (int) ZatcaInvoice::query()->where('status', ZatcaInvoice::STATUS_REPORTED)->count() + 1;
-        $previousHash = $this->latestInvoiceHash();
+        $seller = $this->sellerFromCertificate($decodedCertificate, $taxHotelId);
+        $icv = $this->nextIcv($taxHotelId);
+        $previousHash = $this->latestInvoiceHash($taxHotelId);
 
         $guestName = $reservation->guestDisplayName();
         if ($guestName === '—') {
@@ -246,9 +255,18 @@ class ZatcaCheckoutReportingService
         $tax = round($total - $total / 1.15, 2);
         $subtotal = round($total - $tax, 2);
 
+        // Inherit the original invoice's hotel/tax-entity rather than
+        // re-resolving from the reservation's current rooms — a credit note
+        // must stay on the same tax entity/sequence its original invoice used
+        // even if the reservation's rooms changed since.
+        $hotelId = (int) $taxInvoice->hotel_id;
+        $taxHotelId = (int) $taxInvoice->tax_hotel_id;
+
         $creditNoteRecord = InvoiceRecord::create([
             'reservation_id' => $reservationId,
             'related_invoice_id' => $taxInvoice->id,
+            'hotel_id' => $hotelId,
+            'tax_hotel_id' => $taxHotelId,
             'type' => InvoiceRecord::TYPE_CREDIT_NOTE,
             'status' => InvoiceRecord::STATUS_ISSUED,
             'subtotal' => $subtotal,
@@ -264,10 +282,10 @@ class ZatcaCheckoutReportingService
             ]],
             'issued_at' => now(),
         ]);
-        $creditNoteRecord->invoice_number = 'CN-'.str_pad((string) $creditNoteRecord->id, 6, '0', STR_PAD_LEFT);
+        $creditNoteRecord->invoice_number = $this->taxResolver->nextInvoiceNumber($taxHotelId, 'CN-');
         $creditNoteRecord->save();
 
-        $credentials = $this->store->load();
+        $credentials = $this->store->load($taxHotelId);
         $token = (string) data_get($credentials, 'production.binary_security_token', '');
         $secret = (string) data_get($credentials, 'production.secret', '');
         $privateKeyPath = (string) data_get($credentials, 'paths.private_key', '');
@@ -290,9 +308,9 @@ class ZatcaCheckoutReportingService
         }
 
         $reservation = Reservation::query()->findOrFail($reservationId);
-        $seller = $this->sellerFromCertificate($decodedCertificate);
-        $icv = (int) ZatcaInvoice::query()->where('status', ZatcaInvoice::STATUS_REPORTED)->count() + 1;
-        $previousHash = $this->latestInvoiceHash();
+        $seller = $this->sellerFromCertificate($decodedCertificate, $taxHotelId);
+        $icv = $this->nextIcv($taxHotelId);
+        $previousHash = $this->latestInvoiceHash($taxHotelId);
         $guestName = $reservation->guestDisplayName();
         if ($guestName === '—') {
             $guestName = 'Hotel Guest';
@@ -335,14 +353,32 @@ class ZatcaCheckoutReportingService
         return $this->signAndSubmitInvoice($zatcaCreditNote, $unsignedXml, $privateKeyPath, $decodedCertificate, $secret, 'reservation_'.$reservationId.'_creditnote_'.$creditNoteRecord->id);
     }
 
-    private function latestInvoiceHash(): string
+    /**
+     * ICV (invoice counter value) and PIH (previous invoice hash) are both
+     * ZATCA's chain-of-custody fields for one certificate/reporting unit —
+     * they must be scoped per tax entity, never counted globally, or two
+     * branches with separate certificates would corrupt each other's chain.
+     */
+    private function reportedInvoicesForTaxHotel(int $taxHotelId)
+    {
+        return ZatcaInvoice::query()
+            ->join('invoices', 'invoices.id', '=', 'zatca_invoices.invoice_id')
+            ->where('invoices.tax_hotel_id', $taxHotelId)
+            ->where('zatca_invoices.status', ZatcaInvoice::STATUS_REPORTED);
+    }
+
+    private function nextIcv(int $taxHotelId): int
+    {
+        return $this->reportedInvoicesForTaxHotel($taxHotelId)->count() + 1;
+    }
+
+    private function latestInvoiceHash(int $taxHotelId): string
     {
         return (string) (
-            ZatcaInvoice::query()
-                ->where('status', ZatcaInvoice::STATUS_REPORTED)
-                ->whereNotNull('invoice_hash')
-                ->latest('id')
-                ->value('invoice_hash')
+            $this->reportedInvoicesForTaxHotel($taxHotelId)
+                ->whereNotNull('zatca_invoices.invoice_hash')
+                ->orderByDesc('zatca_invoices.id')
+                ->value('zatca_invoices.invoice_hash')
             ?: self::FIRST_PIH
         );
     }
@@ -534,7 +570,7 @@ class ZatcaCheckoutReportingService
     /**
      * @return array{vat: string, name: string}
      */
-    private function sellerFromCertificate(string $decodedCertificate): array
+    private function sellerFromCertificate(string $decodedCertificate, int $taxHotelId): array
     {
         $pem = str_contains($decodedCertificate, 'BEGIN CERTIFICATE')
             ? $decodedCertificate
@@ -544,14 +580,16 @@ class ZatcaCheckoutReportingService
         $cn = is_array($parsed) ? (string) ($parsed['subject']['CN'] ?? '') : '';
         $org = is_array($parsed) ? (string) ($parsed['subject']['O'] ?? '') : '';
 
-        $vat = (string) config('zatca.csr.organization_identifier');
+        $csrConfig = $this->taxResolver->csrConfig($taxHotelId);
+
+        $vat = (string) $csrConfig['organization_identifier'];
         if (preg_match('/(\d{15})$/', $cn, $matches) === 1) {
             $vat = $matches[1];
         }
 
         return [
             'vat' => $vat,
-            'name' => $org !== '' ? $org : (string) config('zatca.csr.organization_name', 'Hotel System Test'),
+            'name' => $org !== '' ? $org : (string) ($csrConfig['organization_name'] ?? 'Hotel System Test'),
         ];
     }
 

@@ -9,13 +9,22 @@ use App\Models\Client;
 use App\Models\Client_Classifications;
 use App\Models\Guest_classification;
 use Exception;
+use Illuminate\Http\Request;
 
 class ClientClassificationsController extends Controller
 {
+    private function currentTenantId(Request $request): int
+    {
+        return (int) $request->attributes->get('currentTenantId');
+    }
+
     public function assignClassification(AssignClassificationRequest $request)
     {
         try {
-            $client = Client::query()->where('id', $request->client_id)->first();
+            $client = Client::query()
+                ->where('tenant_id', $this->currentTenantId($request))
+                ->where('id', $request->client_id)
+                ->first();
 
             if (! $client) {
                 return \Failed('Client not found in database');
@@ -26,10 +35,10 @@ class ClientClassificationsController extends Controller
                 return \Failed('Classification not found');
             }
 
-            Client_Classifications::where('client_id', $request->client_id)->delete();
+            Client_Classifications::where('client_id', $client->id)->delete();
 
             $clientClassification = Client_Classifications::create([
-                'client_id' => $request->client_id,
+                'client_id' => $client->id,
                 'classifications_id' => $request->classifications_id,
             ]);
 
@@ -48,13 +57,16 @@ class ClientClassificationsController extends Controller
     public function getClientClassification(GetClientClassificationRequest $request)
     {
         try {
-            $client = Client::query()->where('id', $request->client_id)->first();
+            $client = Client::query()
+                ->where('tenant_id', $this->currentTenantId($request))
+                ->where('id', $request->client_id)
+                ->first();
 
             if (! $client) {
                 return \Failed('Client not found');
             }
 
-            $clientClassification = Client_Classifications::where('client_id', $request->client_id)->first();
+            $clientClassification = Client_Classifications::where('client_id', $client->id)->first();
 
             $classification = null;
             if ($clientClassification) {
@@ -77,7 +89,16 @@ class ClientClassificationsController extends Controller
     public function removeClassification(RemoveClassificationRequest $request)
     {
         try {
-            $deleted = Client_Classifications::where('client_id', $request->client_id)->delete();
+            $client = Client::query()
+                ->where('tenant_id', $this->currentTenantId($request))
+                ->where('id', $request->client_id)
+                ->first();
+
+            if (! $client) {
+                return \Failed('Client not found');
+            }
+
+            $deleted = Client_Classifications::where('client_id', $client->id)->delete();
 
             if ($deleted) {
                 return \Success('Classification removed from client successfully');
@@ -89,11 +110,16 @@ class ClientClassificationsController extends Controller
         }
     }
 
-    public function getAllClientsWithClassification()
+    public function getAllClientsWithClassification(Request $request)
     {
         try {
             $perPage = \returnPerPage();
+            $tenantId = $this->currentTenantId($request);
+
+            $tenantClientIds = Client::query()->where('tenant_id', $tenantId)->pluck('id');
+
             $classificationsData = Client_Classifications::with('guestClassification')
+                ->whereIn('client_id', $tenantClientIds)
                 ->latest()
                 ->paginate($perPage);
 

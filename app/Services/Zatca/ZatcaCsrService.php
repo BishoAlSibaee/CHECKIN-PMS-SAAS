@@ -11,14 +11,17 @@ class ZatcaCsrService
      *
      * @return array{private_key_path: string, csr_path: string, csr_base64: string, config: array<string, string>}
      */
-    public function generateAndStore(?string $directory = null): array
+    /**
+     * @param  array<string, string>|null  $csrConfigOverride  Per-hotel CSR fields (see HotelTaxResolver::csrConfig) — falls back to config('zatca.csr') when omitted.
+     */
+    public function generateAndStore(?string $directory = null, ?array $csrConfigOverride = null): array
     {
         $directory = $directory ?: (string) config('zatca.storage_path');
         if (! is_dir($directory) && ! mkdir($directory, 0700, true) && ! is_dir($directory)) {
             throw new RuntimeException("Unable to create ZATCA storage directory: {$directory}");
         }
 
-        $csrConfig = config('zatca.csr');
+        $csrConfig = $csrConfigOverride ?? config('zatca.csr');
         $opensslConfigPath = $directory.DIRECTORY_SEPARATOR.'openssl.cnf';
         file_put_contents($opensslConfigPath, $this->buildOpenSslConfig($csrConfig));
 

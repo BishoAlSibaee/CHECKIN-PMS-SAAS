@@ -49,6 +49,14 @@ class RouteServiceProvider extends ServiceProvider
                 ->by($request->ip());
         });
 
+        RateLimiter::for('channex-webhook', function (Request $request) {
+            return Limit::perMinute(120)->by($request->ip());
+        });
+
+        RateLimiter::for('grms-webhook', function (Request $request) {
+            return Limit::perMinute(120)->by($request->ip());
+        });
+
         $this->routes(function () {
             Route::middleware('api')
                 ->prefix('api')
@@ -58,9 +66,9 @@ class RouteServiceProvider extends ServiceProvider
                 ->prefix('api/users')
                 ->group(base_path('routes/users.php'));
 
-            // Route::middleware('api')
-            //     ->prefix('api/admins')
-            //     ->group(base_path('routes/admins.php'));
+            Route::middleware('api')
+                ->prefix('api/platform-admin')
+                ->group(base_path('routes/platform_admin.php'));
 
             Route::middleware('api')
                 ->prefix('api/reservations')
@@ -74,6 +82,18 @@ class RouteServiceProvider extends ServiceProvider
             Route::middleware(['throttle:kiosk', \Illuminate\Routing\Middleware\SubstituteBindings::class])
                 ->prefix('api/kiosk')
                 ->group(base_path('routes/kiosk.php'));
+
+            // Channex calls this unauthenticated (it's not our staff/kiosk) —
+            // verified instead via a shared-secret header (see ChannexWebhookController).
+            Route::middleware(['throttle:channex-webhook', \Illuminate\Routing\Middleware\SubstituteBindings::class])
+                ->prefix('api/channex')
+                ->group(base_path('routes/channex.php'));
+
+            // GRMS calls this unauthenticated (it's not our staff/kiosk) —
+            // verified instead via a shared-secret header (see GrmsWebhookController).
+            Route::middleware(['throttle:grms-webhook', \Illuminate\Routing\Middleware\SubstituteBindings::class])
+                ->prefix('api/grms')
+                ->group(base_path('routes/grms.php'));
 
             Route::middleware('web')
                 ->group(base_path('routes/web.php'));

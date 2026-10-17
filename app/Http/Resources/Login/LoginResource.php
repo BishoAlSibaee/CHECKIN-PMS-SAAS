@@ -27,6 +27,8 @@ class LoginResource extends JsonResource
         'permissions' => $this->getAllPermissions()->pluck('name')->values()->all(),
         'roles' => $this->getRoleNames()->values()->all(),
         'role' => $this->getRoleNames()->first(),
+        'available_hotels' => $this->availableHotels,
+        'current_hotel_id' => $this->currentHotelId,
         'token'=>$this->token->accessToken,
         'token_expire_at'=>$this->token->token?->expires_at
             ? Carbon::parse($this->token->token->expires_at)->format('Y-m-d H:i:s')

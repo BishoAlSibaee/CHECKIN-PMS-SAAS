@@ -14,13 +14,17 @@ use App\Models\RoomType;
 use App\Models\RoomtypePricingplan;
 use App\Services\Cache\CacheInvalidator;
 use App\Services\Cache\ReferenceDataCache;
+use App\Services\NotificationService;
 use App\Services\PricingPlanOverlapService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class RoomTypesController extends Controller
 {
-    public function __construct(private PricingPlanOverlapService $pricingPlanOverlap) {}
+    public function __construct(
+        private PricingPlanOverlapService $pricingPlanOverlap,
+        private NotificationService $notifications,
+    ) {}
 
     private function isPricingPlanExpired(Pricingplan $plan): bool
     {
@@ -59,6 +63,7 @@ class RoomTypesController extends Controller
                 'Max_monthly_price' => $request->Max_monthly_price ?? 0,
                 'Min_monthly_price' => $request->Min_monthly_price,
                 'active_type' => $request->active_type,
+                'dynamic_pricing_enabled' => $request->boolean('dynamic_pricing_enabled'),
             ]);
             CacheInvalidator::roomTypesChanged();
 
@@ -97,8 +102,17 @@ class RoomTypesController extends Controller
                 'Max_monthly_price' => $request->Max_monthly_price ?? 0,
                 'Min_monthly_price' => $request->Min_monthly_price,
                 'active_type' => $request->active_type,
+                'dynamic_pricing_enabled' => $request->boolean('dynamic_pricing_enabled'),
             ]);
             CacheInvalidator::roomTypesChanged();
+            $this->notifications->notify(
+                null,
+                'pricing_changed',
+                'NOTIFICATIONS.ROOM_PRICE_UPDATED_TITLE',
+                ['room' => $roomType->name_en],
+                '/admin/pricing',
+                'manage room types'
+            );
 
             return Success('Room type updated successfully');
         } catch (\Exception $e) {
@@ -195,6 +209,15 @@ class RoomTypesController extends Controller
                 'DailyPrice' => $roomTypePricing->DailyPrice,
                 'MonthlyPrice' => $roomTypePricing->MonthlyPrice,
             ];
+
+            $this->notifications->notify(
+                null,
+                'pricing_changed',
+                'NOTIFICATIONS.PRICING_PLAN_ADDED_TITLE',
+                ['plan' => $pricingPlan->NameEn, 'room' => $data['roomtype_nameEn']],
+                '/admin/pricing',
+                'manage pricing plans'
+            );
 
             return SuccessData('Pricing plan added successfully', $data);
         } catch (\Exception $e) {
@@ -308,6 +331,15 @@ class RoomTypesController extends Controller
                 'DailyPrice' => $roomTypePricing->DailyPrice,
                 'MonthlyPrice' => $roomTypePricing->MonthlyPrice,
             ];
+
+            $this->notifications->notify(
+                null,
+                'pricing_changed',
+                'NOTIFICATIONS.PRICING_PLAN_UPDATED_TITLE',
+                ['plan' => $pricingPlan->NameEn, 'room' => $data['roomtype_nameEn']],
+                '/admin/pricing',
+                'manage pricing plans'
+            );
 
             return SuccessData('Pricing plan updated successfully', $data);
         } catch (\Exception $e) {

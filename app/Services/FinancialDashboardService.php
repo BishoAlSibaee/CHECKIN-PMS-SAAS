@@ -247,6 +247,11 @@ class FinancialDashboardService
             ])
             ->join('reservations', 'reservation_pay.reservation_id', '=', 'reservations.id')
             ->whereIn('reservations.reservation_status', [1, 2])
+            // Real cash movements only — see the same guard in
+            // ReportQueryService::paymentsRefunds(). Without this, a
+            // company-billed (non-cash) row falls into the else branch below
+            // and is miscounted as a phantom refund.
+            ->whereIn('reservation_pay.type', [ReservationPay::TYPE_PAYMENT, ReservationPay::TYPE_REFUND])
             ->whereBetween('reservation_pay.created_at', [
                 $start->copy()->startOfDay(),
                 $end->copy()->endOfDay(),
@@ -291,6 +296,7 @@ class FinancialDashboardService
             ->select('reservation_pay.*')
             ->join('reservations', 'reservation_pay.reservation_id', '=', 'reservations.id')
             ->whereIn('reservations.reservation_status', [1, 2])
+            ->whereIn('reservation_pay.type', [ReservationPay::TYPE_PAYMENT, ReservationPay::TYPE_REFUND])
             ->whereBetween('reservation_pay.created_at', [
                 $start->copy()->startOfDay(),
                 $end->copy()->endOfDay(),

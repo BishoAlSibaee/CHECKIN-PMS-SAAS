@@ -10,6 +10,7 @@ class Client extends Model
     protected $connection = 'mysql2';
 
     protected $fillable = [
+        'tenant_id',
         'first_name',
         'last_name',
         'email',
@@ -21,6 +22,8 @@ class Client extends Model
         'gender',
         'guest_type',
         'nationality',
+        'loyalty_points_balance',
+        'company_id',
     ];
 
     public function notes()

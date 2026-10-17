@@ -19,6 +19,12 @@ class HotelLivePublisher
 
     public const SCOPE_PROPERTY = 'property';
 
+    public const SCOPE_AIRBNB_REQUESTS = 'airbnb_requests';
+
+    public const SCOPE_NOTIFICATIONS = 'notifications';
+
+    public const SCOPE_GROUP_BOOKINGS = 'group_bookings';
+
     /**
      * @param  list<string>  $scopes
      * @param  array{type: string, id: int|string}|null  $entity
@@ -76,6 +82,18 @@ class HotelLivePublisher
         ], $action, [
             'type' => 'reservation',
             'id'   => $reservationId,
+        ]);
+    }
+
+    public function publishGroupChanged(int $groupBookingId, string $action): void
+    {
+        $this->publish([
+            self::SCOPE_GROUP_BOOKINGS,
+            self::SCOPE_RESERVATIONS,
+            self::SCOPE_DASHBOARD,
+        ], $action, [
+            'type' => 'group_booking',
+            'id'   => $groupBookingId,
         ]);
     }
 }

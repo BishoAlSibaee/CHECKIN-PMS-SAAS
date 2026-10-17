@@ -49,10 +49,14 @@ return [
             'driver' => 'passport',
             'provider' => 'users'
         ],
-        'admins' => [
+
+        // Platform operators (tenant onboarding/management) — deliberately a
+        // separate guard/provider/model from "users" so no hotel-tenant
+        // account can ever authenticate here. See App\Models\PlatformAdmin.
+        'platform_admin' => [
             'driver' => 'sanctum',
-            'provider' => 'admins'
-        ]
+            'provider' => 'platform_admins',
+        ],
     ],
 
     /*
@@ -78,15 +82,10 @@ return [
             'model' => App\Models\User::class,
         ],
 
-        // 'admins' => [
-        //     'driver' => 'eloquent',
-        //     'model' => App\Models\Admin::class
-        // ]
-
-        // 'users' => [
-        //     'driver' => 'database',
-        //     'table' => 'users',
-        // ],
+        'platform_admins' => [
+            'driver' => 'eloquent',
+            'model' => App\Models\PlatformAdmin::class,
+        ],
     ],
 
     /*

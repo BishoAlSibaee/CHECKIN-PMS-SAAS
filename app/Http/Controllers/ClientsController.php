@@ -12,6 +12,11 @@ use Illuminate\Support\Facades\DB;
 
 class ClientsController extends Controller
 {
+    private function currentTenantId(Request $request): int
+    {
+        return (int) $request->attributes->get('currentTenantId');
+    }
+
     public function index(Request $request)
     {
         try {
@@ -19,7 +24,7 @@ class ClientsController extends Controller
             $search = $request->search;
             $excludeAssigned = $request->exclude_assigned;
 
-            $query = Client::on('mysql2')->latest();
+            $query = Client::on('mysql2')->where('tenant_id', $this->currentTenantId($request))->latest();
 
             if ($excludeAssigned) {
                 $query->whereDoesntHave('classifications');
@@ -54,6 +59,7 @@ class ClientsController extends Controller
     {
         try {
             $client = Client::create([
+                'tenant_id' => $this->currentTenantId($request),
                 'first_name' => $request->first_name,
                 'last_name' => $request->last_name,
                 'email' => $request->email ?? null,
@@ -76,7 +82,7 @@ class ClientsController extends Controller
     public function update(AddClientRequest $request)
     {
         try {
-            $client = Client::find($request->id);
+            $client = Client::where('tenant_id', $this->currentTenantId($request))->find($request->id);
 
             if (! $client) {
                 return \Failed('Client not found');
@@ -86,7 +92,7 @@ class ClientsController extends Controller
                 'first_name' => $request->first_name,
                 'last_name' => $request->last_name,
                 'email' => $request->email ?? null,
-                'international_code' => $request->international_code ?? null,
+                'international_code' => $request->international_code ?? $client->international_code,
                 'mobile' => $request->mobile,
                 'IdType' => $request->IdType ?? null,
                 'IdNumber' => $request->IdNumber ?? null,
@@ -102,10 +108,10 @@ class ClientsController extends Controller
         }
     }
 
-    public function show($id)
+    public function show(Request $request, $id)
     {
         try {
-            $client = Client::find($id);
+            $client = Client::where('tenant_id', $this->currentTenantId($request))->find($id);
 
             if (! $client) {
                 return \Failed('Client not found');
@@ -122,10 +128,10 @@ class ClientsController extends Controller
      * for corporate/travel-agency clients who need one consolidated view instead
      * of checking each reservation's folio individually.
      */
-    public function statement($id)
+    public function statement(Request $request, $id)
     {
         try {
-            $client = Client::find($id);
+            $client = Client::where('tenant_id', $this->currentTenantId($request))->find($id);
             if (! $client) {
                 return \Failed('Client not found');
             }
@@ -179,10 +185,32 @@ class ClientsController extends Controller
     public function getBy(GetClientByRequest $request)
     {
         try {
-            $client = Client::where('mobile', $request->mobile)
-                ->orWhere('email', $request->email)
-                ->orWhere('IdNumber', $request->IdNumber)
-                ->first();
+            // Laravel's where()/orWhere() silently turns a null value into an "IS NULL"
+            // check (not a no-op) — passing $request->email straight through when email
+            // wasn't provided matched ANY client with a null email column, regardless of
+            // the mobile/IdNumber actually searched for. Only add a clause for filters
+            // that were actually supplied, and match nothing if none were.
+            $client = Client::where('tenant_id', $this->currentTenantId($request))
+                ->where(function ($query) use ($request) {
+                $hasFilter = false;
+
+                if ($request->filled('mobile')) {
+                    $query->orWhere('mobile', $request->mobile);
+                    $hasFilter = true;
+                }
+                if ($request->filled('email')) {
+                    $query->orWhere('email', $request->email);
+                    $hasFilter = true;
+                }
+                if ($request->filled('IdNumber')) {
+                    $query->orWhere('IdNumber', $request->IdNumber);
+                    $hasFilter = true;
+                }
+
+                if (! $hasFilter) {
+                    $query->whereRaw('1 = 0');
+                }
+            })->first();
 
             if (! $client) {
                 return \Failed('Client not found');
@@ -194,10 +222,10 @@ class ClientsController extends Controller
         }
     }
 
-    public function getClientById($id)
+    public function getClientById(Request $request, $id)
     {
         try {
-            $client = Client::find($id);
+            $client = Client::where('tenant_id', $this->currentTenantId($request))->find($id);
 
             if (! $client) {
                 return \Failed('Client not found');

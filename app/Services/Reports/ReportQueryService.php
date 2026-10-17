@@ -67,6 +67,9 @@ class ReportQueryService
             'trial-balance' => $this->trialBalance($start, $end, $params),
             'cash-flow' => $this->cashFlow($start, $end, $params),
             'financial-audit-log' => $this->financialAuditLog($start, $end, $params),
+            'accounting-export-generic' => $this->accountingExportGeneric($start, $end),
+            'accounting-export-qoyod' => $this->accountingExportQoyod($start, $end),
+            'accounting-export-daftra' => $this->accountingExportDaftra($start, $end),
             default => throw new InvalidArgumentException("Unknown report slug: {$slug}"),
         };
     }
@@ -533,6 +536,158 @@ class ReportQueryService
                 ['Journal entry lines for the selected period.']
             )
         );
+    }
+
+    /**
+     * A plain, universal journal-entry export — one row per debit/credit
+     * line, clean labeled columns. Importable (with manual column mapping)
+     * into most accounting software; the generic fallback when no named
+     * profile below matches the accountant's software.
+     */
+    private function accountingExportGeneric(Carbon $start, Carbon $end): array
+    {
+        $entries = $this->accountingExportEntries($start, $end);
+
+        $rows = [];
+        foreach ($entries as $entry) {
+            foreach ($entry->lines as $line) {
+                $rows[] = [
+                    'entry_number' => $entry->id,
+                    'entry_date' => Carbon::parse($entry->entry_date)->format('Y-m-d'),
+                    'account_code' => $line->account?->code ?? '',
+                    'account_name' => $line->account?->name_en ?? $line->account?->name_ar ?? '',
+                    'debit' => (float) $line->debit > 0.005 ? round((float) $line->debit, 2) : '',
+                    'credit' => (float) $line->credit > 0.005 ? round((float) $line->credit, 2) : '',
+                    'description' => $entry->description ?? '',
+                    'reference' => $entry->reference ?? '',
+                ];
+            }
+        }
+
+        return $this->format(
+            [
+                ['key' => 'entry_number', 'label' => 'Entry #'],
+                ['key' => 'entry_date', 'label' => 'Date'],
+                ['key' => 'account_code', 'label' => 'Account Code'],
+                ['key' => 'account_name', 'label' => 'Account Name'],
+                ['key' => 'debit', 'label' => 'Debit'],
+                ['key' => 'credit', 'label' => 'Credit'],
+                ['key' => 'description', 'label' => 'Description'],
+                ['key' => 'reference', 'label' => 'Reference'],
+            ],
+            $rows,
+            [['label' => 'Journal entries', 'value' => $entries->count()], ['label' => 'Lines', 'value' => count($rows)]],
+            array_merge($this->periodMeta($start, $end), ['Generic journal entry export — one row per debit/credit line.'])
+        );
+    }
+
+    /**
+     * Matches Qoyod's (قيود) strict manual-journal-entry import template
+     * exactly: a fixed 9-column order, the entry sequence repeated on every
+     * line of the same entry, date/description only on the entry's first
+     * line, account type fixed to "G/L Accounts" (we have no separate
+     * customer/vendor/employee sub-ledgers), and a blank row between entries.
+     */
+    private function accountingExportQoyod(Carbon $start, Carbon $end): array
+    {
+        $entries = $this->accountingExportEntries($start, $end);
+
+        $rows = [];
+        foreach ($entries as $entry) {
+            $isFirstLine = true;
+            $entryDate = Carbon::parse($entry->entry_date)->format('d-m-y');
+
+            foreach ($entry->lines as $line) {
+                $rows[] = [
+                    'entry_sequence' => $entry->id,
+                    'date' => $isFirstLine ? $entryDate : '',
+                    'description' => $isFirstLine ? ($entry->description ?? '') : '',
+                    'account_type' => 'G/L Accounts',
+                    'account_code' => $line->account?->code ?? '',
+                    'contact_ref' => '',
+                    'debit' => (float) $line->debit > 0.005 ? round((float) $line->debit, 2) : '',
+                    'credit' => (float) $line->credit > 0.005 ? round((float) $line->credit, 2) : '',
+                    'comments' => '',
+                ];
+                $isFirstLine = false;
+            }
+
+            $rows[] = [];
+        }
+
+        if ($rows !== [] && $rows[array_key_last($rows)] === []) {
+            array_pop($rows);
+        }
+
+        return $this->format(
+            [
+                ['key' => 'entry_sequence', 'label' => 'تسلسل القيد'],
+                ['key' => 'date', 'label' => 'التاريخ'],
+                ['key' => 'description', 'label' => 'وصف القيد'],
+                ['key' => 'account_type', 'label' => 'نوع الحساب'],
+                ['key' => 'account_code', 'label' => 'رمز الحساب'],
+                ['key' => 'contact_ref', 'label' => 'جهة اتصال/ضريبة/موظف'],
+                ['key' => 'debit', 'label' => 'مدين'],
+                ['key' => 'credit', 'label' => 'دائن'],
+                ['key' => 'comments', 'label' => 'التعليقات'],
+            ],
+            $rows,
+            [['label' => 'Journal entries', 'value' => $entries->count()]],
+            array_merge($this->periodMeta($start, $end), ['Qoyod manual journal entry import template.'])
+        );
+    }
+
+    /**
+     * Daftra's (دفترة) importer lets the user map arbitrary CSV columns to
+     * its own fields during import, so there's no fixed template to match —
+     * this is a clean, Arabic-labeled export using Daftra's own terminology,
+     * so the mapping step is a one-to-one, obvious match.
+     */
+    private function accountingExportDaftra(Carbon $start, Carbon $end): array
+    {
+        $entries = $this->accountingExportEntries($start, $end);
+
+        $rows = [];
+        foreach ($entries as $entry) {
+            foreach ($entry->lines as $line) {
+                $rows[] = [
+                    'entry_number' => $entry->id,
+                    'entry_date' => Carbon::parse($entry->entry_date)->format('d-m-Y'),
+                    'account_code' => $line->account?->code ?? '',
+                    'account_name' => $line->account?->name_ar ?? $line->account?->name_en ?? '',
+                    'debit' => (float) $line->debit > 0.005 ? round((float) $line->debit, 2) : '',
+                    'credit' => (float) $line->credit > 0.005 ? round((float) $line->credit, 2) : '',
+                    'description' => $entry->description ?? '',
+                ];
+            }
+        }
+
+        return $this->format(
+            [
+                ['key' => 'entry_number', 'label' => 'رقم القيد'],
+                ['key' => 'entry_date', 'label' => 'التاريخ'],
+                ['key' => 'account_code', 'label' => 'رمز الحساب'],
+                ['key' => 'account_name', 'label' => 'اسم الحساب'],
+                ['key' => 'debit', 'label' => 'مدين'],
+                ['key' => 'credit', 'label' => 'دائن'],
+                ['key' => 'description', 'label' => 'البيان'],
+            ],
+            $rows,
+            [['label' => 'Journal entries', 'value' => $entries->count()]],
+            array_merge($this->periodMeta($start, $end), ['Daftra-friendly journal entry export (map columns during import).'])
+        );
+    }
+
+    /**
+     * @return Collection<int, JournalEntry>
+     */
+    private function accountingExportEntries(Carbon $start, Carbon $end): Collection
+    {
+        return JournalEntry::with(['lines.account'])
+            ->whereBetween('entry_date', [$start->toDateString(), $end->toDateString()])
+            ->orderBy('entry_date')
+            ->orderBy('id')
+            ->get();
     }
 
     private function arrivalsDepartures(Carbon $start, Carbon $end): array
@@ -1131,14 +1286,13 @@ class ReportQueryService
 
     private function arAging(Carbon $asOf): array
     {
-        $monthStart = $asOf->copy()->startOfMonth();
-        $monthEnd = $asOf->copy()->endOfMonth();
-
+        // An aging report must surface EVERY outstanding balance as of this
+        // date — including old debts from stays long past (that's the whole
+        // point of the 90+ day bucket) — so this must not be restricted to
+        // reservations whose stay happens to overlap the current month.
         $reservations = Reservation::with(['client', 'payments', 'reservationRooms.room'])
             ->excludingCancelled()
             ->whereIn('reservation_status', Reservation::cashReportStatuses())
-            ->where('start_date', '<=', $monthEnd->toDateString())
-            ->where('expire_date', '>=', $monthStart->toDateString())
             ->get();
 
         $buckets = [
@@ -1200,7 +1354,6 @@ class ReportQueryService
             ],
             [
                 "As of: {$asOf->toDateString()}",
-                "Month scope: stays overlapping {$monthStart->toDateString()} → {$monthEnd->toDateString()}.",
                 'Balance uses payments/refunds recorded on or before the as-of date.',
                 'Confirmed and pending-payment reservations (not cancelled) with balance_due > 0.',
                 'Balance = reservation.total − (payments − refunds) as of the selected date; total includes tax at '.(self::TAX_RATE * 100).'%.',
@@ -1535,6 +1688,10 @@ class ReportQueryService
         $payments = ReservationPay::with(['reservation.client', 'user'])
             ->join('reservations', 'reservation_pay.reservation_id', '=', 'reservations.id')
             ->whereIn('reservations.reservation_status', Reservation::cashMovementStatuses())
+            // Real cash movements only — a company-billed reservation
+            // (TYPE_BILLED_TO_COMPANY) is a non-cash journal recognition and
+            // must never appear in a cash-in/cash-out report.
+            ->whereIn('reservation_pay.type', [ReservationPay::TYPE_PAYMENT, ReservationPay::TYPE_REFUND])
             ->whereBetween('reservation_pay.created_at', [$periodStart, $periodEnd])
             ->select('reservation_pay.*')
             ->orderByDesc('reservation_pay.created_at')

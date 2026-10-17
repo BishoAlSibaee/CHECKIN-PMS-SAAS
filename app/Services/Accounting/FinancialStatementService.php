@@ -16,7 +16,7 @@ class FinancialStatementService
      *
      * @return Collection<int, object{account_id: int, code: string, name: string, type: string, total_debit: float, total_credit: float, balance: float}>
      */
-    public function accountBalances(?Carbon $start, ?Carbon $end, ?Carbon $asOf = null): Collection
+    public function accountBalances(?Carbon $start, ?Carbon $end, ?Carbon $asOf = null, ?int $hotelId = null): Collection
     {
         $query = JournalEntryLine::query()
             ->join('journal_entries', 'journal_entry_lines.journal_entry_id', '=', 'journal_entries.id')
@@ -34,6 +34,10 @@ class FinancialStatementService
                 'chart_of_accounts.name_en',
                 'chart_of_accounts.type'
             );
+
+        if ($hotelId !== null) {
+            $query->where('journal_entries.hotel_id', $hotelId);
+        }
 
         if ($asOf !== null) {
             $query->where('journal_entries.entry_date', '<=', $asOf->toDateString());
@@ -60,9 +64,9 @@ class FinancialStatementService
         });
     }
 
-    public function trialBalance(Carbon $start, Carbon $end): array
+    public function trialBalance(Carbon $start, Carbon $end, ?int $hotelId = null): array
     {
-        $accounts = $this->accountBalances($start, $end);
+        $accounts = $this->accountBalances($start, $end, null, $hotelId);
         $rows = $accounts
             ->filter(fn ($a) => $a->total_debit > 0 || $a->total_credit > 0)
             ->sortBy('code')
@@ -95,9 +99,9 @@ class FinancialStatementService
         ];
     }
 
-    public function profitAndLoss(Carbon $start, Carbon $end): array
+    public function profitAndLoss(Carbon $start, Carbon $end, ?int $hotelId = null): array
     {
-        $accounts = $this->accountBalances($start, $end)
+        $accounts = $this->accountBalances($start, $end, null, $hotelId)
             ->filter(fn ($a) => in_array($a->type, ['revenue', 'expense'], true));
 
         $revenue = $accounts->where('type', 'revenue')->values()->map(fn ($a) => [
@@ -133,16 +137,16 @@ class FinancialStatementService
         ];
     }
 
-    public function balanceSheet(Carbon $asOfDate): array
+    public function balanceSheet(Carbon $asOfDate, ?int $hotelId = null): array
     {
-        $accounts = $this->accountBalances(null, null, $asOfDate)
+        $accounts = $this->accountBalances(null, null, $asOfDate, $hotelId)
             ->filter(fn ($a) => in_array($a->type, ['asset', 'liability', 'equity'], true));
 
         $assets = $this->mapBalanceSheetSection($accounts->where('type', 'asset'));
         $liabilities = $this->mapBalanceSheetSection($accounts->where('type', 'liability'));
         $equity = $this->mapBalanceSheetSection($accounts->where('type', 'equity'));
 
-        $netIncome = $this->cumulativeNetIncome($asOfDate);
+        $netIncome = $this->cumulativeNetIncome($asOfDate, $hotelId);
         if (abs($netIncome) >= 0.005) {
             $equity = $this->mergeNetIncomeIntoEquity($equity, $netIncome);
         }
@@ -170,9 +174,9 @@ class FinancialStatementService
     /**
      * Revenue and expense accounts are closed into retained earnings for balance-sheet presentation.
      */
-    private function cumulativeNetIncome(Carbon $asOfDate): float
+    private function cumulativeNetIncome(Carbon $asOfDate, ?int $hotelId = null): float
     {
-        $accounts = $this->accountBalances(null, null, $asOfDate)
+        $accounts = $this->accountBalances(null, null, $asOfDate, $hotelId)
             ->filter(fn ($a) => in_array($a->type, ['revenue', 'expense'], true));
 
         $revenue = round($accounts->where('type', 'revenue')->sum('balance'), 2);
@@ -210,7 +214,7 @@ class FinancialStatementService
         return collect($equity)->sortBy('code')->values()->all();
     }
 
-    public function cashFlow(Carbon $start, Carbon $end): array
+    public function cashFlow(Carbon $start, Carbon $end, ?int $hotelId = null): array
     {
         $cashAccounts = ChartOfAccount::query()
             ->where('active', true)
@@ -230,6 +234,7 @@ class FinancialStatementService
                 $start->toDateString(),
                 $end->toDateString(),
             ])
+            ->when($hotelId !== null, fn ($q) => $q->where('journal_entries.hotel_id', $hotelId))
             ->selectRaw('chart_of_accounts.id as account_id')
             ->selectRaw('chart_of_accounts.code')
             ->selectRaw('chart_of_accounts.name_en as name')
@@ -274,7 +279,8 @@ class FinancialStatementService
         Carbon $end,
         ?int $accountId = null,
         ?string $accountType = null,
-        ?\App\Services\Reports\AccountingReportFilters $filters = null
+        ?\App\Services\Reports\AccountingReportFilters $filters = null,
+        ?int $hotelId = null
     ): array {
         $query = JournalEntryLine::query()
             ->join('journal_entries', 'journal_entry_lines.journal_entry_id', '=', 'journal_entries.id')
@@ -283,6 +289,7 @@ class FinancialStatementService
                 $start->toDateString(),
                 $end->toDateString(),
             ])
+            ->when($hotelId !== null, fn ($q) => $q->where('journal_entries.hotel_id', $hotelId))
             ->orderBy('journal_entries.entry_date')
             ->orderBy('journal_entries.id')
             ->orderBy('journal_entry_lines.id')

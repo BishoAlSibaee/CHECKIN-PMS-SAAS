@@ -7,6 +7,7 @@ use App\Http\Requests\Client\GetClientByRequest;
 use App\Http\Requests\Kiosk\KioskConfirmPaymentRequest;
 use App\Http\Requests\Kiosk\KioskReservationLookupRequest;
 use App\Http\Requests\Reservation\BookingRoomAvailabilityRequest;
+use App\Http\Requests\Reservation\GetRoomPriceRequest;
 use App\Http\Requests\Reservation\MakeReservationRequest;
 use App\Models\Reservation;
 use App\Models\ReservationPay;
@@ -35,6 +36,15 @@ class KioskController extends Controller
 
         return $this->reservationController->bookingRoomAvailability(
             app(BookingRoomAvailabilityRequest::class)
+        );
+    }
+
+    public function roomPrice(Request $request)
+    {
+        $request->merge(['typeReservation' => $request->input('typeReservation', 0)]);
+
+        return $this->reservationController->getRoomPrice(
+            app(GetRoomPriceRequest::class)
         );
     }
 
@@ -70,9 +80,14 @@ class KioskController extends Controller
         );
     }
 
+    public function cancelReservation(int $id)
+    {
+        return $this->reservationController->cancelKioskReservation($id);
+    }
+
     public function lookupReservation(KioskReservationLookupRequest $request)
     {
-        $reservation = Reservation::with(['client', 'reservationRooms.room.roomType', 'payments'])
+        $reservation = Reservation::with(['client', 'reservationRooms.room.roomType', 'reservationRooms.room.building', 'reservationRooms.room.floor', 'payments'])
             ->where('confirmation_code', strtoupper($request->code))
             ->first();
 
@@ -136,6 +151,10 @@ class KioskController extends Controller
             ]);
 
             DB::commit();
+
+            // Self-service kiosk: paying and collecting the key card here IS the
+            // check-in, so there is no separate staff step to do it later.
+            $this->reservationController->checkInFromKiosk($id);
 
             return \SuccessData('Payment confirmed', [
                 'reservation' => $reservation->fresh(['payments']),

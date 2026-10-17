@@ -27,6 +27,8 @@ class ReservationSourcesController extends Controller
                 'name_ar' => $request->name_ar,
                 'name_en' => $request->name_en,
                 'description' => $request->description ?? null,
+                'is_ota_channel' => (bool) ($request->is_ota_channel ?? false),
+                'default_commission_percent' => $request->default_commission_percent ?? null,
             ]);
 
             return \SuccessData('Reservation source added successfully', $source);
@@ -44,6 +46,8 @@ class ReservationSourcesController extends Controller
                 'name_ar' => $request->name_ar ?? $source->name_ar,
                 'name_en' => $request->name_en ?? $source->name_en,
                 'description' => $request->description ?? $source->description,
+                'is_ota_channel' => $request->has('is_ota_channel') ? (bool) $request->is_ota_channel : $source->is_ota_channel,
+                'default_commission_percent' => $request->default_commission_percent ?? $source->default_commission_percent,
             ]);
 
             return \SuccessData('Reservation source updated successfully', $source);

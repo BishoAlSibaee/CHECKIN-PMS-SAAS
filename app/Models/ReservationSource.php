@@ -9,5 +9,5 @@ class ReservationSource extends Model
 {
     use HasFactory;
     public $table = 'reservation_sources';
-    protected $fillable = ['name_ar', 'name_en', 'description'];
+    protected $fillable = ['name_ar', 'name_en', 'description', 'is_ota_channel', 'channex_channel_code', 'default_commission_percent'];
 }

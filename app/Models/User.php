@@ -31,6 +31,7 @@ class User extends Authenticatable
         'email',
         'password',
         'active',
+        'notifications_seen_at',
     ];
 
     /**
@@ -51,6 +52,7 @@ class User extends Authenticatable
     protected $casts = [
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
+        'notifications_seen_at' => 'datetime',
     ];
 
 
@@ -67,5 +69,11 @@ class User extends Authenticatable
     function discount() : BelongsTo
     {
         return $this->belongsTo(Discount::class);
+    }
+
+    /** Hotels (branches) this user can access — see hotel_user pivot. */
+    function hotels(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    {
+        return $this->belongsToMany(Hotel::class, 'hotel_user');
     }
 }

@@ -13,6 +13,7 @@ use App\Http\Requests\Reservation\GetReservationByDateRequest;
 use App\Http\Requests\Reservation\GetRoomPriceRequest;
 use App\Http\Requests\Reservation\MakeReservationRequest;
 use App\Http\Requests\Reservation\PreviewDateChangeRequest;
+use App\Http\Requests\Reservation\RedeemLoyaltyPointsRequest;
 use App\Http\Requests\Reservation\RefundRequest;
 use App\Http\Requests\Reservation\ShortenReservationRequest;
 use App\Http\Requests\Reservation\UpdateReservationRequest;
@@ -31,8 +32,10 @@ use App\Models\RoomtypePricingplan;
 use App\Models\Suite;
 use App\Services\Accounting\AccountingPostingService;
 use App\Jobs\ReportZatcaCheckoutInvoiceJob;
+use App\Jobs\SyncReservationToGrmsJob;
 use App\Services\GuestClassificationDiscountService;
 use App\Services\HotelLivePublisher;
+use App\Services\LoyaltyPointsService;
 use App\Services\PricingEngine;
 use App\Services\RefundPolicyService;
 use App\Services\ReservationChangeLogService;
@@ -64,6 +67,7 @@ class ReservationController extends Controller
         private GuestClassificationDiscountService $guestClassificationDiscountService,
         private ReservationDateChangePreviewService $dateChangePreviewService,
         private ZatcaCheckoutReportingService $zatcaCheckoutReportingService,
+        private LoyaltyPointsService $loyaltyPointsService,
     ) {}
 
     private function notifyReservationLive(int $reservationId, string $action, bool $affectsInventory = false): void
@@ -87,6 +91,79 @@ class ReservationController extends Controller
                 'type' => 'reservation',
                 'id' => $reservationId,
             ]);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        try {
+            SyncReservationToGrmsJob::dispatch($reservationId, $action);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        // Anything that changes room inventory (new/cancelled/extended/shortened
+        // booking, check-in/out) must tell Channex the new availability for
+        // every OTA channel it's connected to — same "never block the booking
+        // flow" resilience as the GRMS sync above.
+        if ($affectsInventory) {
+            try {
+                $this->pushChannexAvailabilityForReservation($reservationId);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+    }
+
+    /** @param  int  $reservationId */
+    private function pushChannexAvailabilityForReservation($reservationId): void
+    {
+        $roomTypeIds = ReservationRoom::query()
+            ->join('rooms', 'rooms.id', '=', 'reservation_rooms.room_id')
+            ->join('buildings', 'buildings.id', '=', 'rooms.building_id')
+            ->where('reservation_rooms.reservation_id', $reservationId)
+            ->select('buildings.hotel_id', 'rooms.room_type_id')
+            ->distinct()
+            ->get();
+
+        foreach ($roomTypeIds as $row) {
+            \App\Jobs\Channex\PushRoomTypeAvailabilityJob::dispatchDebounced(
+                (int) $row->hotel_id,
+                (int) $row->room_type_id
+            );
+        }
+    }
+
+    /**
+     * Kiosk-specific: mark the guest checked in immediately once their kiosk payment
+     * is confirmed. The self-service flow has no separate staff check-in step — a
+     * guest who paid and is collecting their key card at the kiosk has, for every
+     * practical purpose, already started their stay. Best-effort: a failure here
+     * (e.g. the room somehow isn't ready) must never fail the payment confirmation
+     * itself — it just leaves the guest not-checked-in for staff to handle manually,
+     * same as any other kiosk hardware/edge-case fallback.
+     */
+    public function checkInFromKiosk(int $reservationId): void
+    {
+        try {
+            $reservation = Reservation::with('reservationRooms.room')->find($reservationId);
+
+            if ($reservation === null || (int) $reservation->logedin === Reservation::LOGEDIN_IN_HOUSE) {
+                return;
+            }
+
+            foreach ($reservation->reservationRooms as $resRoom) {
+                if ($resRoom->room) {
+                    $this->roomStatusService->assertRoomReadyForCheckIn($resRoom->room, $reservation->id);
+                }
+            }
+
+            $reservation->logedin = Reservation::LOGEDIN_IN_HOUSE;
+            $reservation->login_time = $reservation->login_time ?: Carbon::today()->toDateString();
+            $reservation->save();
+
+            $this->roomStatusService->syncForReservation($reservation->fresh(['reservationRooms']));
+
+            $this->notifyReservationLive($reservationId, 'checked_in', true);
         } catch (\Throwable $e) {
             report($e);
         }
@@ -166,13 +243,14 @@ class ReservationController extends Controller
 
             if ($request->input('sort') === 'balance_due') {
                 $paymentType = \App\Models\ReservationPay::TYPE_PAYMENT;
+                $companyBilledType = \App\Models\ReservationPay::TYPE_BILLED_TO_COMPANY;
                 $refundType = \App\Models\ReservationPay::TYPE_REFUND;
                 $query->orderByRaw(
                     '(reservations.total - COALESCE((
-                        SELECT SUM(CASE WHEN rp.type = ? THEN rp.pay WHEN rp.type = ? THEN -rp.pay ELSE 0 END)
+                        SELECT SUM(CASE WHEN rp.type IN (?, ?) THEN rp.pay WHEN rp.type = ? THEN -rp.pay ELSE 0 END)
                         FROM reservation_pay rp WHERE rp.reservation_id = reservations.id
                     ), 0)) DESC',
-                    [$paymentType, $refundType]
+                    [$paymentType, $companyBilledType, $refundType]
                 )->orderByDesc('id');
             } else {
                 $query->orderByDesc('start_date')->orderByDesc('id');
@@ -599,6 +677,14 @@ class ReservationController extends Controller
 
             $this->roomStatusService->syncForReservation($reservation);
 
+            // A company-billed reservation never held real cash — reversing
+            // it here (rather than through the normal cash-refund flow,
+            // which unconditionally credits real Cash) keeps the corporate
+            // ledger correct without fabricating a cash movement.
+            if ($reservation->company_id !== null) {
+                $this->accountingPostingService->reverseCompanyBillingRecognition($reservation);
+            }
+
             $afterSnapshot = $this->changeLogService->snapshot($reservation->fresh(['reservationRooms.room', 'payments']));
             $this->changeLogService->recordIfChanged($id, 'cancelled', $beforeSnapshot, $afterSnapshot);
 
@@ -607,6 +693,129 @@ class ReservationController extends Controller
             $this->notifyReservationLive($id, 'reservation_cancelled', true);
 
             return $this->show($id);
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            return \Failed($e->getMessage());
+        }
+    }
+
+    /**
+     * Cancels ONE room within a still-active multi-room reservation, leaving
+     * the other rooms (and the reservation itself) untouched — until now,
+     * cancellation was all-or-nothing at the whole-reservation level.
+     *
+     * KNOWN LIMITATION (deliberate, not an oversight): `logedin` is tracked
+     * only at the whole-reservation level, not per room, so this refuses
+     * entirely while the reservation is checked in — even if the guest never
+     * actually occupied the specific room being dropped. Building true
+     * per-room check-in tracking is a separate feature nobody has asked for;
+     * this restriction keeps that scope out.
+     */
+    public function cancelRoom(CancelReservationRequest $request, int $id, int $roomId)
+    {
+        try {
+            DB::beginTransaction();
+
+            $reservation = Reservation::with('reservationRooms.room')->findOrFail($id);
+            $beforeSnapshot = $this->changeLogService->snapshot($reservation);
+
+            if (Reservation::isCancelled((int) $reservation->reservation_status)) {
+                return $this->failedTransaction('Reservation is already cancelled — cancel the whole reservation instead.');
+            }
+
+            $resRoom = $reservation->reservationRooms->firstWhere('id', $roomId);
+            if ($resRoom === null || ReservationRoom::isCancelled((int) $resRoom->status)) {
+                return $this->failedTransaction('This room is not part of the reservation or is already cancelled.', 404);
+            }
+
+            if ((int) $reservation->logedin === Reservation::LOGEDIN_IN_HOUSE) {
+                return $this->failedTransaction('Cannot cancel a room while the reservation is checked in. Check out or cancel the whole reservation instead.');
+            }
+
+            $activeRoomCount = $reservation->reservationRooms
+                ->filter(fn ($r) => ! ReservationRoom::isCancelled((int) $r->status))
+                ->count();
+            if ($activeRoomCount <= 1) {
+                return $this->failedTransaction('Cannot cancel the last active room — cancel the whole reservation instead.');
+            }
+
+            $today = Carbon::today()->toDateString();
+            if ($reservation->expire_date < $today) {
+                return $this->failedTransaction('Cannot cancel a room on a completed stay.');
+            }
+
+            $resRoom->status = ReservationRoom::STATUS_CANCELLED;
+            $resRoom->save();
+
+            // persistDailyCharges() deletes-then-inserts by reservation_room_id —
+            // an empty $lines array cleanly wipes this room's remaining daily
+            // charges with no separate "void" method needed.
+            $this->revenueAccrualService->persistDailyCharges($reservation->id, $resRoom->id, (int) $resRoom->room_id, 0, []);
+
+            if ($resRoom->room_id) {
+                $this->roomStatusService->setAvailableIfNoActiveStay((int) $resRoom->room_id, $reservation->id);
+            }
+
+            $remainingBase = (float) ReservationDailyCharge::where('reservation_id', $reservation->id)->sum('base_amount');
+            $this->guestClassificationDiscountService->applyFinancialsAfterRecalculation($reservation, $remainingBase);
+            $reservation->save();
+
+            $this->accountingPostingService->syncAccrualForReservation($reservation->id);
+
+            $afterSnapshot = $this->changeLogService->snapshot($reservation->fresh(['reservationRooms.room', 'payments']));
+            $this->changeLogService->recordIfChanged($id, 'room_cancelled', $beforeSnapshot, $afterSnapshot);
+
+            DB::commit();
+
+            $this->notifyReservationLive($id, 'reservation_room_cancelled', true);
+
+            return $this->show($id);
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            return \Failed($e->getMessage());
+        }
+    }
+
+    /**
+     * Kiosk self-service cancel — used only for a reservation the guest just created
+     * moments earlier and never actually paid for (the payment terminal declined the
+     * card). Deliberately narrower than the staff-facing cancel() above: refuses if the
+     * reservation has ANY payment recorded, so an unauthenticated kiosk session can never
+     * cancel a reservation that's actually been paid for. No refund logic is needed here
+     * for the same reason — cancel() itself never has any either (refunding is a fully
+     * separate, staff-only action), and this path guarantees zero payments exist anyway.
+     */
+    public function cancelKioskReservation(int $id)
+    {
+        try {
+            DB::beginTransaction();
+
+            $reservation = Reservation::with(['reservationRooms', 'payments'])->findOrFail($id);
+
+            if (Reservation::isCancelled((int) $reservation->reservation_status)) {
+                return $this->failedTransaction('Reservation is already cancelled', 422);
+            }
+
+            if ($reservation->payments->isNotEmpty()) {
+                return $this->failedTransaction('Cannot self-cancel a reservation that has a payment recorded — please see the front desk.', 422);
+            }
+
+            $reservation->reservation_status = Reservation::STATUS_CANCELLED;
+            $reservation->logedin = Reservation::LOGEDIN_NOT_IN_HOUSE;
+            $reservation->save();
+
+            $this->roomStatusService->syncForReservation($reservation);
+
+            DB::commit();
+
+            $this->notifyReservationLive($id, 'reservation_cancelled', true);
+
+            // SuccessData, not Success — the kiosk client's envelope unwrapping treats a
+            // null "data" as a failure even when success:true, so a plain confirmation
+            // object is returned rather than null.
+            return \SuccessData('Reservation cancelled', ['cancelled' => true]);
         } catch (\Exception $e) {
             DB::rollBack();
 
@@ -771,6 +980,32 @@ class ReservationController extends Controller
         }
     }
 
+    public function redeemLoyaltyPoints(RedeemLoyaltyPointsRequest $request, int $id)
+    {
+        try {
+            $reservation = Reservation::with('payments')->findOrFail($id);
+
+            $result = $this->loyaltyPointsService->redeem(
+                $reservation,
+                (int) $request->points,
+                (int) auth()->id()
+            );
+
+            $this->changeLogService->recordIfChanged(
+                $id,
+                'loyalty_points_redeemed',
+                ['total' => round((float) $reservation->getOriginal('total'), 2)],
+                ['total' => $result['reservation_total'], 'points_redeemed' => $result['points_redeemed']]
+            );
+
+            return \SuccessData('Loyalty points redeemed', $result);
+        } catch (\InvalidArgumentException $e) {
+            return \Failed($e->getMessage(), 422);
+        } catch (\Exception $e) {
+            return \Failed($e->getMessage());
+        }
+    }
+
     public function getByClientId(GetByClientIdRequest $request)
     {
         try {
@@ -803,6 +1038,10 @@ class ReservationController extends Controller
             $globalPeakMonths = PeakMonth::where('check', 1)->pluck('month_name_en')->toArray();
             $globalPeakDays = PeakDay::where('check', 1)->pluck('day_name_en')->toArray();
 
+            // Set by ResolveCurrentHotel (staff) or AuthenticateKioskDevice (kiosk) —
+            // a reservation must not mix rooms from two different hotels/branches.
+            $currentHotelId = $request->attributes->get('currentHotelId');
+
             if ($request->has('rooms') && is_array($request->rooms)) {
                 foreach ($request->rooms as $roomData) {
                     $roomsToProcess = [];
@@ -815,6 +1054,12 @@ class ReservationController extends Controller
                     }
 
                     foreach ($roomsToProcess as $room) {
+                        if ($currentHotelId !== null && (int) $room->building?->hotel_id !== (int) $currentHotelId) {
+                            throw new \Exception(
+                                'الغرفة رقم '.($room->number ?? $room->id).' تابعة لفرع مختلف عن الفرع الحالي.'
+                            );
+                        }
+
                         $blockingInHouseId = $this->roomStatusService->findActiveInHouseReservationId((int) $room->id);
                         if ($blockingInHouseId !== null) {
                             throw new \Exception(
@@ -1067,6 +1312,15 @@ class ReservationController extends Controller
             $reservation = Reservation::with(['payments', 'client', 'reservationRooms'])->findOrFail($request->reservation_id);
             $newExpireDate = $request->input('new_expire_date');
 
+            // This reservation never held real cash — the normal refund flow
+            // unconditionally credits real Cash (account 1010), which would
+            // fabricate a cash movement that never happened. Cancelling it
+            // instead automatically reverses the corporate billing entry
+            // (see ReservationController::cancel()).
+            if ($reservation->company_id !== null) {
+                return $this->failedTransaction('This reservation is billed to a company account — cancel it instead of refunding; the billing entry reverses automatically.', 422);
+            }
+
             if ($newExpireDate) {
                 $this->shortenService->validateShorten(
                     $reservation,
@@ -1170,6 +1424,7 @@ class ReservationController extends Controller
         }
 
         $query = ReservationRoom::where('room_id', $roomId)
+            ->where('status', ReservationRoom::STATUS_ACTIVE)
             ->whereHas('reservation', function ($q) use ($startDate, $endDate, $excludeReservationId) {
                 $q->whereNotIn('reservation_status', Reservation::nonBlockingInventoryStatuses())
                     ->where('start_date', '<', $endDate)
@@ -1512,7 +1767,7 @@ class ReservationController extends Controller
             $startDate = $request->start_date;
             $endDate = $request->expire_date;
 
-            $query = Room::with(['roomType', 'floor', 'suite'])
+            $query = Room::with(['roomType', 'floor', 'suite', 'building'])
                 ->where('building_id', $request->building_id)
                 ->where('active', 1);
 
@@ -1600,6 +1855,11 @@ class ReservationController extends Controller
                         'id' => $room->floor->id,
                         'number' => $room->floor->number ?? null,
                         'name' => $room->floor->name ?? null,
+                    ] : null,
+                    'building' => $room->building ? [
+                        'id' => $room->building->id,
+                        'number' => $room->building->number ?? null,
+                        'name' => $room->building->name ?? null,
                     ] : null,
                     'suite_id' => $room->suite_id,
                     'suite' => $room->suite ? [
@@ -1901,6 +2161,7 @@ class ReservationController extends Controller
             ->get();
 
         $roomNumbers = $reservation->reservationRooms
+            ->filter(fn ($row) => ! ReservationRoom::isCancelled((int) $row->status))
             ->map(fn ($row) => $row->room?->number)
             ->filter(fn ($n) => $n !== null && $n !== '')
             ->values()

@@ -6,6 +6,7 @@ use App\Models\KioskDevice;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Spatie\Permission\PermissionRegistrar;
 
 class AuthenticateKioskDevice
 {
@@ -17,7 +18,7 @@ class AuthenticateKioskDevice
             return \Failed('Missing kiosk device token', 401);
         }
 
-        $device = KioskDevice::with('user')
+        $device = KioskDevice::with(['user', 'building.hotel'])
             ->where('token_hash', hash('sha256', $token))
             ->where('active', true)
             ->first();
@@ -28,6 +29,17 @@ class AuthenticateKioskDevice
 
         Auth::guard('api')->setUser($device->user);
         $request->attributes->set('kioskDevice', $device);
+
+        // Spatie "teams" is enabled with team_foreign_key=hotel_id (multi-hotel
+        // support) — every permission:/role: check on kiosk routes needs this
+        // set, or it silently finds zero permissions for the device's user
+        // regardless of what's actually assigned. The kiosk is physically tied
+        // to one building, so its hotel is unambiguous.
+        if ($device->building) {
+            app(PermissionRegistrar::class)->setPermissionsTeamId($device->building->hotel_id);
+            $request->attributes->set('currentHotelId', $device->building->hotel_id);
+            $request->attributes->set('currentTenantId', $device->building->hotel?->tenant_id);
+        }
 
         $device->forceFill(['last_used_at' => now()])->saveQuietly();
 

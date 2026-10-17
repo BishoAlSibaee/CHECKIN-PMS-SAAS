@@ -20,6 +20,8 @@ class UpdateReservationSourceRequest extends FormRequest
             'name_ar' => 'nullable|string|max:255',
             'name_en' => 'nullable|string|max:255',
             'description' => 'nullable|string',
+            'is_ota_channel' => 'nullable|boolean',
+            'default_commission_percent' => 'nullable|numeric|min:0|max:100',
         ];
     }
 

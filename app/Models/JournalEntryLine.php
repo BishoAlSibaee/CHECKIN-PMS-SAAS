@@ -9,7 +9,7 @@ class JournalEntryLine extends Model
 {
     protected $fillable = [
         'journal_entry_id', 'account_id', 'debit', 'credit',
-        'reservation_id', 'client_id', 'memo',
+        'reservation_id', 'client_id', 'reservation_source_id', 'company_id', 'memo',
     ];
 
     public function account(): BelongsTo

@@ -24,11 +24,22 @@ trait InteractsWithReservationFixtures
 
     protected function findOrCreateAvailableRoom(string $startDate, string $endDate): ?Room
     {
+        $roomStatusService = app(ReservationRoomStatusService::class);
+
         foreach (Room::query()
             ->where('active', 1)
             ->whereHas('roomType')
             ->orderBy('id')
             ->get() as $candidate) {
+            // A room with a guest still checked in blocks ANY future booking
+            // (not just overlapping dates) until checkout is registered —
+            // same date-blind rule ReservationController::makeReservation()
+            // enforces — so a fixture room must be clear of that too, not
+            // just clear of date-range overlap.
+            if ($roomStatusService->findActiveInHouseReservationId($candidate->id) !== null) {
+                continue;
+            }
+
             if (! $this->roomHasReservationOverlap($candidate->id, $startDate, $endDate)) {
                 Room::where('id', $candidate->id)->update([
                     'roomStatus' => ReservationRoomStatusService::ROOM_AVAILABLE,

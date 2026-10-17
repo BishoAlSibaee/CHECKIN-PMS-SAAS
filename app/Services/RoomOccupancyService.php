@@ -47,6 +47,14 @@ class RoomOccupancyService
             $reservation = $reservationByRoom->get($room->id);
             $occupancyStatus = $this->resolveOccupancyStatus($room, $reservation, $dateStr);
 
+            // A "vacant" room must never carry a specific guest/booking in its
+            // payload — e.g. a reservation that already completed its full
+            // check-in/check-out cycle still technically "touches" today's date,
+            // but the room card must not show that stale booking as if active.
+            if ($occupancyStatus === 'vacant') {
+                $reservation = null;
+            }
+
             if (! empty($filters['occupancy_status']) && $filters['occupancy_status'] !== $occupancyStatus) {
                 continue;
             }
@@ -425,6 +433,7 @@ class RoomOccupancyService
         $start = $reservation->start_date;
         $expire = $reservation->expire_date;
         $overlapsNight = $start <= $dateStr && $expire > $dateStr;
+        $touchesToday = $start <= $dateStr && $expire >= $dateStr;
         $checkedIn = (int) $reservation->logedin === Reservation::LOGEDIN_IN_HOUSE;
 
         if ($checkedIn && $start <= $dateStr && ($overlapsNight || $expire <= $dateStr)) {
@@ -439,12 +448,14 @@ class RoomOccupancyService
             return 'check_in_today';
         }
 
-        if ($expire === $dateStr) {
-            return 'check_out_today';
-        }
-
-        if ($overlapsNight) {
-            return 'reserved';
+        // Not currently checked in. Two very different reasons for that: the guest
+        // hasn't arrived yet (still "reserved"), or they already completed a full
+        // stay (checked in, then checked out) — login_time is set on check-in and
+        // never cleared, so it survives checkout as the marker that distinguishes
+        // "never arrived" from "already left". A completed stay must never look
+        // like an active reservation still holding the room.
+        if ($touchesToday) {
+            return filled($reservation->login_time) ? 'vacant' : 'reserved';
         }
 
         return 'vacant';

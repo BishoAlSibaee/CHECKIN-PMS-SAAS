@@ -11,6 +11,8 @@ use Carbon\Carbon;
 
 class PricingEngine
 {
+    public function __construct(private DynamicPricingService $dynamicPricingService) {}
+
     /**
      * Build per-night breakdown for accrual accounting.
      *
@@ -129,6 +131,11 @@ class PricingEngine
     private function buildDailyRentalBreakdown(Room $room, Carbon $startDate, Carbon $endDate, int $priceMode): array
     {
         $roomType = RoomType::findOrFail($room->room_type_id);
+
+        if ($roomType->dynamic_pricing_enabled) {
+            return $this->buildDynamicPricingBreakdown($room, $roomType, $startDate, $endDate);
+        }
+
         $start = $startDate->toDateString();
         $end = $endDate->toDateString();
 
@@ -147,6 +154,43 @@ class PricingEngine
                 $end,
                 $priceMode
             );
+        }
+
+        return $lines;
+    }
+
+    /**
+     * Dynamic pricing for a room type: ignores pricing plans entirely (by
+     * design — see the plan doc), anchors each night to the room type's own
+     * peak/non-peak Min/Max rate via lineFromRoomType(), then layers on the
+     * occupancy% + lead-time% adjustment from DynamicPricingService.
+     */
+    private function buildDynamicPricingBreakdown(Room $room, RoomType $roomType, Carbon $startDate, Carbon $endDate): array
+    {
+        $occupancyRates = $this->dynamicPricingService->occupancyRatesForRange($room->room_type_id, $startDate, $endDate);
+        $rules = $this->dynamicPricingService->rulesForRoomType($roomType);
+        $today = Carbon::today();
+
+        $lines = [];
+
+        for ($date = $startDate->copy(); $date->lt($endDate); $date->addDay()) {
+            $isPeakDay = $this->isPeakDay($date->format('l'));
+            $dateStr = $date->toDateString();
+
+            $baseLine = $this->lineFromRoomType($date, $roomType, $isPeakDay, false);
+            $occupancyRate = $occupancyRates[$dateStr] ?? 0.0;
+            $leadTimeDays = (int) $today->diffInDays($date);
+
+            $dynamic = $this->dynamicPricingService->applyDynamicPricing(
+                $baseLine['base_amount'],
+                $roomType,
+                $occupancyRate,
+                $leadTimeDays,
+                $rules['occupancy'],
+                $rules['lead_time']
+            );
+
+            $lines[] = $this->line($date, $dynamic['amount'], $isPeakDay, false, $dynamic['source']);
         }
 
         return $lines;
@@ -208,26 +252,10 @@ class PricingEngine
         }
 
         if ($priceMode === 2 || ! $roomTypePlan) {
-            if ($priceMode === 0) {
-                $nightPlan = $this->resolveNightPricingPlan($roomType->id, $date);
-                if ($nightPlan) {
-                    return $this->line($date, (float) $nightPlan->DailyPrice, $isPeakDay, true, 'plan');
-                }
-            }
-
             return $this->lineFromRoomType($date, $roomType, $isPeakDay, false);
         }
 
-        // priceMode 0 — mixed
-        if ($priceMode === 0) {
-            $nightPlan = $this->resolveNightPricingPlan($roomType->id, $date);
-            if ($nightPlan) {
-                return $this->line($date, (float) $nightPlan->DailyPrice, $isPeakDay, true, 'plan');
-            }
-
-            return $this->lineFromRoomType($date, $roomType, $isPeakDay, false);
-        }
-
+        // priceMode 0 — mixed, and a plan overlaps some part of the stay.
         return $this->priceSingleNightMixed(
             $date,
             $roomType,
@@ -236,12 +264,34 @@ class PricingEngine
         );
     }
 
+    /**
+     * Real "mixed" pricing for a stay that partially overlaps a plan.
+     * How a night outside the plan's own dates is priced depends on the
+     * room type's active_type:
+     * - 0: the plan is disabled for this room type — ignore it for the
+     *      whole stay and price every night as if there were no plan.
+     * - 1: genuinely mixed — a night inside the plan's dates uses the
+     *      plan's price, a night outside uses the room type's normal
+     *      (peak/non-peak) rate.
+     * - 2: the plan's price extends to the whole stay, even nights that
+     *      fall outside its own configured date range.
+     */
     private function priceSingleNightMixed(
         Carbon $date,
         RoomType $roomType,
         RoomtypePricingplan $roomTypePlan,
         bool $isPeakDay
     ): array {
+        $activeType = (int) $roomType->active_type;
+
+        if ($activeType === 0) {
+            return $this->lineFromRoomType($date, $roomType, $isPeakDay, false);
+        }
+
+        if ($activeType === 2) {
+            return $this->line($date, (float) $roomTypePlan->DailyPrice, $isPeakDay, true, 'plan');
+        }
+
         if ($this->nightIsWithinPlanDates($date, $roomTypePlan)) {
             return $this->line($date, (float) $roomTypePlan->DailyPrice, $isPeakDay, true, 'plan');
         }
@@ -404,26 +454,7 @@ class PricingEngine
         }
 
         if ($priceMode === 1 && $stayPlan && $this->chunkFullyWithinPlan($periodStart, $naturalPeriodEnd, $stayPlan)) {
-            $chunkTotal = (float) $stayPlan->MonthlyPrice;
-            if (! $isFullPeriod) {
-                $denominator = max(1, $fullPeriodDays);
-                $chunkTotal = round($chunkTotal * ($chunkDays / $denominator), 2);
-            }
-            $amounts = $this->distributeAmount($chunkTotal, $chunkDays);
-
-            $lines = [];
-            for ($i = 0; $i < $chunkDays; $i++) {
-                $date = $periodStart->copy()->addDays($i);
-                $lines[] = $this->line(
-                    $date,
-                    $amounts[$i] ?? 0.0,
-                    $this->isPeakMonth($date->format('F')),
-                    true,
-                    'plan'
-                );
-            }
-
-            return $lines;
+            return $this->buildFullPlanChunkLines($periodStart, $chunkDays, $stayPlan, $isFullPeriod, $fullPeriodDays);
         }
 
         if ($priceMode === 1 && $stayPlan) {
@@ -453,6 +484,43 @@ class PricingEngine
         return $periodStart->gte($planStart) && $periodEnd->lte($planEnd);
     }
 
+    /**
+     * The plan's monthly price applied to every night of the chunk — used
+     * both when the chunk falls fully within the plan's own dates, and
+     * (active_type = 2) when the plan's price is extended past its own
+     * dates to cover the rest of a partially-overlapping stay.
+     *
+     * @return array<int, array{date: string, base_amount: float, is_peak_day: bool, is_in_plan: bool, price_source: string}>
+     */
+    private function buildFullPlanChunkLines(
+        Carbon $periodStart,
+        int $chunkDays,
+        RoomtypePricingplan $roomTypePlan,
+        bool $isFullPeriod,
+        int $fullPeriodDays
+    ): array {
+        $chunkTotal = (float) $roomTypePlan->MonthlyPrice;
+        if (! $isFullPeriod) {
+            $denominator = max(1, $fullPeriodDays);
+            $chunkTotal = round($chunkTotal * ($chunkDays / $denominator), 2);
+        }
+        $amounts = $this->distributeAmount($chunkTotal, $chunkDays);
+
+        $lines = [];
+        for ($i = 0; $i < $chunkDays; $i++) {
+            $date = $periodStart->copy()->addDays($i);
+            $lines[] = $this->line(
+                $date,
+                $amounts[$i] ?? 0.0,
+                $this->isPeakMonth($date->format('F')),
+                true,
+                'plan'
+            );
+        }
+
+        return $lines;
+    }
+
     private function naturalMonthlyPeriodEnd(Carbon $periodStart, int $targetDay): Carbon
     {
         $nextMonth = $periodStart->copy()->addMonthNoOverflow();
@@ -474,6 +542,22 @@ class PricingEngine
         bool $isFullPeriod,
         int $fullPeriodDays = 0
     ): array {
+        if ($roomTypePlan !== null) {
+            $activeType = (int) $roomType->active_type;
+
+            if ($activeType === 0) {
+                // The plan is disabled for this room type — price the whole
+                // chunk as if no plan existed at all.
+                return $this->buildRoomTypeMonthlyChunkByCalendarMonth($periodStart, $chunkDays, $roomType);
+            }
+
+            if ($activeType === 2) {
+                // Plan's price extends to the whole chunk, even nights that
+                // fall outside its own configured date range.
+                return $this->buildFullPlanChunkLines($periodStart, $chunkDays, $roomTypePlan, $isFullPeriod, $fullPeriodDays);
+            }
+        }
+
         /** @var array<string, array{plan: int, room: int, sample: Carbon}> $byMonth */
         $byMonth = [];
         /** @var array<int, array{date: Carbon, ym: string, in_plan: bool, night_plan: ?RoomtypePricingplan}> $nightMeta */
@@ -669,39 +753,47 @@ class PricingEngine
     ): array {
         $amounts = array_fill(0, $chunkDays, 0.0);
 
-        /** @var array<int, list<int>> $planIndexesByLinkId */
-        $planIndexesByLinkId = [];
-        /** @var array<int, RoomtypePricingplan> $planByLinkId */
-        $planByLinkId = [];
-        /** @var list<int> $roomIndexes */
-        $roomIndexes = [];
+        // "Uniform" here only means every month in the chunk shares the same
+        // peak/non-peak classification — the chunk can still span a calendar
+        // month boundary (e.g. two peak months with different day counts),
+        // so each group must still be prorated by ITS OWN month's day count,
+        // not the chunk's total night count.
+        /** @var array<string, list<int>> $planIndexesByGroup */
+        $planIndexesByGroup = [];
+        /** @var array<string, RoomtypePricingplan> $planByGroup */
+        $planByGroup = [];
+        /** @var array<string, list<int>> $roomIndexesByMonth */
+        $roomIndexesByMonth = [];
 
         foreach ($nightMeta as $i => $meta) {
             if ($meta['in_plan'] && $meta['night_plan']) {
-                $linkId = $meta['night_plan']->id;
-                $planIndexesByLinkId[$linkId][] = $i;
-                $planByLinkId[$linkId] = $meta['night_plan'];
+                $groupKey = $meta['night_plan']->id.':'.$meta['ym'];
+                $planIndexesByGroup[$groupKey][] = $i;
+                $planByGroup[$groupKey] = $meta['night_plan'];
             } else {
-                $roomIndexes[] = $i;
+                $roomIndexesByMonth[$meta['ym']][] = $i;
             }
         }
 
-        foreach ($planIndexesByLinkId as $linkId => $indexes) {
+        foreach ($planIndexesByGroup as $groupKey => $indexes) {
             $count = count($indexes);
-            $planMonthly = (float) $planByLinkId[$linkId]->MonthlyPrice;
-            $planTotal = round($planMonthly * ($count / $chunkDays), 2);
+            $daysInMonth = $nightMeta[$indexes[0]]['date']->daysInMonth;
+            $planMonthly = (float) $planByGroup[$groupKey]->MonthlyPrice;
+            $planTotal = round($planMonthly * ($count / $daysInMonth), 2);
             $planAmounts = $this->distributeAmount($planTotal, $count);
             foreach ($indexes as $j => $idx) {
                 $amounts[$idx] = $planAmounts[$j] ?? 0.0;
             }
         }
 
-        if ($roomIndexes !== []) {
-            $count = count($roomIndexes);
-            $roomMonthly = $this->monthlyRateForPeriod($nightMeta[0]['date'], $roomType);
-            $roomTotal = round($roomMonthly * ($count / $chunkDays), 2);
+        foreach ($roomIndexesByMonth as $indexes) {
+            $count = count($indexes);
+            $sampleDate = $nightMeta[$indexes[0]]['date'];
+            $daysInMonth = $sampleDate->daysInMonth;
+            $roomMonthly = $this->monthlyRateForPeriod($sampleDate, $roomType);
+            $roomTotal = round($roomMonthly * ($count / $daysInMonth), 2);
             $roomAmounts = $this->distributeAmount($roomTotal, $count);
-            foreach ($roomIndexes as $j => $idx) {
+            foreach ($indexes as $j => $idx) {
                 $amounts[$idx] = $roomAmounts[$j] ?? 0.0;
             }
         }

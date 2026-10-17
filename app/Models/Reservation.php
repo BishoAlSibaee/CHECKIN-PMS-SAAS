@@ -93,19 +93,24 @@ class Reservation extends Model
         return (int) static::query()->excludingCancelled()->overlappingDate($date)->count();
     }
 
-    /** Reservations with outstanding balance (total − net payments > 0). */
+    /**
+     * Reservations with outstanding balance (total − net payments > 0).
+     * TYPE_BILLED_TO_COMPANY counts as settled here too, matching
+     * paidNetAmount() — a company-billed stay isn't owed by the guest.
+     */
     public function scopeWithPositiveBalance($query)
     {
         $paymentType = ReservationPay::TYPE_PAYMENT;
+        $companyBilledType = ReservationPay::TYPE_BILLED_TO_COMPANY;
         $refundType = ReservationPay::TYPE_REFUND;
 
         return $query->whereRaw(
             '(reservations.total - COALESCE((
-                SELECT SUM(CASE WHEN rp.type = ? THEN rp.pay WHEN rp.type = ? THEN -rp.pay ELSE 0 END)
+                SELECT SUM(CASE WHEN rp.type IN (?, ?) THEN rp.pay WHEN rp.type = ? THEN -rp.pay ELSE 0 END)
                 FROM reservation_pay rp
                 WHERE rp.reservation_id = reservations.id
             ), 0)) > ?',
-            [$paymentType, $refundType, 0.005]
+            [$paymentType, $companyBilledType, $refundType, 0.005]
         );
     }
 
@@ -177,9 +182,14 @@ class Reservation extends Model
         'nights',
         'expire_date',
         'reservation_type',
+        'group_booking_id',
+        'company_id',
         'reservation_status',
         'stay_reason_id',
         'reservation_source_id',
+        'ota_payment_type',
+        'external_booking_id',
+        'external_commission_amount',
         'rent_type',
         'price_calculation_mode',
         'base_price',
@@ -205,6 +215,16 @@ class Reservation extends Model
     public function reservationRooms(): HasMany
     {
         return $this->hasMany(ReservationRoom::class);
+    }
+
+    public function groupBooking(): BelongsTo
+    {
+        return $this->belongsTo(GroupBooking::class);
+    }
+
+    public function company(): BelongsTo
+    {
+        return $this->belongsTo(Company::class);
     }
 
     /**
@@ -253,8 +273,13 @@ class Reservation extends Model
 
         $cutoff = $asOf->copy()->endOfDay();
 
+        // A company-billed reservation means the GUEST no longer owes this
+        // amount — the company does, via its own separate ledger (see
+        // AccountingPostingService::postCompanyBillingRecognition). Counting
+        // it here is what lets checkout/ZATCA proceed normally for a
+        // deferred-billing stay, exactly like a real payment would.
         $paid = (float) $this->payments
-            ->where('type', ReservationPay::TYPE_PAYMENT)
+            ->whereIn('type', [ReservationPay::TYPE_PAYMENT, ReservationPay::TYPE_BILLED_TO_COMPANY])
             ->filter(fn (ReservationPay $pay) => $pay->created_at !== null && $pay->created_at->lte($cutoff))
             ->sum('pay');
         $refunded = (float) $this->payments
@@ -282,7 +307,7 @@ class Reservation extends Model
         }
 
         $paid = (float) $this->payments
-            ->where('type', ReservationPay::TYPE_PAYMENT)
+            ->whereIn('type', [ReservationPay::TYPE_PAYMENT, ReservationPay::TYPE_BILLED_TO_COMPANY])
             ->sum('pay');
         $refunded = (float) $this->payments
             ->where('type', ReservationPay::TYPE_REFUND)

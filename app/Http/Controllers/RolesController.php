@@ -6,18 +6,44 @@ use App\Services\Cache\CacheInvalidator;
 use App\Services\Cache\ReferenceDataCache;
 use App\Services\PropertyPermissionBundle;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Spatie\Permission\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
 use App\Models\User;
 
 class RolesController extends Controller
 {
+    /**
+     * Spatie's "teams" feature scopes role ASSIGNMENT (model_has_roles) and
+     * role name uniqueness by hotel_id, but does NOT automatically filter
+     * plain Role::all()/Role::find() queries — every read/write here must
+     * filter or verify hotel_id explicitly, or a caller from one hotel could
+     * see or mutate another hotel's roles.
+     */
+    private function currentHotelId(): int
+    {
+        return (int) app(PermissionRegistrar::class)->getPermissionsTeamId();
+    }
+
+    /** @throws \Illuminate\Http\Exceptions\HttpResponseException via findOrFail-style 404 */
+    private function findOwnedRole(int $id): Role
+    {
+        $role = Role::where('id', $id)->where('hotel_id', $this->currentHotelId())->first();
+        if (!$role) {
+            abort(404, 'Role not found');
+        }
+
+        return $role;
+    }
+
     public function index()
     {
         try {
+            $hotelId = $this->currentHotelId();
             $roles = ReferenceDataCache::remember(
                 'roles',
-                'with_permissions',
-                fn () => Role::with('permissions')->get()
+                "with_permissions_hotel_{$hotelId}",
+                fn () => Role::with('permissions')->where('hotel_id', $hotelId)->get()
             );
 
             return SuccessData('Roles retrieved successfully', $roles);
@@ -29,8 +55,13 @@ class RolesController extends Controller
     public function store(Request $request)
     {
         try {
+            $hotelId = $this->currentHotelId();
+
             $request->validate([
-                'name' => 'required|unique:roles,name',
+                'name' => [
+                    'required',
+                    Rule::unique('roles', 'name')->where(fn ($q) => $q->where('hotel_id', $hotelId)->where('guard_name', 'api')),
+                ],
                 'name_ar' => 'nullable',
                 'permissions' => 'required|array'
             ]);
@@ -57,14 +88,19 @@ class RolesController extends Controller
     public function update(Request $request)
     {
         try {
+            $hotelId = $this->currentHotelId();
+
             $request->validate([
                 'id' => 'required|exists:roles,id',
-                'name' => 'required|unique:roles,name,' . $request->id,
+                'name' => [
+                    'required',
+                    Rule::unique('roles', 'name')->where(fn ($q) => $q->where('hotel_id', $hotelId)->where('guard_name', 'api'))->ignore($request->id),
+                ],
                 'name_ar' => 'nullable',
                 'permissions' => 'required|array'
             ]);
 
-            $role = Role::findOrFail($request->id);
+            $role = $this->findOwnedRole((int) $request->id);
             $role->update([
                 'name' => $request->name,
                 'name_ar' => $request->name_ar ?? $request->name,
@@ -86,7 +122,7 @@ class RolesController extends Controller
     public function destroy(Request $request)
     {
         try {
-            $role = Role::findOrFail($request->id);
+            $role = $this->findOwnedRole((int) $request->id);
 
             if ($role->name === 'admin') {
                 return Failed('Cannot delete admin role');
@@ -111,7 +147,7 @@ class RolesController extends Controller
             ]);
 
             $user = User::findOrFail($request->userId);
-            $role = Role::findOrFail($request->roleId);
+            $role = $this->findOwnedRole((int) $request->roleId);
 
             $user->syncRoles([$role->name]);
             $user->forgetCachedPermissions();
@@ -132,7 +168,7 @@ class RolesController extends Controller
                 'roleId' => 'required|exists:roles,id'
             ]);
 
-            $role = Role::findOrFail($request->roleId);
+            $role = $this->findOwnedRole((int) $request->roleId);
             $users = User::whereIn('id', $request->userIds)->get();
 
             foreach ($users as $user) {

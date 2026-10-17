@@ -43,6 +43,7 @@ final class EndpointDefinitions
             ['manage roles', 'GET', '/api/users/getRoles', []],
             ['manage users', 'GET', '/api/users/getInfoUsers', []],
             ['view users', 'GET', '/api/users/system/health', []],
+            ['manage night audit', 'GET', '/api/users/night-audit/runs', []],
         ];
     }
 
@@ -62,6 +63,7 @@ final class EndpointDefinitions
             ['create reservations', 'POST', '/api/users/makeReservation', 'view reservations', []],
             ['manage journal entries', 'POST', '/api/users/accounting/journal-entries', 'view accounting reports', []],
             ['close accounting period', 'POST', '/api/users/accounting/periods/close', 'view accounting reports', []],
+            ['manage night audit', 'POST', '/api/users/night-audit/run', 'view accounting reports', []],
         ];
     }
 

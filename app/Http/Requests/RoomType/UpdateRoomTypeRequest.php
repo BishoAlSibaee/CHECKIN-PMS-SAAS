@@ -21,6 +21,7 @@ class UpdateRoomTypeRequest extends FormRequest
             'name_en'     => 'required|string|max:255|unique:room_types,name_en,' . $this->id,
             'description' => 'required|string|max:255',
             'active_type' => 'required|numeric|in:0,1,2',
+            'dynamic_pricing_enabled' => 'nullable|boolean',
         ];
 
         if ($this->active_type == 0) {

@@ -41,6 +41,11 @@ trait InteractsWithApi
             Permission::findOrCreate($name, 'api');
         }
 
+        // syncRoles/syncPermissions stamp the pivot's team_foreign_key
+        // (hotel_id) from whatever team id is currently set — outside a
+        // request there is none, so set it to the user's hotel first.
+        $defaultHotelId = \App\Models\Hotel::query()->orderBy('id')->value('id');
+        app()[\Spatie\Permission\PermissionRegistrar::class]->setPermissionsTeamId($defaultHotelId);
         $user->syncRoles([]);
         $user->syncPermissions($permissions);
         app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();

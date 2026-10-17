@@ -26,7 +26,7 @@ class ReservationRoomStatusService
         }
 
         foreach ($reservation->reservationRooms as $resRoom) {
-            if (!$resRoom->room_id) {
+            if (!$resRoom->room_id || ReservationRoom::isCancelled((int) $resRoom->status)) {
                 continue;
             }
 
@@ -79,6 +79,7 @@ class ReservationRoomStatusService
     public function findActiveInHouseReservationId(int $roomId, ?int $excludeReservationId = null): ?int
     {
         $row = ReservationRoom::where('room_id', $roomId)
+            ->where('status', ReservationRoom::STATUS_ACTIVE)
             ->whereHas('reservation', function ($query) use ($excludeReservationId) {
                 $query->where('reservation_status', Reservation::STATUS_CONFIRMED)
                     ->where('logedin', Reservation::LOGEDIN_IN_HOUSE);
@@ -112,6 +113,7 @@ class ReservationRoomStatusService
         ?int $excludeReservationId = null
     ): ?int {
         $row = ReservationRoom::where('room_id', $roomId)
+            ->where('status', ReservationRoom::STATUS_ACTIVE)
             ->whereHas('reservation', function ($query) use ($startDate, $endDate, $excludeReservationId) {
                 $query->where('reservation_status', Reservation::STATUS_CONFIRMED)
                     ->where('logedin', Reservation::LOGEDIN_IN_HOUSE)
@@ -169,7 +171,7 @@ class ReservationRoomStatusService
         $reservation->loadMissing('reservationRooms.room');
 
         foreach ($reservation->reservationRooms as $resRoom) {
-            if (!$resRoom->room_id || !$resRoom->room) {
+            if (!$resRoom->room_id || !$resRoom->room || ReservationRoom::isCancelled((int) $resRoom->status)) {
                 continue;
             }
 
@@ -180,6 +182,7 @@ class ReservationRoomStatusService
     public function setAvailableIfNoActiveStay(int $roomId, ?int $excludeReservationId = null): void
     {
         $hasOverlap = ReservationRoom::where('room_id', $roomId)
+            ->where('status', ReservationRoom::STATUS_ACTIVE)
             ->whereHas('reservation', function ($query) use ($excludeReservationId) {
                 $query->where('reservation_status', Reservation::STATUS_CONFIRMED)
                     ->where('logedin', Reservation::LOGEDIN_IN_HOUSE);

@@ -24,6 +24,8 @@ protected $fillable = [
 
     const TYPE_PAYMENT = 0;
     const TYPE_REFUND = 1;
+    /** Non-cash: the guest owes nothing, a corporate account is billed instead (see AccountingPostingService::postCompanyBillingRecognition). */
+    const TYPE_BILLED_TO_COMPANY = 2;
 
     public function reservation(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {

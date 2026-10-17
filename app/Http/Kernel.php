@@ -71,5 +71,6 @@ class Kernel extends HttpKernel
         'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
         'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
         'kiosk.auth' => \App\Http\Middleware\AuthenticateKioskDevice::class,
+        'resolve.hotel' => \App\Http\Middleware\ResolveCurrentHotel::class,
     ];
 }

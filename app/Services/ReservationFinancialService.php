@@ -101,6 +101,46 @@ class ReservationFinancialService
         $reservation->subtotal = $newSubtotal;
         $reservation->taxes = $newTaxes;
         $reservation->total = $newTotal;
+
+        $this->accountingPostingService->reapplyActivePosChargesForReservation($reservation);
+    }
+
+    /**
+     * Recompute subtotal/taxes/total from the reservation's current base_price,
+     * discount, classification_discount, extras and penalties fields — the same
+     * formula syncTotalsFromDailyCharges() uses, extracted so any code that
+     * changes one of those inputs (e.g. applying a manual discount) can recompute
+     * the derived fields consistently instead of duplicating the tax math.
+     */
+    public function recalculateTotals(Reservation $reservation): void
+    {
+        $newSubtotal = round(
+            (float) $reservation->base_price
+            - (float) $reservation->classification_discount
+            - (float) $reservation->discount
+            + (float) $reservation->extras
+            + (float) $reservation->penalties,
+            2
+        );
+        $newTaxes = round($newSubtotal * self::TAX_RATE, 2, PHP_ROUND_HALF_UP);
+
+        $reservation->subtotal = $newSubtotal;
+        $reservation->taxes = $newTaxes;
+        $reservation->total = round($newSubtotal + $newTaxes, 2);
+
+        $this->accountingPostingService->reapplyActivePosChargesForReservation($reservation);
+    }
+
+    /**
+     * Apply a flat manual discount (e.g. loyalty point redemption) to a
+     * reservation's total. Caller is responsible for validating the amount
+     * against the reservation's current balance due before calling this.
+     */
+    public function applyManualDiscount(Reservation $reservation, float $amount): void
+    {
+        $reservation->discount = round((float) $reservation->discount + $amount, 2);
+        $this->recalculateTotals($reservation);
+        $reservation->save();
     }
 
     /**

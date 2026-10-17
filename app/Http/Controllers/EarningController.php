@@ -46,7 +46,11 @@ class EarningController extends Controller
     {
         $query = ReservationPay::select('reservation_pay.*', 'reservations.start_date as res_start', 'reservations.client_id')
             ->join('reservations', 'reservation_pay.reservation_id', '=', 'reservations.id')
-            ->whereIn('reservations.reservation_status', ReservationCashQuery::cashMovementStatuses());
+            ->whereIn('reservations.reservation_status', ReservationCashQuery::cashMovementStatuses())
+            // Real cash movements only — the "all" tab below (neither 'in'
+            // nor 'out') would otherwise also list/count non-cash
+            // company-billing recognitions as if they were real earnings.
+            ->whereIn('reservation_pay.type', [ReservationPay::TYPE_PAYMENT, ReservationPay::TYPE_REFUND]);
 
         if ($request->filled('start_date') && $request->filled('end_date')) {
             $startDate = Carbon::parse($request->start_date);
@@ -137,6 +141,7 @@ class EarningController extends Controller
         $totalRows = ReservationPay::query()
             ->join('reservations', 'reservation_pay.reservation_id', '=', 'reservations.id')
             ->whereIn('reservations.reservation_status', ReservationCashQuery::cashMovementStatuses())
+            ->whereIn('reservation_pay.type', [ReservationPay::TYPE_PAYMENT, ReservationPay::TYPE_REFUND])
             ->whereBetween('reservation_pay.created_at', [$periodStart, $periodEnd])
             ->count();
 

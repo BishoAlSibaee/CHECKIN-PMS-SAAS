@@ -27,6 +27,8 @@ return [
         'http://127.0.0.1:4200',
         'http://localhost:4300',
         'http://127.0.0.1:4300',
+        'http://localhost:4400',
+        'http://127.0.0.1:4400',
     ]))),
 
     'allowed_origins_patterns' => [

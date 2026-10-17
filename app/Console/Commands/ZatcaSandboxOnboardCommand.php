@@ -2,6 +2,8 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Hotel;
+use App\Services\Zatca\HotelTaxResolver;
 use App\Services\Zatca\ZatcaCredentialStore;
 use App\Services\Zatca\ZatcaCsrService;
 use App\Services\Zatca\ZatcaSandboxClient;
@@ -12,7 +14,8 @@ class ZatcaSandboxOnboardCommand extends Command
 {
     protected $signature = 'zatca:sandbox-onboard
         {--otp= : Sandbox OTP (defaults to ZATCA_OTP / 123345)}
-        {--skip-production : Stop after Compliance CSID}';
+        {--skip-production : Stop after Compliance CSID}
+        {--hotel= : Hotel (branch) id to onboard — must hold its own tax registration, not share one. Defaults to the oldest hotel (config/zatca.php CSR defaults) for the original single-tenant setup.}';
 
     protected $description = 'Generate CSR and onboard against ZATCA Integration Sandbox (Compliance + Production CSID)';
 
@@ -20,13 +23,33 @@ class ZatcaSandboxOnboardCommand extends Command
         ZatcaCsrService $csrService,
         ZatcaSandboxClient $client,
         ZatcaCredentialStore $store,
+        HotelTaxResolver $taxResolver,
     ): int {
+        $hotelId = $this->option('hotel') !== null
+            ? (int) $this->option('hotel')
+            : (int) (Hotel::query()->orderBy('id')->value('id') ?? 1);
+
+        $hotel = Hotel::find($hotelId);
+        if ($hotel === null) {
+            $this->error("Hotel #{$hotelId} not found.");
+
+            return self::FAILURE;
+        }
+        if ($hotel->shares_tax_with_hotel_id !== null) {
+            $this->error("Hotel #{$hotelId} shares its tax registration with hotel #{$hotel->shares_tax_with_hotel_id} — onboard that hotel instead.");
+
+            return self::FAILURE;
+        }
+
+        $this->info('Onboarding hotel: '.$hotel->name_en." (#{$hotelId})");
         $this->info('ZATCA environment: '.config('zatca.environment'));
         $this->line('Base URL: '.$client->baseUrl());
 
         try {
             $this->line('Generating private key + CSR...');
-            $csr = $csrService->generateAndStore();
+            $csrConfig = $taxResolver->csrConfig($hotelId);
+            $directory = rtrim((string) config('zatca.storage_path'), DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.'hotel_'.$hotelId;
+            $csr = $csrService->generateAndStore($directory, $csrConfig);
             $this->info('CSR written: '.$csr['csr_path']);
             $this->line('VAT (org id): '.$csr['config']['organization_identifier']);
             $this->line('Template: '.$csr['config']['certificate_template']);
@@ -72,7 +95,7 @@ class ZatcaSandboxOnboardCommand extends Command
                 ];
             }
 
-            $path = $store->save($payload);
+            $path = $store->save($payload, $hotelId);
             $this->newLine();
             $this->info('Sandbox onboard succeeded.');
             $this->line('Credentials saved to: '.$path);

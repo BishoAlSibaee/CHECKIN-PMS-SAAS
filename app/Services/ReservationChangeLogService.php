@@ -32,6 +32,7 @@ class ReservationChangeLogService
         $reservation->loadMissing(['reservationRooms.room', 'payments']);
 
         $roomNumbers = $reservation->reservationRooms
+            ->filter(fn ($row) => ! \App\Models\ReservationRoom::isCancelled((int) $row->status))
             ->map(fn ($row) => $row->room?->number)
             ->filter(fn ($n) => $n !== null && $n !== '')
             ->values()

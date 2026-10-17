@@ -22,6 +22,8 @@ class Invoice extends Model
     protected $fillable = [
         'reservation_id',
         'related_invoice_id',
+        'hotel_id',
+        'tax_hotel_id',
         'invoice_number',
         'type',
         'status',

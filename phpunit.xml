@@ -47,7 +47,7 @@
         <env name="DB_DATABASE" value="checkinbooking_test"/>
         <env name="DB2_DATABASE" value="clientCheckinBooking"/>
         <env name="DB2_USERNAME" value="root"/>
-        <env name="DB2_PASSWORD" value=""/>
+        <env name="DB2_PASSWORD" value="root"/>
         <env name="ALLOW_RESERVATION_SEED_PURGE" value="true"/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>

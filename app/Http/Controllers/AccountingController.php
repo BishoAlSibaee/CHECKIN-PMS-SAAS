@@ -21,13 +21,18 @@ class AccountingController extends Controller
     ) {
     }
 
+    private function currentHotelId(Request $request): int
+    {
+        return (int) $request->attributes->get('currentHotelId');
+    }
+
     public function chartOfAccounts(Request $request)
     {
         $start = Carbon::parse($request->input('start_date', now()->startOfMonth()));
         $end = Carbon::parse($request->input('end_date', now()->endOfMonth()));
 
         $accounts = ChartOfAccount::where('active', 1)->orderBy('code')->get();
-        $balanceRows = $this->financialStatementService->accountBalances($start, $end);
+        $balanceRows = $this->financialStatementService->accountBalances($start, $end, null, $this->currentHotelId($request));
         $balanceMap = $balanceRows->keyBy('account_id');
 
         $accounts = $accounts->map(function ($account) use ($balanceMap) {
@@ -51,6 +56,7 @@ class AccountingController extends Controller
         $end = Carbon::parse($request->input('end_date', now()->endOfMonth()));
 
         $entries = JournalEntry::with('lines')
+            ->where('hotel_id', $this->currentHotelId($request))
             ->whereBetween('entry_date', [$start->toDateString(), $end->toDateString()])
             ->orderByDesc('entry_date')
             ->limit(200)
@@ -87,8 +93,9 @@ class AccountingController extends Controller
             return Failed('Journal entry must balance (debits must equal credits).', 422);
         }
 
-        $entry = DB::transaction(function () use ($validated) {
-            return $this->postingService->createManualEntry($validated, auth()->id());
+        $hotelId = $this->currentHotelId($request);
+        $entry = DB::transaction(function () use ($validated, $hotelId) {
+            return $this->postingService->createManualEntry($validated, auth()->id(), $hotelId);
         });
 
         $this->auditService->log('journal_entry_created', 'journal_entry', $entry->id, [
@@ -107,7 +114,7 @@ class AccountingController extends Controller
         ]);
 
         $period = AccountingPeriod::firstOrCreate(
-            ['year' => $validated['year'], 'month' => $validated['month']],
+            ['hotel_id' => $this->currentHotelId($request), 'year' => $validated['year'], 'month' => $validated['month']],
             ['status' => 'open']
         );
 

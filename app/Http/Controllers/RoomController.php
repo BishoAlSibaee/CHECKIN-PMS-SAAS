@@ -8,8 +8,10 @@ use App\Http\Requests\Room\DestroyRoomRequest;
 use App\Http\Requests\Room\StoreMultiRoomRequest;
 use App\Http\Requests\Room\RoomIndexRequest;
 
+use App\Jobs\SyncRoomAvailableToGrmsJob;
 use App\Models\Room;
 use App\Services\OccupancyBoardCache;
+use App\Services\ReservationRoomStatusService;
 
 class RoomController extends Controller
 {
@@ -113,13 +115,25 @@ return Success('Rooms created successfully.', $addedRooms);
         if ($request->has('capacity')) {
             $room->capacity = $request->capacity;
         }
+        $markingReady = false;
         if ($request->has('roomStatus')) {
-            $room->roomStatus = (int) $request->roomStatus;
+            $newStatus = (int) $request->roomStatus;
+            $markingReady = $newStatus === ReservationRoomStatusService::ROOM_AVAILABLE
+                && (int) $room->roomStatus !== ReservationRoomStatusService::ROOM_AVAILABLE;
+            $room->roomStatus = $newStatus;
         }
 
         try {
             $room->save();
             OccupancyBoardCache::bump();
+
+            if ($markingReady) {
+                try {
+                    SyncRoomAvailableToGrmsJob::dispatch($room->number);
+                } catch (\Throwable $e) {
+                    report($e);
+                }
+            }
 
             return Success('Room updated Successfully');
         } catch (\Exception $e) {

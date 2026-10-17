@@ -6,5 +6,5 @@ use Illuminate\Database\Eloquent\Model;
 
 class AccountingPeriod extends Model
 {
-    protected $fillable = ['year', 'month', 'status', 'closed_at', 'closed_by'];
+    protected $fillable = ['hotel_id', 'year', 'month', 'status', 'closed_at', 'closed_by'];
 }

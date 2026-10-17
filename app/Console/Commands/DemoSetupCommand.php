@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use Database\Seeders\ChartOfAccountsSeeder;
+use Database\Seeders\ClientTrialSeeder;
 use Database\Seeders\DemoBootstrapSeeder;
 use Database\Seeders\HotelDemoSeeder;
 use Database\Seeders\RefundPolicySeeder;
@@ -13,7 +14,8 @@ class DemoSetupCommand extends Command
 {
     protected $signature = 'demo:setup
                             {--fresh : Run migrate:fresh before seeding}
-                            {--light : Skip HotelDemoSeeder (~650 reservations); keep test scenarios only}';
+                            {--light : Skip HotelDemoSeeder (~650 reservations); keep test scenarios only}
+                            {--client-trial : Seed ClientTrialSeeder (1 building, 4 floors, 40 rooms, ~70 reservations) instead of the large HotelDemoSeeder}';
 
     protected $description = 'Load demo property + reservations on top of essential seed data';
 
@@ -43,7 +45,14 @@ class DemoSetupCommand extends Command
             '--force' => true,
         ]);
 
-        if ($this->option('light')) {
+        if ($this->option('client-trial')) {
+            $this->info('Seeding client-trial property (1 building, 4 floors, 40 rooms)...');
+            Artisan::call('db:seed', [
+                '--class' => ClientTrialSeeder::class,
+                '--force' => true,
+            ]);
+            $this->line(Artisan::output());
+        } elseif ($this->option('light')) {
             $this->info('Light demo — skipping HotelDemoSeeder.');
         } else {
             $this->info('Seeding full demo property (~650 reservations)...');
@@ -52,6 +61,17 @@ class DemoSetupCommand extends Command
                 '--force' => true,
             ]);
             $this->line(Artisan::output());
+        }
+
+        if ($this->option('client-trial')) {
+            // DemoBootstrapSeeder (+ demo:verify) creates its own deterministic
+            // QA room types/reservations on top of HotelDemoSeeder's classic
+            // layout — it would silently overwrite ClientTrialSeeder's exact
+            // room numbers/types with its own. It's internal finance-pipeline
+            // QA, not something a client-facing trial needs.
+            $this->info('Client-trial mode — skipping DemoBootstrapSeeder/demo:verify (QA-only, would overwrite the custom room layout).');
+
+            return self::SUCCESS;
         }
 
         $this->info('Running demo bootstrap (test scenarios, daily charges, journal)...');

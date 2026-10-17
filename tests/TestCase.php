@@ -55,6 +55,14 @@ abstract class TestCase extends BaseTestCase
             ]
         );
 
+        // Every request goes through ResolveCurrentHotel, which 403s a user
+        // with no hotel access at all — attach the test user to whichever
+        // hotel the multi-branch migrations seeded as default.
+        $defaultHotelId = \App\Models\Hotel::query()->orderBy('id')->value('id');
+        if ($defaultHotelId !== null) {
+            $user->hotels()->syncWithoutDetaching([$defaultHotelId]);
+        }
+
         return $user;
     }
 
@@ -78,6 +86,11 @@ abstract class TestCase extends BaseTestCase
             \Spatie\Permission\Models\Permission::findOrCreate($name, 'api');
         }
 
+        // syncPermissions() stamps the pivot's team_foreign_key (hotel_id)
+        // from whatever team id is currently set — outside a request there is
+        // none, so set it to the user's hotel before writing the pivot rows.
+        $defaultHotelId = \App\Models\Hotel::query()->orderBy('id')->value('id');
+        app()[\Spatie\Permission\PermissionRegistrar::class]->setPermissionsTeamId($defaultHotelId);
         $user->syncPermissions($names);
         app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
 

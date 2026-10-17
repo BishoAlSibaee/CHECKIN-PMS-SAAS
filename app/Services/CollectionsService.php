@@ -252,10 +252,14 @@ class CollectionsService
         return $total;
     }
 
+    /**
+     * Matches Reservation::paidNetAmount() — TYPE_BILLED_TO_COMPANY counts as
+     * settled here too, since a company-billed stay isn't owed by the guest.
+     */
     private function paidNet(Reservation $reservation): float
     {
         $paid = (float) $reservation->payments
-            ->where('type', ReservationPay::TYPE_PAYMENT)
+            ->whereIn('type', [ReservationPay::TYPE_PAYMENT, ReservationPay::TYPE_BILLED_TO_COMPANY])
             ->sum('pay');
         $refunded = (float) $reservation->payments
             ->where('type', ReservationPay::TYPE_REFUND)

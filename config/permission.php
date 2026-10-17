@@ -95,7 +95,10 @@ return [
          * foreign key is other than `team_id`.
          */
 
-        'team_foreign_key' => 'team_id',
+        // Multi-hotel support: a user's active role assignment is scoped to
+        // "the hotel currently selected" (see ResolveCurrentHotel middleware),
+        // not a generic "team" concept — hence hotel_id instead of team_id.
+        'team_foreign_key' => 'hotel_id',
     ],
 
     /*
@@ -133,7 +136,7 @@ return [
      * (view the latest version of this package's migration file)
      */
 
-    'teams' => false,
+    'teams' => true,
 
     /*
      * The class to use to resolve the permissions team id

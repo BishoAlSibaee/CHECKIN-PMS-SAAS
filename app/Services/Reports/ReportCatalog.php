@@ -33,6 +33,9 @@ class ReportCatalog
             ['slug' => 'trial-balance', 'category' => 'accounting', 'canonical_source' => 'FinancialStatementService::trialBalance'],
             ['slug' => 'cash-flow', 'category' => 'accounting', 'canonical_source' => 'FinancialStatementService::cashFlow'],
             ['slug' => 'financial-audit-log', 'category' => 'accounting', 'canonical_source' => 'FinancialAuditService'],
+            ['slug' => 'accounting-export-generic', 'category' => 'accounting', 'canonical_source' => 'JournalEntry model'],
+            ['slug' => 'accounting-export-qoyod', 'category' => 'accounting', 'canonical_source' => 'JournalEntry model'],
+            ['slug' => 'accounting-export-daftra', 'category' => 'accounting', 'canonical_source' => 'JournalEntry model'],
         ];
     }
 
@@ -53,6 +56,9 @@ class ReportCatalog
             'trial-balance',
             'cash-flow',
             'financial-audit-log',
+            'accounting-export-generic',
+            'accounting-export-qoyod',
+            'accounting-export-daftra',
         ], true);
     }
 

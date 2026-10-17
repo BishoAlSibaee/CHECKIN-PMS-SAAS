@@ -14,12 +14,27 @@ class ReservationRoom extends Model
         'reservation_id',
         'room_id',
         'suite_id',
-        'price'
+        'price',
+        'status',
     ];
 
     protected $casts = [
         'price' => 'double',
     ];
+
+    public const STATUS_ACTIVE = 0;
+
+    public const STATUS_CANCELLED = 1;
+
+    public static function isCancelled(int $status): bool
+    {
+        return $status === self::STATUS_CANCELLED;
+    }
+
+    public function scopeActive($query)
+    {
+        return $query->where('status', self::STATUS_ACTIVE);
+    }
 
     /**
      * Get the reservation that owns this room reservation

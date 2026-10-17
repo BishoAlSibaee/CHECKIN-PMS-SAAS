@@ -84,10 +84,10 @@ class ReservationCheckInOccupancyTest extends TestCase
         $this->seedReservationFixtures();
 
         $user = $this->userWithApiPermissions(['view reservations', 'update reservations']);
-        $room = Room::where('active', 1)->whereHas('roomType')->first();
+        Carbon::setTestNow('2026-06-28');
+        $room = $this->findOrCreateAvailableRoom('2026-06-28', '2026-06-29');
         $this->assertNotNull($room);
 
-        Carbon::setTestNow('2026-06-28');
         $blockingId = $this->createReservationId($user, $room, '2026-06-28', '2026-06-29');
         $this->actingAs($user, 'api')->patchJson("/api/users/reservations/{$blockingId}", [
             'logedin' => 1,
@@ -118,10 +118,10 @@ class ReservationCheckInOccupancyTest extends TestCase
         $this->seedReservationFixtures();
 
         $user = $this->userWithApiPermissions(['view reservations', 'update reservations', 'create reservations']);
-        $room = Room::where('active', 1)->whereHas('roomType')->first();
+        Carbon::setTestNow('2026-06-01');
+        $room = $this->findOrCreateAvailableRoom('2026-06-01', '2026-06-05');
         $this->assertNotNull($room);
 
-        Carbon::setTestNow('2026-06-01');
         $pastId = $this->createReservationId($user, $room, '2026-06-01', '2026-06-05');
         $this->actingAs($user, 'api')->patchJson("/api/users/reservations/{$pastId}", [
             'logedin' => 1,

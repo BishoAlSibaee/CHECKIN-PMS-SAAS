@@ -136,8 +136,12 @@ class MonthlyChunkRoundingTest extends TestCase
         $lines = $engine->buildDailyBreakdown($room, '2026-08-31', '2026-09-30', 1, 0);
         $byDate = collect($lines)->keyBy('date');
 
-        $this->assertSame(3500.0, $engine->sumBaseAmount($lines));
-        $this->assertEqualsWithDelta(3500 / 30, (float) $byDate['2026-08-31']['base_amount'], 0.02);
+        // Aug31 is its own (31-day) calendar month, prorated on the plan's
+        // own monthly price independently of September's 29 room-rate nights
+        // — even though both months share the same peak rate (3500), a
+        // single night in a 31-day month is worth less than 1/30th of it.
+        $this->assertEqualsWithDelta(3496.23, $engine->sumBaseAmount($lines), 0.01);
+        $this->assertEqualsWithDelta(3500 / 31, (float) $byDate['2026-08-31']['base_amount'], 0.02);
         $this->assertEqualsWithDelta(3500 * (29 / 30) / 29, (float) $byDate['2026-09-01']['base_amount'], 0.02);
         $this->assertSame('plan', $byDate['2026-08-31']['price_source']);
         $this->assertSame('max', $byDate['2026-09-01']['price_source']);
@@ -231,9 +235,13 @@ class MonthlyChunkRoundingTest extends TestCase
             static fn (float $amount): float => round($amount, 2),
             $roomNightsBeforePlan
         )));
-        $this->assertSame([116.67, 116.66], $uniqueRates);
+        // Aug31 (1 night, 31-day month) is prorated separately from Sep1-14
+        // (14 nights, 30-day month) even though both are room-rate (peak)
+        // nights at the same monthly rate — a real calendar-day proration,
+        // not a flat split across the whole 15-night room-rate stretch.
+        $this->assertSame([112.9, 116.67, 116.66], $uniqueRates);
         $this->assertEqualsWithDelta(
-            1750.0,
+            1746.23,
             round(array_sum($roomNightsBeforePlan), 2),
             0.01
         );

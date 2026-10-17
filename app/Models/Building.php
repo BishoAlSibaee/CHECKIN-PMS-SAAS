@@ -4,12 +4,18 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Building extends Model
 {
     use HasFactory;
-protected $fillable = ['number', 'name', 'lock_id'];
+protected $fillable = ['hotel_id', 'number', 'name', 'lock_id'];
+
+    function hotel(): BelongsTo
+    {
+        return $this->belongsTo(Hotel::class);
+    }
 
     function floors(): HasMany
     {

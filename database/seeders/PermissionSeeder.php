@@ -2,9 +2,11 @@
 
 namespace Database\Seeders;
 
+use App\Models\Hotel;
 use App\Models\Permission;
 use App\Models\PermissionCategory;
 use Spatie\Permission\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
@@ -109,56 +111,74 @@ class PermissionSeeder extends Seeder
         }
 
         // Create Roles and Assign Permissions
-        $adminRole = Role::updateOrCreate(
-            ['name' => 'admin', 'guard_name' => 'api'],
-            ['name_ar' => 'مدير النظام', 'is_system' => true, 'description' => 'Full system access']
-        );
-        $adminRole->syncPermissions(Permission::all());
+        //
+        // Spatie "teams" scopes roles per hotel (team_foreign_key=hotel_id).
+        // DatabaseSeeder calls this seeder at the top level with no hotel
+        // context, so without this every role below would land with
+        // hotel_id=NULL — an orphaned row Spatie's own uniqueness check
+        // still treats as blocking role creation for every real hotel's
+        // team, breaking HotelRoleProvisioningService/AdminSeeder callers
+        // that run afterward. Same fix as AdminSeeder.php.
+        $defaultHotelId = (int) (Hotel::query()->orderBy('id')->value('id') ?? 1);
+        $registrar = app(PermissionRegistrar::class);
+        $previousTeamId = $registrar->getPermissionsTeamId();
+        $registrar->setPermissionsTeamId($defaultHotelId);
 
-        $receptionistRole = Role::updateOrCreate(
-            ['name' => 'receptionist', 'guard_name' => 'api'],
-            ['name_ar' => 'موظف استقبال', 'is_system' => true, 'description' => 'Front desk access']
-        );
-        $receptionistRole->syncPermissions([
-            'view buildings', 'view floors', 'view suites', 'view rooms', 'view room types',
-            'view reservations', 'create reservations', 'update reservations', 'cancel reservations',
-            'view earnings', 'view payments', 'view reports', 'export reports',
-            'view clients', 'manage clients', 'manage client notes',
-            'manage peak days', 'manage peak months',
-        ]);
+        try {
+            $adminRole = $this->role($defaultHotelId, 'admin', 'مدير النظام', 'Full system access');
+            $adminRole->syncPermissions(Permission::all());
 
-        $managerRole = Role::updateOrCreate(
-            ['name' => 'manager', 'guard_name' => 'api'],
-            ['name_ar' => 'مدير', 'is_system' => true, 'description' => 'Management access']
-        );
-        $managerRole->syncPermissions([
-            'view buildings', 'view floors', 'view suites', 'view rooms', 'view room types',
-            'manage rooms', 'manage pricing plans',
-            'view reservations', 'create reservations', 'update reservations', 'cancel reservations', 'manage refunds',
-            'view earnings', 'view revenue', 'view payments',
-            'view reports', 'view financial reports', 'export reports',
-            'view clients', 'manage clients', 'manage client notes',
-            'view users', 'manage peak days', 'manage peak months',
-        ]);
+            $this->role($defaultHotelId, 'receptionist', 'موظف استقبال', 'Front desk access')
+                ->syncPermissions([
+                    'view buildings', 'view floors', 'view suites', 'view rooms', 'view room types',
+                    'view reservations', 'create reservations', 'update reservations', 'cancel reservations',
+                    'view earnings', 'view payments', 'view reports', 'export reports',
+                    'view clients', 'manage clients', 'manage client notes',
+                    'manage peak days', 'manage peak months',
+                ]);
 
-        $accountantRole = Role::updateOrCreate(
-            ['name' => 'accountant', 'guard_name' => 'api'],
-            ['name_ar' => 'محاسب', 'is_system' => true, 'description' => 'Accounting and financial reports']
-        );
-        $accountantRole->syncPermissions([
-            'view reports', 'view financial reports', 'view accounting reports', 'export reports',
-            'view revenue', 'view earnings', 'view payments',
-            'manage chart of accounts', 'manage journal entries', 'close accounting period',
-            'view clients',
-        ]);
+            $this->role($defaultHotelId, 'manager', 'مدير', 'Management access')
+                ->syncPermissions([
+                    'view buildings', 'view floors', 'view suites', 'view rooms', 'view room types',
+                    'manage rooms', 'manage pricing plans',
+                    'view reservations', 'create reservations', 'update reservations', 'cancel reservations', 'manage refunds',
+                    'view earnings', 'view revenue', 'view payments',
+                    'view reports', 'view financial reports', 'export reports',
+                    'view clients', 'manage clients', 'manage client notes',
+                    'view users', 'manage peak days', 'manage peak months',
+                ]);
 
-        $kioskRole = Role::updateOrCreate(
-            ['name' => 'kiosk', 'guard_name' => 'api'],
-            ['name_ar' => 'جهاز الخدمة الذاتية', 'is_system' => true, 'description' => 'Self-service kiosk device access']
+            $this->role($defaultHotelId, 'accountant', 'محاسب', 'Accounting and financial reports')
+                ->syncPermissions([
+                    'view reports', 'view financial reports', 'view accounting reports', 'export reports',
+                    'view revenue', 'view earnings', 'view payments',
+                    'manage chart of accounts', 'manage journal entries', 'close accounting period',
+                    'view clients',
+                ]);
+
+            $this->role($defaultHotelId, 'kiosk', 'جهاز الخدمة الذاتية', 'Self-service kiosk device access')
+                ->syncPermissions([
+                    'view reservations', 'create reservations', 'update reservations',
+                    'view clients', 'manage clients',
+                ]);
+        } finally {
+            $registrar->setPermissionsTeamId($previousTeamId);
+        }
+    }
+
+    /**
+     * Bypasses Role::updateOrCreate()'s own global-scope-filtered lookup —
+     * Spatie's teams scope treats a role row with hotel_id=NULL as matching
+     * every team, so a single orphaned legacy row (predating multi-hotel
+     * support) gets silently re-matched and updated forever instead of a
+     * properly hotel-scoped row ever being created. Explicit hotel_id in
+     * both the match and the write sidesteps that scope entirely.
+     */
+    private function role(int $hotelId, string $name, string $nameAr, string $description): Role
+    {
+        return Role::withoutGlobalScopes()->updateOrCreate(
+            ['hotel_id' => $hotelId, 'name' => $name, 'guard_name' => 'api'],
+            ['name_ar' => $nameAr, 'is_system' => true, 'description' => $description]
         );
-        $kioskRole->syncPermissions([
-            'view reservations', 'create reservations', 'update reservations',
-            'view clients', 'manage clients',
-        ]);
     }
 }
