@@ -22,6 +22,13 @@ use Tests\TestCase;
 
 class MultiRoomAccrualPostingTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     use FinanceTestBootstrap;
 
     private const NIGHTLY_BASE = 320.0;

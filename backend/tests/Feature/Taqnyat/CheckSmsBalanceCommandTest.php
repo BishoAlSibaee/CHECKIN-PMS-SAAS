@@ -10,6 +10,13 @@ use Tests\TestCase;
 
 class CheckSmsBalanceCommandTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     private function makeHotelWithCredentials(): Hotel
     {
         $marker = 'Taqnyat Test '.uniqid();

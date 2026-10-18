@@ -8,6 +8,13 @@ use Tests\TestCase;
 
 class CleanupTestRoomTypesTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     public function test_cleanup_removes_orphan_test_room_types(): void
     {
         $suffix = uniqid();

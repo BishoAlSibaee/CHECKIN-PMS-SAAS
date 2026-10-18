@@ -7,6 +7,13 @@ use Tests\TestCase;
 
 class RbacMatrixTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     /** @dataProvider unauthenticatedRoutesProvider */
     public function test_protected_routes_require_authentication(string $method, string $uri, array $payload): void
     {

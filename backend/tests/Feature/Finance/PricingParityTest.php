@@ -14,6 +14,13 @@ use Tests\TestCase;
 
 class PricingParityTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     public function test_get_room_price_total_matches_pricing_engine(): void
     {
         $user = $this->userWithApiPermissions();

@@ -11,6 +11,13 @@ use Tests\TestCase;
 
 class JournalEntriesStaleReservationLinkTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     public function test_journal_entries_report_clears_deleted_reservation_links(): void
     {
         $cash = $this->ensureAccount('1010', 'Cash / Bank', 'asset');

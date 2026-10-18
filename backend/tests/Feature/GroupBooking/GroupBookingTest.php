@@ -28,6 +28,13 @@ use Tests\TestCase;
  */
 class GroupBookingTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     /** @return array{0: int, 1: RoomType, 2: Room, 3: Room, 4: int, 5: int, 6: User} */
     private function seedGroupBookingFixtures(): array
     {

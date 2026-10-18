@@ -8,6 +8,13 @@ use Tests\TestCase;
 
 class ProtectedRoutesTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     public function test_buildings_requires_authentication(): void
     {
         $this->getJson('/api/users/buildings')->assertStatus(401);

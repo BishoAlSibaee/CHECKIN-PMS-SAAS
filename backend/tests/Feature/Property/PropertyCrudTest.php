@@ -9,6 +9,13 @@ use Tests\TestCase;
 
 class PropertyCrudTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     public function test_create_building_with_floors(): void
     {
         $user = $this->userWithOnlyPermissions(['view buildings', 'manage buildings']);

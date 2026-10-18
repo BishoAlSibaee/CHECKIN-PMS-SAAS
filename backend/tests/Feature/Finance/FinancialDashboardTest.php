@@ -8,6 +8,13 @@ use Tests\TestCase;
 
 class FinancialDashboardTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     private function seedAndUser(): \App\Models\User
     {
         $this->artisan('db:seed', [

@@ -13,6 +13,13 @@ use Tests\TestCase;
 
 class PurgeOrphanReservationDataTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     public function test_purge_orphans_removes_journal_and_logs_for_missing_reservation(): void
     {
         $cash = $this->ensureAccount('1010', 'Cash / Bank', 'asset');

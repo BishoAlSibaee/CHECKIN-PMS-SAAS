@@ -8,6 +8,13 @@ use Tests\TestCase;
 
 class ReportApiTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     use FinanceTestBootstrap;
 
     public function test_reports_catalog_requires_auth(): void
@@ -56,6 +63,15 @@ class ReportApiTest extends TestCase
 
     public function test_chart_of_accounts_filters_by_type_and_search(): void
     {
+        // Account 5020 ("Refunds") only exists once ChartOfAccountsSeeder has
+        // run — unlike test_chart_of_accounts() above, which doesn't filter
+        // and so passes against whatever accounts a migration already seeded.
+        $this->artisan('db:seed', [
+            '--class' => \Database\Seeders\ChartOfAccountsSeeder::class,
+            '--force' => true,
+            '--no-interaction' => true,
+        ]);
+
         $user = $this->userWithApiPermissions(['view reports', 'view accounting reports']);
         $response = $this->actingAs($user, 'api')->getJson(
             '/api/users/reports/chart-of-accounts?start_date=2026-08-01&end_date=2026-08-31&account_type=expense&search=5020'

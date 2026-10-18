@@ -11,6 +11,13 @@ use Tests\TestCase;
 
 class ArAgingReportTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     private function seedAndUser(): \App\Models\User
     {
         $this->artisan('db:seed', [
@@ -43,7 +50,7 @@ class ArAgingReportTest extends TestCase
         $this->assertGreaterThan(0, (float) ($match['balance_due'] ?? 0));
     }
 
-    public function test_ar_aging_excludes_stays_outside_month_of_as_of_date(): void
+    public function test_ar_aging_includes_future_stays_with_an_outstanding_balance(): void
     {
         $user = $this->seedAndUser();
         $reservation = $this->createPartiallyPaidReservation($user, monthsAhead: 3);
@@ -53,10 +60,13 @@ class ArAgingReportTest extends TestCase
             'end_date' => Carbon::today()->endOfMonth()->toDateString(),
         ]);
 
-        $this->assertNull(
-            collect($report['rows'] ?? [])->firstWhere('reservation_id', $reservation->id),
-            'Future-month stay must not appear when as-of month is the current month.'
-        );
+        // arAging() is deliberately NOT restricted to stays overlapping the
+        // as-of month (see ReportQueryService::arAging()'s own docblock) —
+        // a confirmed booking's balance is owed from the moment it's made,
+        // regardless of how far in the future the stay itself falls.
+        $match = collect($report['rows'] ?? [])->firstWhere('reservation_id', $reservation->id);
+        $this->assertNotNull($match, 'A future stay with an outstanding balance must still appear in ar-aging.');
+        $this->assertSame(0, $match['days_overdue'], 'A future stay is not yet overdue.');
     }
 
     public function test_ar_aging_balance_uses_payments_on_or_before_as_of_date(): void
@@ -121,13 +131,22 @@ class ArAgingReportTest extends TestCase
         $client = \App\Models\Client::first();
         $stayReason = \App\Models\Stay_reason::first();
         $source = \App\Models\Reservation_source::first();
-        $room = \App\Models\Room::query()->first();
-        if (! $client || ! $stayReason || ! $source || ! $room) {
+        if (! $client || ! $stayReason || ! $source) {
             return null;
         }
 
         $start = Carbon::today()->addMonths($monthsAhead)->addDays($startDayOffset)->toDateString();
         $end = Carbon::parse($start)->addDays(3)->toDateString();
+
+        // Room::first() picks whichever room has the lowest id, which can
+        // already be occupied by one of ReservationTestDataSeeder's own demo
+        // scenarios (makeReservation blocks booking ANY room with a guest
+        // still checked in, regardless of date overlap) — pick one that's
+        // actually free for these dates instead.
+        $room = $this->findOrCreateAvailableRoom($start, $end);
+        if (! $room) {
+            return null;
+        }
 
         $response = $this->actingAs($user, 'api')->postJson('/api/users/makeReservation', [
             'client_id' => $client->id,

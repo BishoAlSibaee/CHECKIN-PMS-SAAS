@@ -11,6 +11,13 @@ use Tests\TestCase;
 
 class ReportsFinancialConsistencyTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     use FinanceAssertions;
     use FinanceTestBootstrap;
 

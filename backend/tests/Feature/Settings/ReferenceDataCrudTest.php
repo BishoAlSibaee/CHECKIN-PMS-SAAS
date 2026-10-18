@@ -10,6 +10,13 @@ use Tests\TestCase;
 
 class ReferenceDataCrudTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     public function test_create_tax(): void
     {
         $user = $this->userWithOnlyPermissions(['manage taxes']);

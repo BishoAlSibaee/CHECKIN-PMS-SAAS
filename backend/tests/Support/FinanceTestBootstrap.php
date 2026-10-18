@@ -4,6 +4,7 @@ namespace Tests\Support;
 
 use App\Models\ReservationDailyCharge;
 use Carbon\Carbon;
+use Database\Seeders\ChartOfAccountsSeeder;
 use Database\Seeders\ReservationTestDataSeeder;
 use Illuminate\Support\Facades\Artisan;
 
@@ -17,51 +18,52 @@ trait FinanceTestBootstrap
 
     protected const FINANCE_CASH_END = '2026-06-30';
 
-    private static bool $financeBootstrapped = false;
-
-    private static ?\App\Models\User $financeBootUser = null;
-
+    /**
+     * Deliberately NOT cached behind a static "already bootstrapped" flag —
+     * that was the original design, but a static flag survives across test
+     * METHODS within the same PHPUnit process while the DB rows it guards
+     * don't once DatabaseTransactions rolls them back after each test.
+     * Checking real DB state on every call is self-healing regardless of
+     * whether the calling test (or a previous one) uses transactions.
+     */
     protected function bootstrapFinanceData(bool $setAugustNow = true): \App\Models\User
     {
         if ($setAugustNow) {
             Carbon::setTestNow('2026-08-15 12:00:00');
         }
 
-        if (! self::$financeBootstrapped) {
-            $hasAugustCharges = ReservationDailyCharge::query()
-                ->whereBetween('charge_date', [self::FINANCE_PERIOD_START, self::FINANCE_PERIOD_END])
-                ->exists();
+        // Posting (AccountingPostingService) silently no-ops when the chart
+        // of accounts it needs (1100/4010/2150/...) isn't there — this used
+        // to only work by accident, when some OTHER test file that calls
+        // ChartOfAccountsSeeder happened to run earlier in the same process.
+        $this->artisan('db:seed', [
+            '--class' => ChartOfAccountsSeeder::class,
+            '--force' => true,
+            '--no-interaction' => true,
+        ]);
 
-            if (! $hasAugustCharges) {
-                $this->artisan('db:seed', [
-                    '--class' => ReservationTestDataSeeder::class,
-                    '--force' => true,
-                    '--no-interaction' => true,
-                ]);
-                $this->artisan('reservations:backfill-daily-charges', ['--sync-base' => true]);
-            }
+        $hasAugustCharges = ReservationDailyCharge::query()
+            ->whereBetween('charge_date', [self::FINANCE_PERIOD_START, self::FINANCE_PERIOD_END])
+            ->exists();
 
-            Artisan::call('accounting:backfill-journal');
-
-            self::$financeBootUser = $this->userWithApiPermissions([
-                'view reports',
-                'view financial reports',
-                'view accounting reports',
-                'view revenue',
-                'view earnings',
-                'manage refunds',
+        if (! $hasAugustCharges) {
+            $this->artisan('db:seed', [
+                '--class' => ReservationTestDataSeeder::class,
+                '--force' => true,
+                '--no-interaction' => true,
             ]);
-            self::$financeBootstrapped = true;
-        } else {
-            Artisan::call('accounting:backfill-journal');
+            $this->artisan('reservations:backfill-daily-charges', ['--sync-base' => true]);
         }
 
-        return self::$financeBootUser ?? $this->userWithApiPermissions([
+        Artisan::call('accounting:backfill-journal');
+
+        return $this->userWithApiPermissions([
             'view reports',
             'view financial reports',
             'view accounting reports',
             'view revenue',
             'view earnings',
+            'manage refunds',
         ]);
     }
 

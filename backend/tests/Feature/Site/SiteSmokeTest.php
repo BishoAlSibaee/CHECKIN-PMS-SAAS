@@ -9,6 +9,13 @@ use Tests\TestCase;
  */
 class SiteSmokeTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     /** @dataProvider publicGetEndpointsProvider */
     public function test_authenticated_get_endpoints_respond(string $uri, array $query = []): void
     {

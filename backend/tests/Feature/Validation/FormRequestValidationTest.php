@@ -6,6 +6,13 @@ use Tests\TestCase;
 
 class FormRequestValidationTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     /** @dataProvider invalidPostPayloadsProvider */
     public function test_post_endpoints_return_validation_error_on_empty_payload(string $uri, array $permissions): void
     {

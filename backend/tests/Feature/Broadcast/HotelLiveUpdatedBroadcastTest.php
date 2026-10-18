@@ -16,6 +16,13 @@ use Tests\TestCase;
 
 class HotelLiveUpdatedBroadcastTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -99,6 +106,6 @@ class HotelLiveUpdatedBroadcastTest extends TestCase
         ]);
         $create->assertOk();
 
-        return (int) $create->json('data.id');
+        return (int) ($create->json('data.reservation.id') ?? $create->json('data.id'));
     }
 }

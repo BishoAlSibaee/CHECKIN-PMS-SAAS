@@ -30,6 +30,13 @@ use Tests\TestCase;
  */
 class CompanyBillingCashReportTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     /** @return array{0: int, 1: Room, 2: int, 3: int, 4: User, 5: Discount} */
     private function seedFixtures(): array
     {

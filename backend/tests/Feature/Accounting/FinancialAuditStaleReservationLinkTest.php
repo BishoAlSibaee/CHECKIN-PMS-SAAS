@@ -11,6 +11,13 @@ use Tests\TestCase;
 
 class FinancialAuditStaleReservationLinkTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     public function test_audit_log_omits_reservation_link_when_reservation_was_deleted(): void
     {
         $cash = $this->ensureAccount('1010', 'Cash / Bank', 'asset');

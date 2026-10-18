@@ -19,6 +19,13 @@ use Tests\TestCase;
  */
 class BookingFinancialCrossValidationTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     use FinanceAssertions;
 
     private const PERIOD_START = '2026-08-01';

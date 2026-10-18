@@ -11,6 +11,13 @@ use Tests\TestCase;
 
 class RevenueByEntityTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     private function dateRange(): array
     {
         return ['start_date' => '2026-08-01', 'end_date' => '2026-08-31'];

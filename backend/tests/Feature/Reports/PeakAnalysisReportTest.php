@@ -11,6 +11,13 @@ use Tests\TestCase;
 
 class PeakAnalysisReportTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     public function test_peak_analysis_includes_future_peak_nights_in_selected_period(): void
     {
         Carbon::setTestNow('2026-07-12');

@@ -94,11 +94,11 @@ class ClientsController extends Controller
                 'email' => $request->email ?? null,
                 'international_code' => $request->international_code ?? $client->international_code,
                 'mobile' => $request->mobile,
-                'IdType' => $request->IdType ?? null,
-                'IdNumber' => $request->IdNumber ?? null,
+                'IdType' => $request->IdType ?? $client->IdType,
+                'IdNumber' => $request->IdNumber ?? $client->IdNumber,
                 'birth_date' => $request->birth_date ?? null,
-                'gender' => $request->gender ?? null,
-                'guest_type' => $request->guest_type ?? null,
+                'gender' => $request->gender ?? $client->gender,
+                'guest_type' => $request->guest_type ?? $client->guest_type,
                 'nationality' => $request->nationality ?? null,
             ]);
 

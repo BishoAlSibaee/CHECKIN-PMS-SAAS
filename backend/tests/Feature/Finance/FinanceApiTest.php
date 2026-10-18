@@ -13,6 +13,13 @@ use Tests\TestCase;
 
 class FinanceApiTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     use FinanceAssertions;
 
     private function seedAndUser(): \App\Models\User

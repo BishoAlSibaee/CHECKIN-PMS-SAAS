@@ -14,6 +14,13 @@ use Tests\TestCase;
 
 class VersionedCacheTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     public function test_versioned_cache_reuses_payload_until_version_changes(): void
     {
         Cache::flush();

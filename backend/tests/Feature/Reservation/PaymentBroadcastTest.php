@@ -13,6 +13,13 @@ use Tests\TestCase;
 
 class PaymentBroadcastTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     public function test_payment_dispatches_collections_scope(): void
     {
         $this->artisan('db:seed', [

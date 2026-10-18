@@ -42,5 +42,16 @@ class OrphanedInnoDbRepairTest extends TestCase
         $this->assertTrue(Schema::hasColumn('reservations', 'classification_discount'));
         $this->assertTrue(Schema::hasColumn('reservations', 'price_calculation_mode'));
         $this->assertTrue(SchemaTableHealth::isUsable('reservation_pay'));
+
+        // ensureReservationsTable() is a bare-bones EMERGENCY schema — just
+        // enough columns for this repair utility's own correctness checks
+        // above — not a full clone of every migration since. Left as-is,
+        // the real `reservations` table stays replaced by this stripped
+        // schema (missing confirmation_code, external_booking_id, etc.) for
+        // the rest of this PHPUnit process, since the migrations tracking
+        // table still thinks those later migrations already ran and won't
+        // re-apply them on a plain `migrate`. migrate:fresh forces a full,
+        // correct rebuild back to the real current schema.
+        $this->artisan('migrate:fresh', ['--force' => true, '--no-interaction' => true]);
     }
 }

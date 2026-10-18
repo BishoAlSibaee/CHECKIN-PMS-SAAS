@@ -7,6 +7,14 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * Guests live on mysql2. Rebuild a truncated/orphan `clients` table so seeders and booking work after clone/repair.
+ *
+ * Renamed from 2026_07_16_131900 to 2026_06_21_110000 (an hour before
+ * move_client_notes_to_mysql2, same day) — that migration adds a real FK
+ * from client_notes.client_id to clients(id) on mysql2, which only works if
+ * this one has already created clients there. On every already-migrated
+ * database this is a harmless no-op re-run (see the early-return check
+ * below); a truly fresh install previously failed on that FK with "Cannot
+ * add foreign key constraint" because clients didn't exist on mysql2 yet.
  */
 return new class extends Migration
 {

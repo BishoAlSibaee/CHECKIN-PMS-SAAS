@@ -10,6 +10,13 @@ use Tests\TestCase;
 
 class ReservationCalendarApiTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     public function test_calendar_event_end_matches_expire_date_not_next_day(): void
     {
         Carbon::setTestNow('2026-06-20');

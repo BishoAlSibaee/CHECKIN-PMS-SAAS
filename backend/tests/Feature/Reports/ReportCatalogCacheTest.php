@@ -9,6 +9,13 @@ use Tests\TestCase;
 
 class ReportCatalogCacheTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     public function test_catalog_cache_returns_same_payload_without_recomputing(): void
     {
         Cache::flush();

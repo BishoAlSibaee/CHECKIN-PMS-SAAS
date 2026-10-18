@@ -8,6 +8,13 @@ use Tests\TestCase;
 
 class ArrivalsDeparturesReportTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     public function test_date_range_emits_separate_arrival_and_departure_rows(): void
     {
         $start = '2026-06-01';

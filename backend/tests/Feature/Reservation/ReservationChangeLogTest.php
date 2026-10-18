@@ -14,6 +14,13 @@ use Tests\TestCase;
 
 class ReservationChangeLogTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     public function test_update_reservation_records_old_values_and_user(): void
     {
         Carbon::setTestNow('2026-06-15');

@@ -16,6 +16,13 @@ use Tests\TestCase;
 
 class ZatcaCheckoutReportingTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     public function test_checkout_reports_zatca_and_returns_invoice_summary_when_enabled(): void
     {
         Carbon::setTestNow('2026-08-15');
@@ -143,15 +150,27 @@ class ZatcaCheckoutReportingTest extends TestCase
 
     public function test_already_reported_invoice_is_idempotent(): void
     {
+        config([
+            'zatca.enabled' => true,
+            'zatca.auto_report_on_checkout' => true,
+        ]);
+
         $reservation = $this->createBareReservation([
             'nights' => 1,
             'expire_date' => '2026-08-16',
         ]);
 
-        $existing = ZatcaInvoice::query()->create([
-            'reservation_id' => $reservation->id,
-            'invoice_number' => 'HOT-R'.$reservation->id.'-TEST',
-            'uuid' => (string) \Illuminate\Support\Str::uuid(),
+        // reportReservationCheckout() keys its idempotency check off
+        // invoice_id (a FK to the dedicated invoices table), not
+        // reservation_id directly — so the "already reported" state has to
+        // come from a real first call, not a hand-built ZatcaInvoice row
+        // with a guessed invoice_id (which the service would never match,
+        // defeating the idempotency check entirely). No ZATCA credentials
+        // are configured in tests, so this first call lands as SKIPPED (see
+        // test_report_skips_when_credentials_missing) — flip it to REPORTED
+        // to simulate a previously successful report.
+        $first = app(ZatcaCheckoutReportingService::class)->reportReservationCheckout((int) $reservation->id);
+        $first->update([
             'status' => ZatcaInvoice::STATUS_REPORTED,
             'reporting_status' => 'REPORTED',
             'http_status' => 200,
@@ -160,7 +179,7 @@ class ZatcaCheckoutReportingTest extends TestCase
 
         $invoice = app(ZatcaCheckoutReportingService::class)->reportReservationCheckout((int) $reservation->id);
 
-        $this->assertSame($existing->id, $invoice->id);
+        $this->assertSame($first->id, $invoice->id);
         $this->assertSame(ZatcaInvoice::STATUS_REPORTED, $invoice->status);
         $this->assertSame(1, ZatcaInvoice::query()->where('reservation_id', $reservation->id)->count());
     }

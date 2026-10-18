@@ -9,6 +9,13 @@ use Tests\TestCase;
 
 class TaqnyatServiceTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     public function test_returns_not_configured_when_no_credentials_saved(): void
     {
         $service = app(TaqnyatService::class);

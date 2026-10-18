@@ -9,6 +9,13 @@ use Tests\Support\InteractsWithReservationFixtures;
 
 class GrmsWebhookTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     use InteractsWithReservationFixtures;
 
     public function test_wrong_secret_is_rejected(): void

@@ -16,6 +16,13 @@ use Tests\TestCase;
 
 class RoomBoardTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     public function test_occupancy_board_for_demo_date(): void
     {
         $this->artisan('db:seed', [
@@ -79,7 +86,7 @@ class RoomBoardTest extends TestCase
             'logedin'                => 0,
         ]);
         $create->assertOk();
-        $reservationId = (int) $create->json('data.id');
+        $reservationId = (int) ($create->json('data.reservation.id') ?? $create->json('data.id'));
 
         $checkIn = $this->actingAs($user, 'api')->patchJson("/api/users/reservations/{$reservationId}", [
             'logedin'    => 1,

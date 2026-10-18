@@ -8,6 +8,13 @@ use Tests\TestCase;
 
 class UsersAndRolesTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     public function test_list_users_info(): void
     {
         $user = $this->userWithOnlyPermissions(['manage users']);

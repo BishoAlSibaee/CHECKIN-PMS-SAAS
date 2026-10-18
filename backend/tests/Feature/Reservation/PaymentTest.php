@@ -10,6 +10,13 @@ use Tests\TestCase;
 
 class PaymentTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     public function test_payment_appears_in_earnings_summary(): void
     {
         $this->artisan('db:seed', [

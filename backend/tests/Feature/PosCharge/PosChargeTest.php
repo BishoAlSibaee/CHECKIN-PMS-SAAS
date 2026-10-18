@@ -29,6 +29,13 @@ use Tests\TestCase;
  */
 class PosChargeTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     /** @return array{0: int, 1: Room, 2: int, 3: int, 4: User, 5: PosCategory} */
     private function seedFixtures(): array
     {

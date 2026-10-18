@@ -8,6 +8,13 @@ use Tests\TestCase;
 
 class ReportFinancialNoCacheTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     public function test_only_occupancy_report_method_uses_report_cache_wrapper(): void
     {
         $reflection = new ReflectionClass(ReportQueryService::class);

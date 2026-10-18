@@ -19,6 +19,13 @@ use Tests\TestCase;
 
 class AccountingRefundPostingTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -147,7 +154,26 @@ class AccountingRefundPostingTest extends TestCase
 
     private function createRefundPay(float $amount): ReservationPay
     {
-        $client = Client::query()->first();
+        // Stay_reason/Reservation_source/Client aren't seeded by any
+        // migration — this test used to rely on another, earlier-running
+        // test having already created them, which only held up when test
+        // run order happened to put a seeding test first.
+        $this->artisan('db:seed', [
+            '--class' => \Database\Seeders\EssentialReferenceDataSeeder::class,
+            '--force' => true,
+            '--no-interaction' => true,
+        ]);
+
+        $client = Client::query()->first() ?? Client::create([
+            'first_name' => 'Guest',
+            'last_name' => 'Fixture'.$this->uniqueSuffix(),
+            'international_code' => '+966',
+            'mobile' => '05'.substr((string) $this->uniqueSuffix(), -8),
+            'IdType' => 'PASSPORT',
+            'IdNumber' => 'TEST-'.$this->uniqueSuffix(),
+            'gender' => 'MALE',
+            'guest_type' => 'VISITOR',
+        ]);
         $stayReason = Stay_reason::query()->first();
         $source = Reservation_source::query()->first();
         $room = Room::query()->where('active', 1)->whereHas('roomType')->first();

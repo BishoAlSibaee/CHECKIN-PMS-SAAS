@@ -10,6 +10,13 @@ use Tests\TestCase;
 
 class RedisCacheIntegrationTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     public function test_redis_cache_store_is_configured(): void
     {
         $this->assertArrayHasKey('redis', config('cache.stores'));

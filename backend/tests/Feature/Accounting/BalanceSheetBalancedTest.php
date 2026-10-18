@@ -9,6 +9,13 @@ use Tests\TestCase;
 
 class BalanceSheetBalancedTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     public function test_balance_sheet_is_balanced_after_accrual_backfill(): void
     {
         Artisan::call('accounting:backfill-journal');

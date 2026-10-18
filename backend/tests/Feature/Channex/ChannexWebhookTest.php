@@ -20,6 +20,13 @@ use Tests\TestCase;
  */
 class ChannexWebhookTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     public function test_non_acked_booking_event_is_logged_and_not_silently_ignored(): void
     {
         Log::spy();

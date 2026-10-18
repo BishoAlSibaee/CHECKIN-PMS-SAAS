@@ -17,6 +17,13 @@ use Tests\TestCase;
 
 class ReservationPaymentValidationTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     protected function setUp(): void
     {
         parent::setUp();

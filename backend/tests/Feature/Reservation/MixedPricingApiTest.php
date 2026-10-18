@@ -11,6 +11,13 @@ use Tests\TestCase;
 
 class MixedPricingApiTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     use InteractsWithTestRoomTypes;
 
     protected function tearDown(): void

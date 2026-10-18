@@ -10,6 +10,13 @@ use Tests\TestCase;
 
 class OccupancyBoardCacheBumpBroadcastTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     public function test_bump_increments_version_and_broadcasts(): void
     {
         Event::fake([HotelLiveUpdated::class]);

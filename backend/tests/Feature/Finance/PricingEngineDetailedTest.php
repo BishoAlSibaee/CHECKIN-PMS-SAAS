@@ -10,6 +10,13 @@ use Tests\TestCase;
 
 class PricingEngineDetailedTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     private function deluxeTestRoom(): array
     {
         $this->artisan('db:seed', [

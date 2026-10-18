@@ -6,11 +6,19 @@ use App\Models\Client;
 use App\Models\Client_Classifications;
 use App\Models\Guest_classification;
 use App\Models\PromoCampaign;
+use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class PromoCampaignTest extends TestCase
 {
+    use DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     private function makeClient(string $marker): Client
     {
         return Client::create([

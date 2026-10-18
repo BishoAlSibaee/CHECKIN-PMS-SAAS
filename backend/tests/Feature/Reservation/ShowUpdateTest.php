@@ -14,6 +14,13 @@ use Tests\TestCase;
 
 class ShowUpdateTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     public function test_show_and_patch_reservation(): void
     {
         Carbon::setTestNow('2026-06-15');

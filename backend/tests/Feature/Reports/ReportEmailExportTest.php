@@ -12,6 +12,13 @@ use Tests\TestCase;
 
 class ReportEmailExportTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     public function test_user_can_queue_email_export_with_custom_recipient(): void
     {
         Queue::fake();

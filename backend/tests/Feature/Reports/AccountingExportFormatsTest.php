@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Reports;
 
+use Tests\Support\FinanceTestBootstrap;
 use Tests\TestCase;
 
 /**
@@ -12,6 +13,14 @@ use Tests\TestCase;
  */
 class AccountingExportFormatsTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+    use FinanceTestBootstrap;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     public function test_qoyod_export_downloads_as_excel(): void
     {
         $user = $this->userWithApiPermissions(['view reports', 'view accounting reports']);
@@ -66,6 +75,11 @@ class AccountingExportFormatsTest extends TestCase
 
     public function test_qoyod_rows_keep_debit_equal_to_credit_and_use_fixed_account_type(): void
     {
+        // Posts real accrual/payment journal entries this test can assert
+        // against — nothing else in an isolated run otherwise guarantees any
+        // journal_entry_lines exist for this wide 2000-2100 date range.
+        $this->bootstrapFinanceData();
+
         // Full result set, bypassing the HTTP preview endpoint's pagination
         // (which would otherwise risk slicing a multi-line entry in half).
         $service = app(\App\Services\Reports\ReportQueryService::class);

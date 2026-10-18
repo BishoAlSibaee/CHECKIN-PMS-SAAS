@@ -60,10 +60,7 @@ class ClientsCrudTest extends TestCase
     public function test_search_clients(): void
     {
         $user = $this->userWithOnlyPermissions(['view clients']);
-        $client = Client::first();
-        if (!$client) {
-            $this->markTestSkipped('No clients in database.');
-        }
+        $client = $this->makeClient();
 
         $response = $this->actingAs($user, 'api')->getJson('/api/users/getClient?search=' . urlencode($client->first_name));
 
@@ -73,8 +70,7 @@ class ClientsCrudTest extends TestCase
     public function test_show_client_by_id(): void
     {
         $user = $this->userWithOnlyPermissions(['view clients']);
-        $client = Client::first();
-        $this->assertNotNull($client);
+        $client = $this->makeClient();
 
         $this->assertApiSuccess(
             $this->actingAs($user, 'api')->getJson('/api/users/getClient/' . $client->id)
@@ -114,8 +110,7 @@ class ClientsCrudTest extends TestCase
     public function test_update_existing_client_by_id_from_mysql2(): void
     {
         $user = $this->userWithOnlyPermissions(['view clients', 'manage clients']);
-        $client = Client::first();
-        $this->assertNotNull($client);
+        $client = $this->makeClient();
 
         $response = $this->actingAs($user, 'api')->postJson('/api/users/updateClient', [
             'id' => $client->id,
@@ -131,8 +126,7 @@ class ClientsCrudTest extends TestCase
     public function test_client_notes_crud(): void
     {
         $user = $this->userWithOnlyPermissions(['manage client notes']);
-        $client = Client::first();
-        $this->assertNotNull($client);
+        $client = $this->makeClient();
 
         $create = $this->actingAs($user, 'api')->postJson('/api/users/client-notes', [
             'client_id' => $client->id,
@@ -159,5 +153,22 @@ class ClientsCrudTest extends TestCase
         }
 
         parent::tearDown();
+    }
+
+    private function makeClient(): Client
+    {
+        $suffix = $this->uniqueSuffix();
+
+        return Client::create([
+            'first_name' => 'Guest',
+            'last_name' => 'Fixture' . $suffix,
+            'email' => 'guest.' . $suffix . '@test.local',
+            'international_code' => '+966',
+            'mobile' => '05' . str_pad((string) ((int) substr($suffix, -8) % 100000000), 8, '0', STR_PAD_LEFT),
+            'IdType' => 'PASSPORT',
+            'IdNumber' => 'TEST-' . $suffix,
+            'gender' => 'MALE',
+            'guest_type' => 'VISITOR',
+        ]);
     }
 }

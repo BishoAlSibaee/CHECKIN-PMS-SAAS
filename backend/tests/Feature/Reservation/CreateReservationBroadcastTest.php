@@ -14,6 +14,13 @@ use Tests\TestCase;
 
 class CreateReservationBroadcastTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     public function test_create_reservation_dispatches_reservations_and_board_scopes(): void
     {
         Carbon::setTestNow('2026-08-20');

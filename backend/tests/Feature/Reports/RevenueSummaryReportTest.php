@@ -11,6 +11,13 @@ use Tests\TestCase;
 
 class RevenueSummaryReportTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     use FinanceTestBootstrap;
     use RevenueSummaryExpectations;
     public function test_includes_every_calendar_day_in_the_period(): void

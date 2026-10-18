@@ -7,6 +7,13 @@ use Tests\TestCase;
 
 class AllReportsSlugTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     public static function reportSlugProvider(): array
     {
         return array_map(fn (string $slug) => [$slug], ReportCatalog::allSlugs());

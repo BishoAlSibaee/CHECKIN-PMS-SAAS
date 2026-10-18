@@ -25,6 +25,13 @@ use Tests\TestCase;
  */
 class ChannexBookingIngestionTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     /**
      * A fully self-contained hotel/building/room-type/room, never touched by
      * anything else in this shared, never-reset test database. Earlier

@@ -18,6 +18,19 @@ abstract class TestCase extends BaseTestCase
     {
         parent::setUp();
 
+        // userWithApiPermissions() caches its User across calls as a
+        // micro-optimization — but the cache is a STATIC property, so it
+        // survives across test METHODS within the same PHPUnit process. A
+        // test using DatabaseTransactions rolls its DB writes back when it
+        // finishes, including this cached user's row and hotel attachment;
+        // without resetting the cache here, the NEXT test that hits the
+        // same cache key gets back a User object whose underlying row no
+        // longer exists, failing with "This account is not assigned to any
+        // hotel." Cheap enough to just always clear it per test regardless
+        // of whether this particular test uses transactions.
+        self::$cachedPermissionUser = null;
+        self::$cachedPermissionKey = '';
+
         if (! app()->environment('testing') || ! \App\Support\ReservationTestDataGuard::isIsolatedDatabase()) {
             return;
         }

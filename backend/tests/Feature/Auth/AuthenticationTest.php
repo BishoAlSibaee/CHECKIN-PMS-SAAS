@@ -7,6 +7,13 @@ use Tests\TestCase;
 
 class AuthenticationTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     public function test_login_with_valid_credentials_returns_token(): void
     {
         $user = User::first();

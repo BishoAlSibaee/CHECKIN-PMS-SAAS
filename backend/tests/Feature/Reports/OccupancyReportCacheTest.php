@@ -10,6 +10,13 @@ use Tests\TestCase;
 
 class OccupancyReportCacheTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     public function test_occupancy_report_cache_reuses_payload_until_board_bump(): void
     {
         Cache::flush();

@@ -11,6 +11,13 @@ use Tests\TestCase;
 
 class CollectionsTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     private function seedAndUser(array $permissions = ['view payments', 'view reservations'])
     {
         $this->artisan('db:seed', [

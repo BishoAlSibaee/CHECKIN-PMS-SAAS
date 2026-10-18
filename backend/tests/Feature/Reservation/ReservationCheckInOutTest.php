@@ -16,6 +16,13 @@ use Tests\TestCase;
 
 class ReservationCheckInOutTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     public function test_check_in_and_check_out_updates_logedin(): void
     {
         Carbon::setTestNow('2026-08-15');

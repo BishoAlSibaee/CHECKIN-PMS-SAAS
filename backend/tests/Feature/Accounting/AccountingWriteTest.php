@@ -8,6 +8,13 @@ use Tests\TestCase;
 
 class AccountingWriteTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     public function test_create_balanced_journal_entry(): void
     {
         $user = $this->userWithOnlyPermissions(['view accounting reports', 'manage journal entries']);

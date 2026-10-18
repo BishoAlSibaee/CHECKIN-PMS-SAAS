@@ -15,15 +15,32 @@ use Tests\TestCase;
 
 class ClientReservationsApiTest extends TestCase
 {
-    public function test_reservations_by_client_id_accepts_mysql2_client_and_returns_all_statuses(): void
-    {
-        Carbon::setTestNow('2026-06-15');
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
 
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Each test here reads Client::first()/Reservation data — previously
+        // only seeded by the first test method, which happened to work only
+        // because DatabaseTransactions-wrapped data from it was still
+        // visible to the rest in the same class purely by accident of test
+        // order. Seeding here makes every test self-sufficient.
         $this->artisan('db:seed', [
             '--class' => ReservationTestDataSeeder::class,
             '--force' => true,
             '--no-interaction' => true,
         ]);
+    }
+
+    public function test_reservations_by_client_id_accepts_mysql2_client_and_returns_all_statuses(): void
+    {
+        Carbon::setTestNow('2026-06-15');
 
         $user = $this->userWithApiPermissions();
         $client = Client::first();

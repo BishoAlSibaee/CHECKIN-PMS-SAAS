@@ -6,6 +6,13 @@ use Tests\TestCase;
 
 class GuestClassificationTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     public function test_list_guest_classifications(): void
     {
         $user = $this->userWithOnlyPermissions(['manage guest classifications']);

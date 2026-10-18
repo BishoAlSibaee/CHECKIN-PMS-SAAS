@@ -18,6 +18,13 @@ use Tests\TestCase;
 
 class AccountingAccrualPostingTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     use FinanceTestBootstrap;
 
     public function test_accrual_gl_matches_revenue_accrual_service_for_august_2026(): void

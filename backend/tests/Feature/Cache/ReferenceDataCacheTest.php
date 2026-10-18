@@ -8,6 +8,13 @@ use Tests\TestCase;
 
 class ReferenceDataCacheTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     public function test_reference_cache_invalidates_on_domain_bump(): void
     {
         Cache::flush();

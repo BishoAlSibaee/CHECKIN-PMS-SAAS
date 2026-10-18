@@ -75,6 +75,7 @@ class ReservationTestDataSeeder extends Seeder
         $clients = $this->ensureClients();
         $roomType = $this->ensureRoomType();
         $this->ensurePricingPlan($roomType);
+        $this->ensurePeakMonthAndDayRowsExist();
         $this->ensurePeakMonthsForPricingTests();
         $rooms = $this->ensureRooms($roomType);
 
@@ -361,6 +362,19 @@ class ReservationTestDataSeeder extends Seeder
         $this->call(HotelRoomTypesSeeder::class);
 
         return RoomType::query()->where('name_en', 'Deluxe')->firstOrFail();
+    }
+
+    private function ensurePeakMonthAndDayRowsExist(): void
+    {
+        // PeakMonth/PeakDay rows aren't created by any migration — only by
+        // PeakDayAndMonthSeeder. ensurePeakMonthsForPricingTests() and
+        // enableFridayPeak() below only UPDATE existing rows, so on a
+        // genuinely fresh database (no row to match) they silently do
+        // nothing, leaving every month/day non-peak regardless of what
+        // pricing tests expect.
+        if (PeakMonth::count() === 0 || PeakDay::count() === 0) {
+            $this->call(\Database\Seeders\PeakDayAndMonthSeeder::class);
+        }
     }
 
     private function ensurePeakMonthsForPricingTests(): void

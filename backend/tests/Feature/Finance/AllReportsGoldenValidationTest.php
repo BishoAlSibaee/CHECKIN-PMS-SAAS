@@ -13,6 +13,13 @@ use Tests\TestCase;
 
 class AllReportsGoldenValidationTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     use FinanceAssertions;
     use FinanceTestBootstrap;
 
@@ -26,7 +33,9 @@ class AllReportsGoldenValidationTest extends TestCase
             Carbon::parse(self::FINANCE_PERIOD_END)
         );
 
-        $this->assertCount(23, $results);
+        // 26, not 23 — ReportCatalog grew the three accounting-export slugs
+        // (generic/qoyod/daftra) after this golden count was written.
+        $this->assertCount(26, $results);
 
         $failures = [];
         foreach ($results as $result) {
@@ -145,7 +154,8 @@ class AllReportsGoldenValidationTest extends TestCase
 
     public function test_report_catalog_lists_all_slugs(): void
     {
-        $this->assertCount(23, ReportCatalog::allSlugs());
+        // 26, not 23 — same stale count as above.
+        $this->assertCount(26, ReportCatalog::allSlugs());
         $providerSlugs = array_map(fn (array $row) => $row[0], AllReportsSlugTest::reportSlugProvider());
         $this->assertSame(ReportCatalog::allSlugs(), $providerSlugs);
     }

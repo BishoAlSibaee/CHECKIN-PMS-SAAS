@@ -9,6 +9,13 @@ use Tests\TestCase;
 
 class DemoSuitesSeederTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     public function test_demo_suites_seeder_links_rooms_for_occupancy_board(): void
     {
         if (Room::count() < 6) {

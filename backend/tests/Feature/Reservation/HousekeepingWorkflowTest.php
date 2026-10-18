@@ -15,6 +15,13 @@ use Tests\TestCase;
 
 class HousekeepingWorkflowTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
+
+    protected function connectionsToTransact(): array
+    {
+        return ['mysql', 'mysql2'];
+    }
+
     private const TEST_NOW = '2026-06-15';
 
     protected function setUp(): void
