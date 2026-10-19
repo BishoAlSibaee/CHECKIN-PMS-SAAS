@@ -33,6 +33,7 @@ return [
 
     'allowed_origins_patterns' => [
         '#^https://([a-z0-9-]+\.)?osus\.network$#',
+        '#^https://([a-z0-9-]+\.)?checkin-pms\.com$#',
         '#^http://192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$#',
         '#^http://10\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$#',
     ],
