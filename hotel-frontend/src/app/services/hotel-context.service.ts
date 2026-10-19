@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, Injector } from '@angular/core';
 import { TranslateService } from '@ngx-translate/core';
 import { BehaviorSubject, combineLatest } from 'rxjs';
 import { DataService } from './Api/data.service';
@@ -39,8 +39,14 @@ export class HotelContextService {
 
   constructor(
     private dataService: DataService,
-    private translate: TranslateService,
-    private languageService: LanguageService,
+    // Lazily resolved (not constructor-injected) — TranslateService's HTTP
+    // loader and AuthInterceptor both sit in the same HttpClient pipeline as
+    // this service (AuthInterceptor injects HotelContextService directly),
+    // so injecting TranslateService/LanguageService here at construction
+    // time creates an NG0200 circular-dependency error. AuthInterceptor
+    // already works around the identical problem the same way (see its
+    // translateMessage()).
+    private injector: Injector,
   ) {
     this.dataService.user$.subscribe((user) => {
       const hotels = (user as unknown as { available_hotels?: HotelOption[] } | null)?.available_hotels ?? [];
@@ -56,14 +62,24 @@ export class HotelContextService {
       this.currentHotelIdSubject.next(savedIsValid ? saved : (serverDefault ?? hotels[0].id));
     });
 
-    // Re-applied on hotel switch AND on language change — switching language
-    // reloads that language's full static dictionary from en.json/ar.json,
-    // which would silently overwrite this override with the placeholder "$"
-    // again if it weren't reapplied here.
-    combineLatest([this.currentHotelId$, this.languageService.changes$]).subscribe(([hotelId]) => {
-      const hotel = this.availableHotels.find((h) => h.id === hotelId);
-      const currency = hotel?.tenant?.currency ?? 'SAR';
-      this.translate.set('COMMON.CURRENCY_SYMBOL', CURRENCY_SYMBOLS[currency] ?? currency, this.languageService.current);
+    // setTimeout pushes this past the current synchronous construction call
+    // stack (AuthInterceptor -> HotelContextService, built while HttpClient
+    // itself is being assembled) — resolving LanguageService/TranslateService
+    // here directly, even via Injector.get(), would still re-enter
+    // TranslateService's own construction and trip NG0200.
+    setTimeout(() => {
+      const languageService = this.injector.get(LanguageService);
+      const translate = this.injector.get(TranslateService);
+
+      // Re-applied on hotel switch AND on language change — switching
+      // language reloads that language's full static dictionary from
+      // en.json/ar.json, which would silently overwrite this override with
+      // the placeholder "$" again if it weren't reapplied here.
+      combineLatest([this.currentHotelId$, languageService.changes$]).subscribe(([hotelId]) => {
+        const hotel = this.availableHotels.find((h) => h.id === hotelId);
+        const currency = hotel?.tenant?.currency ?? 'SAR';
+        translate.set('COMMON.CURRENCY_SYMBOL', CURRENCY_SYMBOLS[currency] ?? currency, languageService.current);
+      });
     });
   }
 
