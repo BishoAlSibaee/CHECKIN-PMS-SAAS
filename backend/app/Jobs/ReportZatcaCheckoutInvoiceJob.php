@@ -20,7 +20,7 @@ class ReportZatcaCheckoutInvoiceJob
 
     public function handle(ZatcaCheckoutReportingService $reporting): void
     {
-        if (! $reporting->shouldReportOnCheckout()) {
+        if (! $reporting->shouldReportOnCheckout($this->reservationId)) {
             return;
         }
 

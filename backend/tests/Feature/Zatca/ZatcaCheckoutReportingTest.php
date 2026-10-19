@@ -80,6 +80,42 @@ class ZatcaCheckoutReportingTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_checkout_skips_zatca_for_a_non_sar_tenant_even_when_enabled(): void
+    {
+        Carbon::setTestNow('2026-08-15');
+        config([
+            'zatca.enabled' => true,
+            'zatca.auto_report_on_checkout' => true,
+            'zatca.storage_path' => storage_path('app/zatca-empty-'.uniqid()),
+        ]);
+
+        $reservationId = $this->createCheckedInPaidReservation();
+
+        $roomId = \App\Models\ReservationRoom::where('reservation_id', $reservationId)->value('room_id');
+        $hotelId = \DB::table('buildings')
+            ->join('rooms', 'rooms.building_id', '=', 'buildings.id')
+            ->where('rooms.id', $roomId)
+            ->value('buildings.hotel_id');
+        $tenantId = \App\Models\Hotel::find($hotelId)->tenant_id;
+        \App\Models\Tenant::where('id', $tenantId)->update(['currency' => 'USD']);
+
+        Carbon::setTestNow('2026-08-18');
+        $checkOut = $this->actingAs(
+            $this->userWithApiPermissions(['view reservations', 'update reservations']),
+            'api'
+        )->patchJson("/api/users/reservations/{$reservationId}", [
+            'logedin' => 0,
+        ]);
+
+        $checkOut->assertOk();
+        $checkOut->assertJsonPath('data.zatca_invoice', null);
+        $this->assertDatabaseMissing('zatca_invoices', [
+            'reservation_id' => $reservationId,
+        ]);
+
+        Carbon::setTestNow();
+    }
+
     public function test_reservation_show_includes_zatca_qr_code(): void
     {
         $reservation = $this->createBareReservation([

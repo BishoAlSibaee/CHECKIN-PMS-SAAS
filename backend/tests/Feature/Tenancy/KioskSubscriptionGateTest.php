@@ -115,4 +115,18 @@ class KioskSubscriptionGateTest extends TestCase
         // the tenant gate.
         $this->assertNotSame(403, $response->getStatusCode());
     }
+
+    public function test_ping_reflects_the_gate_for_the_out_of_service_screens_polling(): void
+    {
+        ['token' => $activeToken] = $this->createKioskDevice(now()->addDays(5));
+        $this->withHeader('Authorization', 'Bearer '.$activeToken)
+            ->getJson('/api/kiosk/ping')
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        ['token' => $expiredToken] = $this->createKioskDevice(now()->subDay());
+        $this->withHeader('Authorization', 'Bearer '.$expiredToken)
+            ->getJson('/api/kiosk/ping')
+            ->assertStatus(403);
+    }
 }

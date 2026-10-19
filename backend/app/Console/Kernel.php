@@ -33,6 +33,11 @@ class Kernel extends ConsoleKernel
         // Internal staff alert only when the Taqnyat SMS balance runs low —
         // never a message to a guest.
         $schedule->command('taqnyat:check-balance')->hourly();
+
+        // Heads-up before a tenant's subscription lapses and locks them out
+        // (see Tenant::isAccessAllowed) — staff can't renew it themselves,
+        // only a platform operator can, so this just gives them time to reach out.
+        $schedule->command('subscriptions:warn-expiring')->dailyAt('08:00');
     }
 
     /**

@@ -576,7 +576,7 @@ class ReservationController extends Controller
             $this->notifyReservationLive($id, $action, $affectsInventory);
 
             // Report synchronously so reservation show / invoice print include the tax QR.
-            if ($isCheckingOut && $this->zatcaCheckoutReportingService->shouldReportOnCheckout()) {
+            if ($isCheckingOut && $this->zatcaCheckoutReportingService->shouldReportOnCheckout($id)) {
                 try {
                     $this->zatcaCheckoutReportingService->reportReservationCheckout($id);
                 } catch (\Throwable $e) {

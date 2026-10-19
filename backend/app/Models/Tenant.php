@@ -19,6 +19,7 @@ class Tenant extends Model
         'name_ar',
         'name_en',
         'is_active',
+        'currency',
         'subscription_ends_at',
         'created_by_platform_admin_id',
     ];

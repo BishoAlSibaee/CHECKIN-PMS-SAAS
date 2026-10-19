@@ -17,6 +17,10 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::middleware(['kiosk.auth'])->group(function () {
+    // No permission gate — any valid device token should be able to check
+    // whether its hotel's tenant is still active/subscribed.
+    Route::get('ping', [KioskController::class, 'ping']);
+
     Route::middleware(['permission:view reservations,api'])->group(function () {
         Route::get('rooms', [KioskController::class, 'rooms']);
         Route::post('room-price', [KioskController::class, 'roomPrice']);

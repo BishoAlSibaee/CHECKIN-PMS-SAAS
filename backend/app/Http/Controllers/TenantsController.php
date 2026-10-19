@@ -26,6 +26,8 @@ use Spatie\Permission\PermissionRegistrar;
  */
 class TenantsController extends Controller
 {
+    private const CURRENCIES = ['SAR', 'USD', 'AED', 'EGP', 'KWD', 'QAR', 'BHD', 'OMR'];
+
     public function __construct(private HotelRoleProvisioningService $roleProvisioningService) {}
 
     public function index(Request $request)
@@ -129,6 +131,7 @@ class TenantsController extends Controller
             'hotel_name_ar' => 'required|string|max:255',
             'hotel_name_en' => 'required|string|max:255',
             ...$this->propertySpecRules(),
+            'currency' => ['nullable', 'string', Rule::in(self::CURRENCIES)],
             'subscription_days' => 'nullable|integer|min:1',
             'admin_name' => 'required|string|max:255',
             'admin_job_number' => ['required', 'string', Rule::unique('users', 'job_number')],
@@ -143,6 +146,7 @@ class TenantsController extends Controller
                     'name_ar' => $request->tenant_name_ar,
                     'name_en' => $request->tenant_name_en,
                     'is_active' => true,
+                    'currency' => $request->currency ?? 'SAR',
                     'subscription_ends_at' => $request->filled('subscription_days')
                         ? now()->addDays((int) $request->subscription_days)
                         : null,

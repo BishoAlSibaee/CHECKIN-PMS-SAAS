@@ -114,6 +114,13 @@ return [
             'expire' => 60,
             'throttle' => 60,
         ],
+
+        'platform_admins' => [
+            'provider' => 'platform_admins',
+            'table' => 'platform_admin_password_reset_tokens',
+            'expire' => 60,
+            'throttle' => 60,
+        ],
     ],
 
     /*

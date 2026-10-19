@@ -139,6 +139,84 @@ class TenantOnboardingTest extends TestCase
         $this->assertNotEmpty($loginResponse->json('data.token'));
     }
 
+    public function test_onboarding_defaults_currency_to_sar_when_not_specified(): void
+    {
+        $operator = $this->platformAdmin();
+        $suffix = (string) random_int(10000000, 99999999);
+
+        $response = $this->actingAs($operator, 'platform_admin')
+            ->postJson('/api/platform-admin/tenants', [
+                'tenant_name_ar' => 'عميل بلا عملة محددة',
+                'tenant_name_en' => 'No Currency Customer '.$suffix,
+                'hotel_name_ar' => 'فندقهم',
+                'hotel_name_en' => 'Their Hotel '.$suffix,
+                'buildings_count' => 1,
+                'floors_count' => 1,
+                'rooms_per_floor' => 1,
+                'admin_name' => 'Admin '.$suffix,
+                'admin_job_number' => 'NOCUR-'.$suffix,
+                'admin_email' => 'nocur-'.$suffix.'@test.local',
+                'admin_mobile' => '05'.$suffix,
+                'admin_password' => 'a-strong-password',
+            ]);
+
+        $this->assertApiSuccess($response);
+        $this->assertSame('SAR', $response->json('data.tenant.currency'));
+        $this->assertDatabaseHas('tenants', ['id' => $response->json('data.tenant.id'), 'currency' => 'SAR']);
+    }
+
+    public function test_onboarding_accepts_an_explicit_non_sar_currency(): void
+    {
+        $operator = $this->platformAdmin();
+        $suffix = (string) random_int(10000000, 99999999);
+
+        $response = $this->actingAs($operator, 'platform_admin')
+            ->postJson('/api/platform-admin/tenants', [
+                'tenant_name_ar' => 'عميل بعملة أخرى',
+                'tenant_name_en' => 'USD Customer '.$suffix,
+                'hotel_name_ar' => 'فندقهم',
+                'hotel_name_en' => 'Their Hotel '.$suffix,
+                'buildings_count' => 1,
+                'floors_count' => 1,
+                'rooms_per_floor' => 1,
+                'currency' => 'USD',
+                'admin_name' => 'Admin '.$suffix,
+                'admin_job_number' => 'USDCUR-'.$suffix,
+                'admin_email' => 'usdcur-'.$suffix.'@test.local',
+                'admin_mobile' => '05'.$suffix,
+                'admin_password' => 'a-strong-password',
+            ]);
+
+        $this->assertApiSuccess($response);
+        $this->assertSame('USD', $response->json('data.tenant.currency'));
+        $this->assertDatabaseHas('tenants', ['id' => $response->json('data.tenant.id'), 'currency' => 'USD']);
+    }
+
+    public function test_onboarding_rejects_an_unsupported_currency(): void
+    {
+        $operator = $this->platformAdmin();
+        $suffix = (string) random_int(10000000, 99999999);
+
+        $response = $this->actingAs($operator, 'platform_admin')
+            ->postJson('/api/platform-admin/tenants', [
+                'tenant_name_ar' => 'محاولة',
+                'tenant_name_en' => 'Attempt '.$suffix,
+                'hotel_name_ar' => 'محاولة',
+                'hotel_name_en' => 'Attempt '.$suffix,
+                'buildings_count' => 1,
+                'floors_count' => 1,
+                'rooms_per_floor' => 1,
+                'currency' => 'XYZ',
+                'admin_name' => 'Admin '.$suffix,
+                'admin_job_number' => 'BADCUR-'.$suffix,
+                'admin_email' => 'badcur-'.$suffix.'@test.local',
+                'admin_mobile' => '05'.$suffix,
+                'admin_password' => 'a-strong-password',
+            ]);
+
+        $response->assertStatus(422);
+    }
+
     public function test_a_platform_admin_can_add_a_branch_to_an_existing_tenant(): void
     {
         $operator = $this->platformAdmin();

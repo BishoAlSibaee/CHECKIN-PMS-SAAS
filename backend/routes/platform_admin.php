@@ -10,6 +10,8 @@ use Illuminate\Support\Facades\Route;
 // guard/model (see App\Models\PlatformAdmin) — no account belonging to any
 // tenant's hotel can authenticate here, regardless of permissions.
 Route::post('login', [PlatformAdminAuthController::class, 'login'])->middleware('throttle:login');
+Route::post('forgot-password', [PlatformAdminAuthController::class, 'forgotPassword'])->middleware('throttle:login');
+Route::post('reset-password', [PlatformAdminAuthController::class, 'resetPassword'])->middleware('throttle:login');
 
 Route::middleware('auth:platform_admin')->group(function () {
     Route::get('me', [PlatformAdminAuthController::class, 'me']);

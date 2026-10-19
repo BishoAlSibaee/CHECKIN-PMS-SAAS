@@ -51,10 +51,25 @@ class ZatcaCheckoutReportingService
         private \App\Services\HotelResolverService $hotelResolver,
     ) {}
 
-    public function shouldReportOnCheckout(): bool
+    /**
+     * ZATCA e-invoicing is a Saudi-specific legal requirement — a tenant
+     * that chose a non-SAR currency at onboarding isn't a Saudi taxpayer
+     * subject to it, regardless of the global zatca.enabled toggle.
+     */
+    public function shouldReportOnCheckout(int $reservationId): bool
     {
-        return (bool) config('zatca.enabled', true)
-            && (bool) config('zatca.auto_report_on_checkout', true);
+        if (! ((bool) config('zatca.enabled', true) && (bool) config('zatca.auto_report_on_checkout', true))) {
+            return false;
+        }
+
+        $reservation = Reservation::query()->with('reservationRooms.room.building')->find($reservationId);
+        if ($reservation === null) {
+            return false;
+        }
+
+        $hotelId = $this->hotelResolver->forReservation($reservation);
+
+        return (\App\Models\Hotel::find($hotelId)?->tenant?->currency ?? 'SAR') === 'SAR';
     }
 
     public function reportReservationCheckout(int $reservationId): ZatcaInvoice
@@ -272,7 +287,7 @@ class ZatcaCheckoutReportingService
             'subtotal' => $subtotal,
             'tax_amount' => $tax,
             'total' => $total,
-            'currency' => 'SAR',
+            'currency' => \App\Models\Hotel::find($hotelId)?->tenant?->currency ?? 'SAR',
             'line_items' => [[
                 'name' => 'Refund for hotel stay #'.$reservationId,
                 'quantity' => 1,
@@ -483,7 +498,7 @@ class ZatcaCheckoutReportingService
                 return null;
             }
 
-            if ($invoice->status === ZatcaInvoice::STATUS_PENDING && $this->shouldReportOnCheckout()) {
+            if ($invoice->status === ZatcaInvoice::STATUS_PENDING && $this->shouldReportOnCheckout($reservationId)) {
                 try {
                     $invoice = $this->reportReservationCheckout($reservationId);
                 } catch (\Throwable $e) {

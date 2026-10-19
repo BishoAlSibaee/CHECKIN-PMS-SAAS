@@ -29,6 +29,17 @@ class KioskController extends Controller
     ) {
     }
 
+    /**
+     * No business data — just lets the device cheaply confirm it's still
+     * let through AuthenticateKioskDevice (i.e. the hotel's tenant is
+     * active and subscribed). Used by the kiosk app's out-of-service
+     * screen to poll for reactivation without hitting a real endpoint.
+     */
+    public function ping(Request $request)
+    {
+        return \SuccessData('pong', ['ok' => true]);
+    }
+
     public function rooms(Request $request)
     {
         $device = $request->attributes->get('kioskDevice');
