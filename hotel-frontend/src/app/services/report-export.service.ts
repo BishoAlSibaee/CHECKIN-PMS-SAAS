@@ -370,7 +370,7 @@ export class ReportExportService {
       <div class="pdf-export-page" dir="${dir}" lang="${lang}">
         <div class="pdf-export-page__body">
           <div class="pdf-export-header">
-            <div class="pdf-export-brand">OSUS Alalamiah</div>
+            <div class="pdf-export-brand">CHECKIN PMS</div>
             <h1 class="pdf-export-title">${this.escapeHtml(opts.title)}</h1>
           </div>
           ${metaBlock}

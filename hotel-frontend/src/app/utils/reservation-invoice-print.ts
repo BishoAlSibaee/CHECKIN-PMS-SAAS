@@ -430,7 +430,7 @@ export function buildReservationInvoiceHtml(data: ReservationInvoicePrintData): 
   <div class="invoice">
     <header class="invoice-header">
       <div>
-        <p class="brand-name">OSUS Alalamiah</p>
+        <p class="brand-name">CHECKIN PMS</p>
         <p class="brand-tag">Hotel Management</p>
       </div>
       <div class="invoice-meta">
