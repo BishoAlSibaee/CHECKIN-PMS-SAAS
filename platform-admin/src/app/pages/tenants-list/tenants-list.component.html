@@ -24,6 +24,7 @@
         <thead>
           <tr>
             <th>المستأجر</th>
+            <th>العملة</th>
             <th>عدد الفنادق</th>
             <th>الحالة</th>
             <th>الاشتراك</th>
@@ -38,6 +39,7 @@
                 <div class="tenant-name">{{ tenant.name_ar }}</div>
                 <div class="tenant-name-en">{{ tenant.name_en }}</div>
               </td>
+              <td>{{ tenant.currency }}</td>
               <td>{{ tenant.hotels_count }}</td>
               <td>
                 @if (tenant.is_active) {
@@ -58,7 +60,7 @@
             </tr>
           } @empty {
             <tr>
-              <td colspan="6" class="empty-row">لا يوجد مستأجرون بعد</td>
+              <td colspan="7" class="empty-row">لا يوجد مستأجرون بعد</td>
             </tr>
           }
         </tbody>

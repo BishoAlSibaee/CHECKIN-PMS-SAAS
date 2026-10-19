@@ -2,7 +2,7 @@ import { Component, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { TenantsService } from '../../services/tenants.service';
-import { OnboardTenantResponse } from '../../models/tenant.model';
+import { OnboardTenantResponse, TENANT_CURRENCIES, TenantCurrency } from '../../models/tenant.model';
 
 @Component({
   selector: 'app-onboard-tenant',
@@ -19,6 +19,8 @@ export class OnboardTenantComponent {
   buildingsCount = 1;
   floorsCount = 4;
   roomsPerFloor = 10;
+  readonly currencies = TENANT_CURRENCIES;
+  currency: TenantCurrency = 'SAR';
   noExpiry = false;
   subscriptionDays: number | null = 14;
   adminName = '';
@@ -46,6 +48,7 @@ export class OnboardTenantComponent {
         buildings_count: this.buildingsCount,
         floors_count: this.floorsCount,
         rooms_per_floor: this.roomsPerFloor,
+        currency: this.currency,
         subscription_days: this.noExpiry ? null : this.subscriptionDays,
         admin_name: this.adminName,
         admin_job_number: this.adminJobNumber,

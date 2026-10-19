@@ -12,11 +12,15 @@ export interface Hotel {
   is_active: boolean;
 }
 
+export const TENANT_CURRENCIES = ['SAR', 'USD', 'AED', 'EGP', 'KWD', 'QAR', 'BHD', 'OMR'] as const;
+export type TenantCurrency = (typeof TENANT_CURRENCIES)[number];
+
 export interface Tenant {
   id: number;
   name_ar: string;
   name_en: string;
   is_active: boolean;
+  currency: TenantCurrency;
   subscription_ends_at: string | null;
   is_subscription_active: boolean;
   hotels_count: number;
@@ -36,6 +40,7 @@ export interface OnboardTenantRequest extends PropertySpec {
   tenant_name_en: string;
   hotel_name_ar: string;
   hotel_name_en: string;
+  currency: TenantCurrency;
   subscription_days: number | null;
   admin_name: string;
   admin_job_number: string;

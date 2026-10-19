@@ -15,6 +15,9 @@
         <dt>الفندق</dt>
         <dd>{{ r.hotel.name_ar }} ({{ r.hotel.name_en }})</dd>
 
+        <dt>العملة</dt>
+        <dd>{{ r.tenant.currency }}</dd>
+
         <dt>رقم موظف المدير</dt>
         <dd>{{ r.admin.job_number }}</dd>
 
@@ -42,6 +45,14 @@
         <div class="field">
           <label for="tenantNameEn">اسم المستأجر (إنجليزي)</label>
           <input id="tenantNameEn" name="tenantNameEn" [(ngModel)]="tenantNameEn" required />
+        </div>
+        <div class="field">
+          <label for="currency">العملة</label>
+          <select id="currency" name="currency" [(ngModel)]="currency" required>
+            @for (c of currencies; track c) {
+              <option [value]="c">{{ c }}</option>
+            }
+          </select>
         </div>
       </div>
 
