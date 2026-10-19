@@ -2454,7 +2454,8 @@
     "CHANNEX_UNMAPPED_RATE_TITLE": "الحجز {{booking_id}} يحتوي على خطة سعر غير مطابَقة — راجع مطابقة خطط الأسعار في Channex",
     "CHANNEX_GUEST_MESSAGE_TITLE": "رسالة جديدة من ضيف: \"{{preview}}\"",
     "CHANNEX_NEW_REVIEW_TITLE": "تقييم جديد ({{score}}/10) من {{channel}}",
-    "CHANNEX_REVIEW_UPDATED_TITLE": "تم تحديث تقييم ({{score}}/10) من {{channel}}"
+    "CHANNEX_REVIEW_UPDATED_TITLE": "تم تحديث تقييم ({{score}}/10) من {{channel}}",
+    "SUBSCRIPTION_EXPIRING_SOON_TITLE": "اشتراككم ينتهي بتاريخ {{date}} (متبقٍ {{days}} يوم) — يرجى التواصل مع الدعم للتجديد."
   },
   "AIRBNB_SETTINGS": {
     "EYEBROW": "طلب الحجز من Airbnb",

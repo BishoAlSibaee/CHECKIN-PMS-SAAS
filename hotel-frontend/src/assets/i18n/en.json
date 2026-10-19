@@ -2146,7 +2146,8 @@
     "CHANNEX_UNMAPPED_RATE_TITLE": "Booking {{booking_id}} has an unmapped rate plan — check Channex rate plan mapping",
     "CHANNEX_GUEST_MESSAGE_TITLE": "New guest message: \"{{preview}}\"",
     "CHANNEX_NEW_REVIEW_TITLE": "New review ({{score}}/10) from {{channel}}",
-    "CHANNEX_REVIEW_UPDATED_TITLE": "Review updated ({{score}}/10) from {{channel}}"
+    "CHANNEX_REVIEW_UPDATED_TITLE": "Review updated ({{score}}/10) from {{channel}}",
+    "SUBSCRIPTION_EXPIRING_SOON_TITLE": "Your subscription expires on {{date}} ({{days}} days left) — please contact support to renew."
   },
   "AIRBNB_SETTINGS": {
     "EYEBROW": "Airbnb Request to Book",
