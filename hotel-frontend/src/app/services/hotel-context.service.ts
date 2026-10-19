@@ -1,9 +1,28 @@
 import { Injectable } from '@angular/core';
-import { BehaviorSubject } from 'rxjs';
+import { TranslateService } from '@ngx-translate/core';
+import { BehaviorSubject, combineLatest } from 'rxjs';
 import { DataService } from './Api/data.service';
+import { LanguageService } from './language.service';
 import { HotelOption } from '../models/Auth/login-response';
 
 const STORAGE_KEY = 'currentHotelId';
+
+/**
+ * COMMON.CURRENCY_SYMBOL in en.json/ar.json is a static "$" placeholder —
+ * every template/component reading it (15+ sites) does so through
+ * ngx-translate, so overriding the key at runtime via TranslateService.set()
+ * updates all of them reactively without touching a single one.
+ */
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  SAR: 'ر.س',
+  USD: '$',
+  AED: 'د.إ',
+  EGP: 'ج.م',
+  KWD: 'د.ك',
+  QAR: 'ر.ق',
+  BHD: 'د.ب',
+  OMR: 'ر.ع',
+};
 
 /**
  * Which hotel (branch) the staff member is currently working in. Mirrors
@@ -18,7 +37,11 @@ export class HotelContextService {
   private readonly currentHotelIdSubject = new BehaviorSubject<number | null>(null);
   readonly currentHotelId$ = this.currentHotelIdSubject.asObservable();
 
-  constructor(private dataService: DataService) {
+  constructor(
+    private dataService: DataService,
+    private translate: TranslateService,
+    private languageService: LanguageService,
+  ) {
     this.dataService.user$.subscribe((user) => {
       const hotels = (user as unknown as { available_hotels?: HotelOption[] } | null)?.available_hotels ?? [];
       if (hotels.length === 0) {
@@ -31,6 +54,16 @@ export class HotelContextService {
       const serverDefault = (user as unknown as { current_hotel_id?: number } | null)?.current_hotel_id;
 
       this.currentHotelIdSubject.next(savedIsValid ? saved : (serverDefault ?? hotels[0].id));
+    });
+
+    // Re-applied on hotel switch AND on language change — switching language
+    // reloads that language's full static dictionary from en.json/ar.json,
+    // which would silently overwrite this override with the placeholder "$"
+    // again if it weren't reapplied here.
+    combineLatest([this.currentHotelId$, this.languageService.changes$]).subscribe(([hotelId]) => {
+      const hotel = this.availableHotels.find((h) => h.id === hotelId);
+      const currency = hotel?.tenant?.currency ?? 'SAR';
+      this.translate.set('COMMON.CURRENCY_SYMBOL', CURRENCY_SYMBOLS[currency] ?? currency, this.languageService.current);
     });
   }
 

@@ -2,6 +2,8 @@ export interface HotelOption {
   id: number;
   name_ar: string;
   name_en: string;
+  tenant_id?: number;
+  tenant?: { currency?: string } | null;
 }
 
 export interface LoginResponse {
