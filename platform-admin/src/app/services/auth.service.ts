@@ -29,6 +29,19 @@ export class AuthService {
       );
   }
 
+  forgotPassword(email: string): Observable<ApiEnvelope<null>> {
+    return this.http.post<ApiEnvelope<null>>(environment.apiUrl + 'platform-admin/forgot-password', { email });
+  }
+
+  resetPassword(payload: {
+    email: string;
+    token: string;
+    password: string;
+    password_confirmation: string;
+  }): Observable<ApiEnvelope<null>> {
+    return this.http.post<ApiEnvelope<null>>(environment.apiUrl + 'platform-admin/reset-password', payload);
+  }
+
   logout(): void {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(NAME_KEY);
