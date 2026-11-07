@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\GrmsCredentialController;
+use App\Http\Controllers\GrmsOutboxAdminController;
 use App\Http\Controllers\PlatformAdminAuthController;
 use App\Http\Controllers\PlatformAdminsController;
 use App\Http\Controllers\TenantsController;
@@ -25,4 +27,12 @@ Route::middleware('auth:platform_admin')->group(function () {
     Route::put('tenants/{tenant}', [TenantsController::class, 'update']);
     Route::post('tenants/{tenant}/hotels', [TenantsController::class, 'addHotel']);
     Route::post('tenants/{tenant}/renew', [TenantsController::class, 'renewSubscription']);
+
+    Route::get('hotels/{hotel}/grms-credentials', [GrmsCredentialController::class, 'index']);
+    Route::post('hotels/{hotel}/grms-credentials', [GrmsCredentialController::class, 'generate']);
+    Route::post('grms-credentials/{credential}/rotate', [GrmsCredentialController::class, 'rotate']);
+    Route::patch('hotels/{hotel}/grms-protocol', [GrmsCredentialController::class, 'updateProtocol']);
+
+    Route::get('hotels/{hotel}/grms-outbox-events', [GrmsOutboxAdminController::class, 'index']);
+    Route::post('grms-outbox-events/{event}/retry', [GrmsOutboxAdminController::class, 'retry']);
 });

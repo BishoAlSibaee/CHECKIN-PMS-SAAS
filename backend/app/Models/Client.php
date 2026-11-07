@@ -26,6 +26,19 @@ class Client extends Model
         'company_id',
     ];
 
+    /**
+     * GRMS v1 contract: guest.updated has its own version sequence per
+     * guest.id — same pattern as Reservation::version.
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (Client $client): void {
+            if ($client->exists && $client->isDirty()) {
+                $client->version = ((int) ($client->getOriginal('version') ?? 1)) + 1;
+            }
+        });
+    }
+
     public function notes()
     {
         return $this->hasMany(ClientNote::class);

@@ -82,4 +82,6 @@ Route::middleware(['permission:update reservations,api'])->group(function () {
 Route::middleware(['permission:cancel reservations,api'])->group(function () {
     Route::post('reservations/{id}/cancel', [ReservationController::class, 'cancel']);
     Route::post('reservations/{id}/rooms/{roomId}/cancel', [ReservationController::class, 'cancelRoom']);
+    Route::post('reservations/{id}/rooms/{roomId}/move', [ReservationController::class, 'moveRoom']);
+    Route::post('reservations/{id}/no-show', [ReservationController::class, 'markNoShow']);
 });

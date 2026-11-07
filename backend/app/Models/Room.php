@@ -12,6 +12,19 @@ class Room extends Model
     use HasFactory;
     public $timestamps = true;
 
+    /**
+     * GRMS v1 contract staleness check for room.blocked/unblocked — same
+     * pattern as Reservation::version.
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (Room $room): void {
+            if ($room->exists && $room->isDirty()) {
+                $room->version = ((int) ($room->getOriginal('version') ?? 1)) + 1;
+            }
+        });
+    }
+
     function suite(): BelongsTo
     {
         return $this->belongsTo(Suite::class);

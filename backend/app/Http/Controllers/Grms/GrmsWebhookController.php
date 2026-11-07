@@ -32,7 +32,11 @@ class GrmsWebhookController extends Controller
             return response()->json(['message' => 'Missing room_number'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
-        $room = Room::where('number', $roomNumber)->where('active', 1)->first();
+        $room = Room::where('number', $roomNumber)->where('active', 1)->with('building')->first();
+
+        if ($room !== null && !\App\Services\Grms\GrmsProtocolGuard::allows((int) $room->building->hotel_id, 'legacy')) {
+            return response()->json(['message' => 'other_protocol'], Response::HTTP_CONFLICT);
+        }
 
         if ($room === null) {
             Log::warning('GRMS room-ready webhook: no matching room', ['room_number' => $roomNumber]);

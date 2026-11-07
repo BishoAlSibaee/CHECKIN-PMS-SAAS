@@ -116,10 +116,21 @@ return Success('Rooms created successfully.', $addedRooms);
             $room->capacity = $request->capacity;
         }
         $markingReady = false;
+        $oldStatus = (int) $room->roomStatus;
+        $newStatus = $oldStatus;
         if ($request->has('roomStatus')) {
             $newStatus = (int) $request->roomStatus;
+
+            // GRMS contract: a block of an occupied room is refused
+            // (room_occupied) on their side — refuse it here too instead of
+            // sending an event we know they'll bounce.
+            if ($newStatus === ReservationRoomStatusService::ROOM_OUT_OF_SERVICE
+                && $oldStatus === ReservationRoomStatusService::ROOM_OCCUPIED) {
+                return Failed('Cannot block an occupied room — check the guest out first.', 422);
+            }
+
             $markingReady = $newStatus === ReservationRoomStatusService::ROOM_AVAILABLE
-                && (int) $room->roomStatus !== ReservationRoomStatusService::ROOM_AVAILABLE;
+                && $oldStatus !== ReservationRoomStatusService::ROOM_AVAILABLE;
             $room->roomStatus = $newStatus;
         }
 
@@ -135,10 +146,51 @@ return Success('Rooms created successfully.', $addedRooms);
                 }
             }
 
+            try {
+                $this->enqueueGrmsBlockEvent($room, $oldStatus, $newStatus, (string) ($request->reason ?? ''));
+            } catch (\Throwable $e) {
+                report($e);
+            }
+
             return Success('Room updated Successfully');
         } catch (\Exception $e) {
             return Failed($e->getMessage());
         }
+    }
+
+    /**
+     * GRMS v1 contract: room.blocked / room.unblocked, sent only on the
+     * transition into/out of out_of_service — not on every save.
+     */
+    private function enqueueGrmsBlockEvent(Room $room, int $oldStatus, int $newStatus, string $reason): void
+    {
+        $outOfService = ReservationRoomStatusService::ROOM_OUT_OF_SERVICE;
+        $becameBlocked = $newStatus === $outOfService && $oldStatus !== $outOfService;
+        $becameUnblocked = $oldStatus === $outOfService && $newStatus !== $outOfService;
+
+        if (!$becameBlocked && !$becameUnblocked) {
+            return;
+        }
+
+        $hotelId = (int) ($room->building?->hotel_id ?? 0);
+        if ($hotelId === 0 || !\App\Services\Grms\GrmsProtocolGuard::allows($hotelId, 'v1')) {
+            return;
+        }
+
+        $type = $becameBlocked ? 'room.blocked' : 'room.unblocked';
+        $data = ['room' => ['code' => $room->number]];
+        if ($becameBlocked && $reason !== '') {
+            $data['reason'] = $reason;
+        }
+
+        app(\App\Services\Grms\GrmsOutboxService::class)->enqueue(
+            $hotelId,
+            $type,
+            'room',
+            (string) $room->id,
+            (int) $room->version,
+            $data,
+        );
     }
 
     public function deleteRoom(DestroyRoomRequest $request)

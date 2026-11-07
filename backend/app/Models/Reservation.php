@@ -17,6 +17,16 @@ class Reservation extends Model
         static::deleting(function (Reservation $reservation): void {
             ReservationRelatedCleanup::purgeRelated([(int) $reservation->id]);
         });
+
+        // GRMS v1 contract staleness check: an inbound/outbound event whose
+        // version is older than what we already have is ignored. Only bumps
+        // on a real update to an existing row — a brand-new reservation
+        // starts at its migration default (1), not 2.
+        static::saving(function (Reservation $reservation): void {
+            if ($reservation->exists && $reservation->isDirty()) {
+                $reservation->version = ((int) ($reservation->getOriginal('version') ?? 1)) + 1;
+            }
+        });
     }
 
     /** Guest physically in room (used by RoomOccupancyService and UI). */

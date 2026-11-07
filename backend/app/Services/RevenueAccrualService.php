@@ -297,4 +297,44 @@ class RevenueAccrualService
             ]);
         }
     }
+
+    /**
+     * Used by room moves (ReservationController::moveRoom()) — unlike
+     * persistDailyCharges(), only touches nights from $fromDate onward.
+     * Nights already stayed in the OLD room keep their original room_id
+     * and amount untouched, preserving an accurate historical record of
+     * which physical room each night was actually in.
+     *
+     * @param  array<int, array{date:string, base_amount:float, is_peak_day:bool, is_in_plan:bool, price_source:string}>  $lines
+     */
+    public function persistDailyChargesFrom(
+        int $reservationId,
+        int $reservationRoomId,
+        int $roomId,
+        int $rentType,
+        string $fromDate,
+        array $lines
+    ): void {
+        ReservationDailyCharge::where('reservation_room_id', $reservationRoomId)
+            ->where('charge_date', '>=', $fromDate)
+            ->delete();
+
+        foreach ($lines as $line) {
+            if ($line['date'] < $fromDate) {
+                continue;
+            }
+
+            ReservationDailyCharge::create([
+                'reservation_id' => $reservationId,
+                'reservation_room_id' => $reservationRoomId,
+                'room_id' => $roomId,
+                'charge_date' => $line['date'],
+                'base_amount' => $line['base_amount'],
+                'is_peak_day' => $line['is_peak_day'],
+                'is_in_plan' => $line['is_in_plan'],
+                'price_source' => $line['price_source'],
+                'rent_type' => $rentType,
+            ]);
+        }
+    }
 }

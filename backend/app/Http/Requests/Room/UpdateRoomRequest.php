@@ -29,6 +29,7 @@ class UpdateRoomRequest extends FormRequest
             'room_type_id' => 'nullable|numeric|exists:room_types,id',
             'capacity' => 'nullable|numeric',
             'roomStatus' => 'nullable|integer|in:1,2,3,4',
+            'reason' => 'nullable|string|max:255',
         ];
     }
 

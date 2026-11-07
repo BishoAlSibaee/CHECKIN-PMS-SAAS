@@ -18,6 +18,7 @@ class PosCharge extends Model
 
     protected $fillable = [
         'hotel_id',
+        'grms_charge_id',
         'reservation_id',
         'pos_category_id',
         'description',

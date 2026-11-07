@@ -60,6 +60,14 @@ class RefundPolicyService
 
     public function assertRefundable(Reservation $reservation, ?string $newExpireDate = null): void
     {
+        // A no-show forfeits the full amount regardless of the hotel's
+        // refund policy — checked before the generic "already cancelled"
+        // message below, since a no-show IS cancelled by that point and
+        // deserves its own, more specific reason.
+        if ($reservation->is_no_show) {
+            throw new RefundNotAllowedException('No refund is due — this reservation was marked as a no-show.');
+        }
+
         if (Reservation::isCancelled((int) $reservation->reservation_status)) {
             throw new RefundNotAllowedException('Reservation already cancelled, cannot refund.');
         }

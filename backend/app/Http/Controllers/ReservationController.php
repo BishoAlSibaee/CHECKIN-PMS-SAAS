@@ -54,6 +54,30 @@ use Illuminate\Support\Facades\Auth;
 
 class ReservationController extends Controller
 {
+    /**
+     * notifyReservationLive()'s $action strings mapped to the GRMS v1
+     * contract's event types (confirmed with the GRMS team — see
+     * docs/pms-contract.md section 5 on their side). 'room_moved' and
+     * 'reservation_room_cancelled' are deliberately absent: both need a
+     * specific room code the generic path doesn't have, so cancelRoom() and
+     * moveRoom() each enqueue their own richer event directly instead of
+     * going through this map.
+     */
+    private const GRMS_V1_EVENT_TYPES = [
+        'reservation_created' => 'reservation.created',
+        'reservation_updated' => 'reservation.updated',
+        'reservation_cancelled' => 'reservation.cancelled',
+        'checked_in' => 'stay.checked_in',
+        'checked_out' => 'stay.checked_out',
+        'reservation_extended' => 'stay.extended',
+        'reservation_shortened' => 'stay.shortened',
+        // A no-show is a reservation.updated carrying status "no_show" — NOT
+        // reservation.cancelled (contract: status enum has a dedicated
+        // no_show value; cancelled and no_show are different outcomes to
+        // GRMS even though both free the rooms on their side).
+        'reservation_no_show' => 'reservation.updated',
+    ];
+
     public function __construct(
         private PricingEngine $pricingEngine,
         private RevenueAccrualService $revenueAccrualService,
@@ -101,6 +125,12 @@ class ReservationController extends Controller
             report($e);
         }
 
+        try {
+            $this->enqueueGrmsOutboxEvent($reservationId, $action);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
         // Anything that changes room inventory (new/cancelled/extended/shortened
         // booking, check-in/out) must tell Channex the new availability for
         // every OTA channel it's connected to — same "never block the booking
@@ -131,6 +161,181 @@ class ReservationController extends Controller
                 (int) $row->room_type_id
             );
         }
+    }
+
+    /**
+     * Enqueues the GRMS v1 outbox event (if any) for a notifyReservationLive()
+     * action, for hotels on the v1 protocol only. No-op for actions not in
+     * GRMS_V1_EVENT_TYPES (legacy-only events, or ones handled at their own
+     * call site — see the constant's docblock) and for legacy-protocol hotels.
+     */
+    private function enqueueGrmsOutboxEvent(int $reservationId, string $action): void
+    {
+        $type = self::GRMS_V1_EVENT_TYPES[$action] ?? null;
+        if ($type === null) {
+            return;
+        }
+
+        $reservation = Reservation::with(['client', 'reservationRooms.room.building', 'reservationRooms.room.roomType'])
+            ->find($reservationId);
+        if ($reservation === null) {
+            return;
+        }
+
+        $hotelId = null;
+        foreach ($reservation->reservationRooms as $resRoom) {
+            if ($resRoom->room?->building?->hotel_id) {
+                $hotelId = (int) $resRoom->room->building->hotel_id;
+                break;
+            }
+        }
+        if ($hotelId === null || !\App\Services\Grms\GrmsProtocolGuard::allows($hotelId, 'v1')) {
+            return;
+        }
+
+        $delaySeconds = $this->grmsHasSuiteRoom($reservation) ? 5 : 0;
+
+        $activeRoomCodes = $reservation->reservationRooms
+            ->filter(fn (ReservationRoom $rr) => !ReservationRoom::isCancelled((int) $rr->status))
+            ->map(fn (ReservationRoom $rr) => $rr->room?->number)
+            ->filter(fn ($code) => $code !== null && $code !== '')
+            ->values();
+
+        $data = match ($type) {
+            'reservation.created', 'reservation.updated' => [
+                'reservation' => $this->grmsReservationPayload($reservation),
+            ],
+            // Contract section 5: rooms[] is "all, or the cancelled ones" —
+            // for a whole-reservation cancel (this generic path) that's ALL
+            // of them; cancelRoom() sends its own event with just the one
+            // room being dropped instead of going through this method.
+            'reservation.cancelled' => [
+                'reservation' => ['id' => (string) $reservation->id],
+                'rooms' => $activeRoomCodes->map(fn ($code) => ['room' => ['code' => $code]])->values(),
+            ],
+            'stay.checked_in' => [
+                'reservation' => ['id' => (string) $reservation->id],
+                'rooms' => $activeRoomCodes->map(fn ($code) => [
+                    'room' => ['code' => $code],
+                    'checked_in_at' => now()->toIso8601String(),
+                ])->values(),
+            ],
+            'stay.checked_out' => [
+                'reservation' => ['id' => (string) $reservation->id],
+                'rooms' => $activeRoomCodes->map(fn ($code) => [
+                    'room' => ['code' => $code],
+                    'checked_out_at' => now()->toIso8601String(),
+                ])->values(),
+            ],
+            'stay.extended', 'stay.shortened' => [
+                'reservation' => ['id' => (string) $reservation->id],
+                'rooms' => $activeRoomCodes->map(fn ($code) => [
+                    'room' => ['code' => $code],
+                    'check_out_date' => $reservation->expire_date,
+                ])->values(),
+            ],
+            default => [],
+        };
+
+        app(\App\Services\Grms\GrmsOutboxService::class)->enqueue(
+            $hotelId,
+            $type,
+            'reservation',
+            (string) $reservation->id,
+            (int) $reservation->version,
+            $data,
+            $delaySeconds,
+        );
+    }
+
+    /** The contract's exact `reservation` shape — docs/pms-contract.md section 5. */
+    private function grmsReservationPayload(Reservation $reservation): array
+    {
+        $payload = [
+            'id' => (string) $reservation->id,
+            'confirmation_code' => $reservation->confirmation_code,
+            'status' => $reservation->is_no_show
+                ? 'no_show'
+                : \App\Services\Grms\GrmsContractEnums::reservationStatus((int) $reservation->reservation_status),
+            'check_in_date' => $reservation->start_date,
+            'check_out_date' => $reservation->expire_date,
+            'primary_guest' => $this->grmsGuestPayload($reservation->client),
+            'rooms' => $reservation->reservationRooms
+                ->filter(fn (ReservationRoom $rr) => !ReservationRoom::isCancelled((int) $rr->status))
+                ->map(fn (ReservationRoom $rr) => [
+                    'room' => ['code' => $rr->room?->number],
+                    'room_type' => $rr->room?->roomType?->name_en,
+                    'check_in_date' => $reservation->start_date,
+                    'check_out_date' => $reservation->expire_date,
+                    // We don't track per-room occupant counts — 1 is a safe
+                    // placeholder until/unless GRMS tells us this matters.
+                    'guests' => 1,
+                ])
+                ->values(),
+        ];
+
+        $suite = $this->grmsSuiteMarker($reservation);
+        if ($suite !== null) {
+            $payload['suite'] = $suite;
+        }
+
+        return $payload;
+    }
+
+    /**
+     * Contract section 5 "Suites": present only for a WHOLE-suite booking —
+     * every active room on the reservation belongs to the same suite, and
+     * every active member room of that suite is on the reservation (no
+     * partial booking, no extra ordinary room mixed in). Absent otherwise,
+     * even if some of the rooms happen to be suite members.
+     *
+     * @return array{id: string, number: string}|null
+     */
+    private function grmsSuiteMarker(Reservation $reservation): ?array
+    {
+        $activeRooms = $reservation->reservationRooms
+            ->filter(fn (ReservationRoom $rr) => !ReservationRoom::isCancelled((int) $rr->status))
+            ->map(fn (ReservationRoom $rr) => $rr->room)
+            ->filter();
+
+        if ($activeRooms->isEmpty()) {
+            return null;
+        }
+
+        $suiteIds = $activeRooms->map(fn ($room) => $room->suite_id)->unique();
+        if ($suiteIds->count() !== 1 || $suiteIds->first() === null) {
+            return null;
+        }
+
+        $suite = \App\Models\Suite::find($suiteIds->first());
+        if ($suite === null) {
+            return null;
+        }
+
+        $suiteMemberCount = \App\Models\Room::where('suite_id', $suite->id)->where('active', 1)->count();
+        if ($suiteMemberCount !== $activeRooms->count()) {
+            return null;
+        }
+
+        return ['id' => (string) $suite->id, 'number' => (string) $suite->number];
+    }
+
+    /** Whether any active room on this reservation belongs to a suite — gates the move-debounce delay. */
+    private function grmsHasSuiteRoom(Reservation $reservation): bool
+    {
+        return $reservation->reservationRooms
+            ->filter(fn (ReservationRoom $rr) => !ReservationRoom::isCancelled((int) $rr->status))
+            ->contains(fn (ReservationRoom $rr) => $rr->room?->suite_id !== null);
+    }
+
+    /** The contract's `primary_guest` shape — docs/pms-contract.md section 5. */
+    private function grmsGuestPayload(?\App\Models\Client $client): ?array
+    {
+        if ($client === null) {
+            return null;
+        }
+
+        return \App\Services\Grms\GrmsGuestPayload::build($client);
     }
 
     /**
@@ -701,6 +906,66 @@ class ReservationController extends Controller
     }
 
     /**
+     * Marks a reservation as a no-show: the guest never arrived and never
+     * cancelled. Mechanically a cancellation (same room-release, same
+     * accounting reversal) with two differences: no refund is ever allowed
+     * regardless of the hotel's refund policy (see RefundPolicyService::
+     * assertRefundable()), and GRMS is told "no_show" instead of
+     * "cancelled" (see grmsReservationPayload()). Direct bookings only —
+     * an OTA/Channex reservation's terms are the channel's to decide, and
+     * this PMS has no authority to cancel or reclassify one on its own.
+     */
+    public function markNoShow(int $id)
+    {
+        try {
+            DB::beginTransaction();
+
+            $reservation = Reservation::with(['reservationRooms', 'reservation_source'])->findOrFail($id);
+            $beforeSnapshot = $this->changeLogService->snapshot($reservation);
+
+            if (Reservation::isCancelled((int) $reservation->reservation_status)) {
+                return $this->failedTransaction('Reservation is already cancelled.');
+            }
+
+            if ((int) $reservation->logedin === Reservation::LOGEDIN_IN_HOUSE) {
+                return $this->failedTransaction('Guest is checked in — this is not a no-show.');
+            }
+
+            if ($reservation->start_date >= Carbon::today()->toDateString()) {
+                return $this->failedTransaction('Cannot mark a no-show before the check-in date has passed.');
+            }
+
+            if ((bool) ($reservation->reservation_source?->is_ota_channel)) {
+                return $this->failedTransaction('This reservation came through an OTA channel — its terms are managed by the channel, not marked here.');
+            }
+
+            $reservation->reservation_status = Reservation::STATUS_CANCELLED;
+            $reservation->logedin = Reservation::LOGEDIN_NOT_IN_HOUSE;
+            $reservation->is_no_show = true;
+            $reservation->save();
+
+            $this->roomStatusService->syncForReservation($reservation);
+
+            if ($reservation->company_id !== null) {
+                $this->accountingPostingService->reverseCompanyBillingRecognition($reservation);
+            }
+
+            $afterSnapshot = $this->changeLogService->snapshot($reservation->fresh(['reservationRooms.room', 'payments']));
+            $this->changeLogService->recordIfChanged($id, 'no_show', $beforeSnapshot, $afterSnapshot);
+
+            DB::commit();
+
+            $this->notifyReservationLive($id, 'reservation_no_show', true);
+
+            return $this->show($id);
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            return \Failed($e->getMessage());
+        }
+    }
+
+    /**
      * Cancels ONE room within a still-active multi-room reservation, leaving
      * the other rooms (and the reservation itself) untouched — until now,
      * cancellation was all-or-nothing at the whole-reservation level.
@@ -732,6 +997,28 @@ class ReservationController extends Controller
             if ((int) $reservation->logedin === Reservation::LOGEDIN_IN_HOUSE) {
                 return $this->failedTransaction('Cannot cancel a room while the reservation is checked in. Check out or cancel the whole reservation instead.');
             }
+
+            // GRMS contract section 5: a suite's rooms are an all-or-nothing
+            // unit on their side (suite_partial_cancel) — refuse here too so
+            // the data never diverges, regardless of check-in status. Only
+            // actually "partial" when another active room of the SAME suite
+            // is still on this reservation — a room that merely has a
+            // suite_id but whose suite-mates aren't booked here too is an
+            // ordinary single-room cancellation.
+            $suiteId = $resRoom->room?->suite_id;
+            if ($suiteId !== null) {
+                $otherActiveSuiteRoom = $reservation->reservationRooms->contains(
+                    fn (ReservationRoom $rr) => $rr->id !== $resRoom->id
+                        && !ReservationRoom::isCancelled((int) $rr->status)
+                        && $rr->room?->suite_id === $suiteId,
+                );
+                if ($otherActiveSuiteRoom) {
+                    return $this->failedTransaction('Cannot cancel a single room of a suite — cancel the whole reservation instead.');
+                }
+            }
+
+            $cancelledRoomNumber = (string) ($resRoom->room?->number ?? '');
+            $cancelledHotelId = (int) ($resRoom->room?->building?->hotel_id ?? 0);
 
             $activeRoomCount = $reservation->reservationRooms
                 ->filter(fn ($r) => ! ReservationRoom::isCancelled((int) $r->status))
@@ -769,6 +1056,160 @@ class ReservationController extends Controller
             DB::commit();
 
             $this->notifyReservationLive($id, 'reservation_room_cancelled', true);
+
+            if ($cancelledRoomNumber !== '' && $cancelledHotelId > 0
+                && \App\Services\Grms\GrmsProtocolGuard::allows($cancelledHotelId, 'v1')) {
+                app(\App\Services\Grms\GrmsOutboxService::class)->enqueue(
+                    $cancelledHotelId,
+                    'reservation.cancelled',
+                    'reservation',
+                    (string) $reservation->id,
+                    (int) $reservation->fresh()->version,
+                    [
+                        'reservation' => ['id' => (string) $reservation->id],
+                        'rooms' => [['room' => ['code' => $cancelledRoomNumber]]],
+                    ],
+                );
+            }
+
+            return $this->show($id);
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            return \Failed($e->getMessage());
+        }
+    }
+
+    /**
+     * Moves a guest mid-stay to a different room, from today (or an
+     * explicit move_date) onward. Reception chooses whether the remaining
+     * nights keep the room's own original rate basis or re-price at the
+     * new room's rate ($request->reprice) — either way the physical room
+     * on those nights becomes the new one. Nights already stayed in the
+     * old room are never touched, preserving an accurate history (see
+     * RevenueAccrualService::persistDailyChargesFrom()). Built for the
+     * GRMS v1 contract's room.moved event, but is plain in-house business
+     * logic independent of GRMS (see ReservationRoom.room_id — every other
+     * screen that reads "which room is this guest in" keeps working
+     * unmodified since this is the one place that value changes).
+     */
+    public function moveRoom(Request $request, int $id, int $roomId)
+    {
+        $request->validate([
+            'new_room_id' => 'required|integer|exists:rooms,id|different:room_id',
+            'reprice' => 'nullable|boolean',
+            'move_date' => 'nullable|date',
+        ]);
+
+        try {
+            DB::beginTransaction();
+
+            $reservation = Reservation::with('reservationRooms.room')->findOrFail($id);
+            $beforeSnapshot = $this->changeLogService->snapshot($reservation);
+
+            if (Reservation::isCancelled((int) $reservation->reservation_status)) {
+                return $this->failedTransaction('Cannot move a room on a cancelled reservation.');
+            }
+
+            $resRoom = $reservation->reservationRooms->firstWhere('id', $roomId);
+            if ($resRoom === null || ReservationRoom::isCancelled((int) $resRoom->status)) {
+                return $this->failedTransaction('This room is not part of the reservation or is already cancelled.', 404);
+            }
+
+            $today = Carbon::today()->toDateString();
+            if ($reservation->expire_date < $today) {
+                return $this->failedTransaction('Cannot move a room on a completed stay.');
+            }
+
+            $moveDate = $request->filled('move_date') ? $request->move_date : $today;
+            if ($moveDate < $today || $moveDate >= $reservation->expire_date) {
+                return $this->failedTransaction('Move date must be today or later, and before the checkout date.');
+            }
+
+            $newRoom = Room::findOrFail($request->new_room_id);
+            if (!$this->isRoomAvailable($newRoom->id, $moveDate, $reservation->expire_date, $reservation->id)) {
+                return $this->failedTransaction('The new room is not available for the remaining nights of this stay.');
+            }
+
+            $oldRoomId = (int) $resRoom->room_id;
+            $oldRoomNumber = (string) ($resRoom->room?->number ?? '');
+            $oldRoomSuiteId = $resRoom->room?->suite_id;
+            $pricingRoom = $request->boolean('reprice') ? $newRoom : $resRoom->room;
+
+            $remainingLines = $this->pricingEngine->buildDailyBreakdown(
+                $pricingRoom,
+                $moveDate,
+                $reservation->expire_date,
+                (int) $reservation->rent_type,
+                (int) ($reservation->price_calculation_mode ?? 0),
+            );
+
+            $this->revenueAccrualService->persistDailyChargesFrom(
+                $reservation->id,
+                $resRoom->id,
+                (int) $newRoom->id,
+                (int) $reservation->rent_type,
+                $moveDate,
+                $remainingLines,
+            );
+
+            $resRoom->room_id = $newRoom->id;
+            $resRoom->save();
+
+            if ($oldRoomId) {
+                $this->roomStatusService->setAvailableIfNoActiveStay($oldRoomId, $reservation->id);
+            }
+            $this->roomStatusService->syncForReservation($reservation->fresh(['reservationRooms']));
+
+            $newTotalBase = (float) ReservationDailyCharge::where('reservation_id', $reservation->id)->sum('base_amount');
+            $this->guestClassificationDiscountService->applyFinancialsAfterRecalculation($reservation, $newTotalBase);
+            $reservation->save();
+
+            $this->accountingPostingService->syncAccrualForReservation($reservation->id);
+
+            $afterSnapshot = $this->changeLogService->snapshot($reservation->fresh(['reservationRooms.room', 'payments']));
+            $this->changeLogService->recordIfChanged($id, 'room_moved', $beforeSnapshot, $afterSnapshot);
+
+            DB::commit();
+
+            $this->notifyReservationLive($id, 'room_moved', true);
+
+            if (\App\Services\Grms\GrmsProtocolGuard::allows((int) $newRoom->building?->hotel_id, 'v1')) {
+                $outboxService = app(\App\Services\Grms\GrmsOutboxService::class);
+                $hotelId = (int) $newRoom->building->hotel_id;
+
+                // Contract section 5 "Suites": a move touching a suite (on
+                // either side) must never be sent as room.moved — GRMS
+                // refuses that with suite_move_unsupported. Send the final
+                // state as a (debounced) reservation.updated instead, so N
+                // sequential per-room moves collapse into one event.
+                if ($oldRoomSuiteId !== null || $newRoom->suite_id !== null) {
+                    $freshReservation = Reservation::with(['client', 'reservationRooms.room.roomType'])->find($id);
+                    $outboxService->enqueue(
+                        $hotelId,
+                        'reservation.updated',
+                        'reservation',
+                        (string) $reservation->id,
+                        (int) $freshReservation->version,
+                        ['reservation' => $this->grmsReservationPayload($freshReservation)],
+                        5,
+                    );
+                } else {
+                    $outboxService->enqueue(
+                        $hotelId,
+                        'room.moved',
+                        'reservation',
+                        (string) $reservation->id,
+                        (int) $reservation->fresh()->version,
+                        [
+                            'reservation' => ['id' => (string) $reservation->id],
+                            'from_room' => ['code' => $oldRoomNumber],
+                            'to_room' => ['code' => $newRoom->number],
+                            'moved_at' => now()->toIso8601String(),
+                        ],
+                    );
+                }
+            }
 
             return $this->show($id);
         } catch (\Exception $e) {

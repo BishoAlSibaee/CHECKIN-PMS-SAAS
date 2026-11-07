@@ -57,5 +57,11 @@
         <env name="RESERVATION_DEMO_YEAR" value="2026"/>
         <env name="ZATCA_ENABLED" value="false"/>
         <env name="ZATCA_AUTO_REPORT_ON_CHECKOUT" value="false"/>
+        <!-- No test asserts on the legacy GRMS integration's outbound calls —
+             leaving it enabled here just means every reservation test makes
+             a real, unasserted network call to the external sandbox, adding
+             latency/flakiness for nothing. GRMS-specific tests enable it
+             themselves (see tests/Feature/Grms/DispatchGrmsOutboxCommandTest). -->
+        <env name="GRMS_ENABLED" value="false"/>
     </php>
 </phpunit>

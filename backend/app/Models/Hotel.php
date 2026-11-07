@@ -24,6 +24,7 @@ class Hotel extends Model
         'name_en',
         'is_active',
         'shares_tax_with_hotel_id',
+        'pms_protocol',
     ];
 
     protected $casts = [

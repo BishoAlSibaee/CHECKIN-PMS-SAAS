@@ -38,6 +38,12 @@ class Kernel extends ConsoleKernel
         // (see Tenant::isAccessAllowed) — staff can't renew it themselves,
         // only a platform operator can, so this just gives them time to reach out.
         $schedule->command('subscriptions:warn-expiring')->dailyAt('08:00');
+
+        // GRMS v1 outbox dispatcher — sends due events, retries failures on
+        // the contract's own schedule (10s/1m/5m/30m/2h/6h -> review).
+        // withoutOverlapping: a slow HTTP call to GRMS must not pile up
+        // concurrent runs of this command.
+        $schedule->command('grms:dispatch-outbox')->everyMinute()->withoutOverlapping();
     }
 
     /**

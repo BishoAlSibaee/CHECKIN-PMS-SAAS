@@ -63,10 +63,22 @@ class SyncReservationToGrmsJob implements ShouldQueue
             return;
         }
 
-        $reservation = Reservation::with(['client', 'reservationRooms.room', 'reservationRooms.suite'])
+        $reservation = Reservation::with(['client', 'reservationRooms.room.building', 'reservationRooms.suite.building'])
             ->find($this->reservationId);
 
         if ($reservation === null) {
+            return;
+        }
+
+        // Hotels migrated to the GRMS v1 contract are handled entirely by
+        // GrmsOutboxService/DispatchGrmsOutboxCommand instead — this legacy
+        // path must not also fire and send calls this GRMS endpoint shape no
+        // longer expects.
+        $hotelId = $reservation->reservationRooms
+            ->map(fn (ReservationRoom $rr) => $rr->room?->building?->hotel_id ?? $rr->suite?->building?->hotel_id)
+            ->filter()
+            ->first();
+        if ($hotelId !== null && \App\Services\Grms\GrmsProtocolGuard::allows((int) $hotelId, 'v1')) {
             return;
         }
 

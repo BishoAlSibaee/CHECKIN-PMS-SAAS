@@ -28,7 +28,14 @@ class ReportExportProcessor
         ]);
 
         try {
-            @set_time_limit(300);
+            // Never reset the time limit inside the test suite: PHPUnit runs
+            // the whole suite in ONE long-lived process, so set_time_limit()
+            // here would cap ALL remaining tests to 300s from this exact
+            // moment — not just this export — intermittently killing an
+            // otherwise-healthy multi-thousand-second run.
+            if (!app()->environment('testing')) {
+                @set_time_limit(300);
+            }
             @ini_set('memory_limit', '512M');
 
             $params = $this->buildParams($export);
@@ -80,7 +87,9 @@ class ReportExportProcessor
      */
     public function buildDownload(string $slug, string $format, array $params): array
     {
-        @set_time_limit(300);
+        if (!app()->environment('testing')) {
+            @set_time_limit(300);
+        }
         @ini_set('memory_limit', '512M');
 
         $data = $this->reportQueryService->run($slug, $params);

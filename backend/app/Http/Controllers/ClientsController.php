@@ -7,6 +7,9 @@ use App\Http\Requests\Client\GetClientByRequest;
 use App\Models\Client;
 use App\Models\Reservation;
 use App\Models\ReservationPay;
+use App\Services\Grms\GrmsGuestPayload;
+use App\Services\Grms\GrmsOutboxService;
+use App\Services\Grms\GrmsProtocolGuard;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -102,9 +105,59 @@ class ClientsController extends Controller
                 'nationality' => $request->nationality ?? null,
             ]);
 
+            try {
+                $this->enqueueGrmsGuestUpdatedEvent($client);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+
             return \SuccessData('Client updated successfully', $client);
         } catch (\Exception $e) {
             return \Failed($e->getMessage());
+        }
+    }
+
+    /**
+     * GRMS v1 contract: guest.updated, sent to every v1-protocol hotel where
+     * this guest has a non-cancelled reservation (contract: "GRMS updates
+     * every active/upcoming booking of that guest id"). A Client is a
+     * tenant-level entity reused across a tenant's hotels, so this can fan
+     * out to more than one hotel's outbox. No-op if nothing GRMS-relevant
+     * actually changed (e.g. an edit to loyalty_points_balance alone).
+     */
+    private function enqueueGrmsGuestUpdatedEvent(Client $client): void
+    {
+        if (!$client->wasChanged(['first_name', 'last_name', 'email', 'international_code', 'mobile', 'IdType', 'IdNumber', 'nationality'])) {
+            return;
+        }
+
+        $hotelIds = DB::table('reservations')
+            ->join('reservation_rooms', 'reservation_rooms.reservation_id', '=', 'reservations.id')
+            ->join('rooms', 'rooms.id', '=', 'reservation_rooms.room_id')
+            ->join('buildings', 'buildings.id', '=', 'rooms.building_id')
+            ->where('reservations.client_id', $client->id)
+            ->where('reservations.reservation_status', '!=', Reservation::STATUS_CANCELLED)
+            ->distinct()
+            ->pluck('buildings.hotel_id');
+
+        if ($hotelIds->isEmpty()) {
+            return;
+        }
+
+        $data = ['guest' => GrmsGuestPayload::build($client)];
+        foreach ($hotelIds as $hotelId) {
+            if (!GrmsProtocolGuard::allows((int) $hotelId, 'v1')) {
+                continue;
+            }
+
+            app(GrmsOutboxService::class)->enqueue(
+                (int) $hotelId,
+                'guest.updated',
+                'guest',
+                (string) $client->id,
+                (int) $client->version,
+                $data,
+            );
         }
     }
 
