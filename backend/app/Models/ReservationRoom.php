@@ -16,15 +16,24 @@ class ReservationRoom extends Model
         'suite_id',
         'price',
         'status',
+        'logedin',
+        'login_time',
+        'logout_time',
     ];
 
     protected $casts = [
         'price' => 'double',
+        'login_time' => 'datetime',
+        'logout_time' => 'datetime',
     ];
 
     public const STATUS_ACTIVE = 0;
 
     public const STATUS_CANCELLED = 1;
+
+    public const LOGEDIN_NOT_IN_HOUSE = 0;
+
+    public const LOGEDIN_IN_HOUSE = 1;
 
     public static function isCancelled(int $status): bool
     {
@@ -34,6 +43,11 @@ class ReservationRoom extends Model
     public function scopeActive($query)
     {
         return $query->where('status', self::STATUS_ACTIVE);
+    }
+
+    public function scopeInHouse($query)
+    {
+        return $query->where('logedin', self::LOGEDIN_IN_HOUSE);
     }
 
     /**

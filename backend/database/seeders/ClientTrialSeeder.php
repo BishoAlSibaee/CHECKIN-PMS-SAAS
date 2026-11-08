@@ -473,6 +473,8 @@ class ClientTrialSeeder extends Seeder
             'room_id' => $room->id,
             'suite_id' => null,
             'price' => $total,
+            'logedin' => $logedin,
+            'login_time' => $logedin === 1 ? $startDate->toDateString() : null,
         ]);
 
         $this->revenueAccrual->persistDailyCharges(

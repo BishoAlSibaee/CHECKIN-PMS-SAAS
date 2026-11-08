@@ -77,6 +77,8 @@ Route::middleware(['permission:update reservations,api'])->group(function () {
     Route::patch('reservations/{id}/shorten', [ReservationController::class, 'shorten']);
     Route::post('reservations/{id}/payments', [ReservationController::class, 'addPayment']);
     Route::post('reservations/{id}/redeem-points', [ReservationController::class, 'redeemLoyaltyPoints']);
+    Route::post('reservations/{id}/rooms/{roomId}/check-in', [ReservationController::class, 'checkInRoom']);
+    Route::post('reservations/{id}/rooms/{roomId}/check-out', [ReservationController::class, 'checkOutRoom']);
 });
 
 Route::middleware(['permission:cancel reservations,api'])->group(function () {

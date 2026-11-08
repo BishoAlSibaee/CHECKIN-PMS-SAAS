@@ -30,13 +30,38 @@ class ReservationRoomStatusService
                 continue;
             }
 
-            if ((int) $reservation->logedin === Reservation::LOGEDIN_IN_HOUSE
+            if ((int) $resRoom->logedin === ReservationRoom::LOGEDIN_IN_HOUSE
                 && (int) $reservation->reservation_status === Reservation::STATUS_CONFIRMED) {
                 Room::where('id', $resRoom->room_id)->update(['roomStatus' => self::ROOM_OCCUPIED]);
             }
         }
 
         OccupancyBoardCache::bump();
+    }
+
+    /**
+     * Recomputes the reservation-level `logedin` aggregate from its rooms'
+     * own per-room `logedin` — in-house if any active room still is, not
+     * in-house only once every active room has checked out. Every per-room
+     * check-in/check-out action must call this; it's what lets all the
+     * existing reservation-level consumers (reports, night audit, Channex's
+     * safety net, the collections dashboard...) keep reading
+     * `reservations.logedin` without themselves becoming room-aware.
+     */
+    public function recalculateAggregateLogedin(Reservation $reservation): void
+    {
+        $reservation->loadMissing('reservationRooms');
+
+        $anyInHouse = $reservation->reservationRooms->contains(
+            fn (ReservationRoom $rr) => !ReservationRoom::isCancelled((int) $rr->status)
+                && (int) $rr->logedin === ReservationRoom::LOGEDIN_IN_HOUSE,
+        );
+
+        $newLogedin = $anyInHouse ? Reservation::LOGEDIN_IN_HOUSE : Reservation::LOGEDIN_NOT_IN_HOUSE;
+        if ((int) $reservation->logedin !== $newLogedin) {
+            $reservation->logedin = $newLogedin;
+            $reservation->save();
+        }
     }
 
     /**
@@ -80,9 +105,9 @@ class ReservationRoomStatusService
     {
         $row = ReservationRoom::where('room_id', $roomId)
             ->where('status', ReservationRoom::STATUS_ACTIVE)
+            ->where('logedin', ReservationRoom::LOGEDIN_IN_HOUSE)
             ->whereHas('reservation', function ($query) use ($excludeReservationId) {
-                $query->where('reservation_status', Reservation::STATUS_CONFIRMED)
-                    ->where('logedin', Reservation::LOGEDIN_IN_HOUSE);
+                $query->where('reservation_status', Reservation::STATUS_CONFIRMED);
                 if ($excludeReservationId) {
                     $query->where('id', '!=', $excludeReservationId);
                 }
@@ -114,9 +139,9 @@ class ReservationRoomStatusService
     ): ?int {
         $row = ReservationRoom::where('room_id', $roomId)
             ->where('status', ReservationRoom::STATUS_ACTIVE)
+            ->where('logedin', ReservationRoom::LOGEDIN_IN_HOUSE)
             ->whereHas('reservation', function ($query) use ($startDate, $endDate, $excludeReservationId) {
                 $query->where('reservation_status', Reservation::STATUS_CONFIRMED)
-                    ->where('logedin', Reservation::LOGEDIN_IN_HOUSE)
                     ->where('start_date', '<', $endDate)
                     ->where('expire_date', '>=', $startDate);
                 if ($excludeReservationId) {
@@ -183,9 +208,9 @@ class ReservationRoomStatusService
     {
         $hasOverlap = ReservationRoom::where('room_id', $roomId)
             ->where('status', ReservationRoom::STATUS_ACTIVE)
+            ->where('logedin', ReservationRoom::LOGEDIN_IN_HOUSE)
             ->whereHas('reservation', function ($query) use ($excludeReservationId) {
-                $query->where('reservation_status', Reservation::STATUS_CONFIRMED)
-                    ->where('logedin', Reservation::LOGEDIN_IN_HOUSE);
+                $query->where('reservation_status', Reservation::STATUS_CONFIRMED);
                 if ($excludeReservationId) {
                     $query->where('id', '!=', $excludeReservationId);
                 }

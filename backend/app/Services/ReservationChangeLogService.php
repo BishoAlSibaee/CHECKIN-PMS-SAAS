@@ -25,16 +25,31 @@ class ReservationChangeLogService
         'balance_due',
         'payment_amount',
         'room_numbers',
+        'rooms_in_house',
     ];
 
     public function snapshot(Reservation $reservation): array
     {
         $reservation->loadMissing(['reservationRooms.room', 'payments']);
 
-        $roomNumbers = $reservation->reservationRooms
-            ->filter(fn ($row) => ! \App\Models\ReservationRoom::isCancelled((int) $row->status))
+        $activeRooms = $reservation->reservationRooms
+            ->filter(fn ($row) => ! \App\Models\ReservationRoom::isCancelled((int) $row->status));
+
+        $roomNumbers = $activeRooms
             ->map(fn ($row) => $row->room?->number)
             ->filter(fn ($n) => $n !== null && $n !== '')
+            ->values()
+            ->all();
+
+        // Per-room in-house breakdown — the reservation-level `logedin`
+        // aggregate below stays unchanged for a partial room check-in/out,
+        // so without this a partial action would show no diff at all and
+        // recordIfChanged() would silently skip logging it.
+        $roomsInHouse = $activeRooms
+            ->filter(fn ($row) => (int) $row->logedin === \App\Models\ReservationRoom::LOGEDIN_IN_HOUSE)
+            ->map(fn ($row) => $row->room?->number)
+            ->filter(fn ($n) => $n !== null && $n !== '')
+            ->sort()
             ->values()
             ->all();
 
@@ -53,6 +68,7 @@ class ReservationChangeLogService
             'paid_amount' => round($reservation->paidNetAmount(), 2),
             'balance_due' => round($reservation->balanceDue(), 2),
             'room_numbers' => $roomNumbers,
+            'rooms_in_house' => $roomsInHouse,
         ];
     }
 

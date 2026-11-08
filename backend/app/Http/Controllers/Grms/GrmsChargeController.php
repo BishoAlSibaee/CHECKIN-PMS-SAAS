@@ -7,6 +7,7 @@ use App\Models\GrmsHotelCredential;
 use App\Models\PosCategory;
 use App\Models\PosCharge;
 use App\Models\Reservation;
+use App\Models\ReservationRoom;
 use App\Services\Accounting\AccountingPostingService;
 use App\Services\Grms\GrmsSignatureService;
 use Illuminate\Http\JsonResponse;
@@ -70,20 +71,23 @@ class GrmsChargeController extends Controller
             return $this->rejected('reservation_not_found');
         }
 
-        if ($this->isCheckedOut($reservation)) {
-            return $this->rejected('guest_checked_out');
-        }
-
-        if ($this->isFolioClosed($reservation)) {
-            return $this->rejected('folio_closed');
-        }
-
         $roomCode = (string) $request->input('room.code', $request->input('room')['code'] ?? '');
         $roomOnReservation = $reservation->reservationRooms->first(
             fn ($rr) => !$rr->isCancelled($rr->status) && (string) ($rr->room?->number) === $roomCode,
         );
         if ($roomCode !== '' && !$roomOnReservation) {
             return $this->rejected('room_mismatch');
+        }
+
+        // A specific room's own checked-out state takes priority — other
+        // rooms on the same reservation may still be in-house. Fall back to
+        // the reservation-wide check only when no room was named at all.
+        if ($this->isCheckedOut($reservation, $roomOnReservation)) {
+            return $this->rejected('guest_checked_out');
+        }
+
+        if ($this->isFolioClosed($reservation, $roomOnReservation)) {
+            return $this->rejected('folio_closed');
         }
 
         $items = $request->input('items', []);
@@ -199,14 +203,18 @@ class GrmsChargeController extends Controller
         return $credential;
     }
 
-    private function isCheckedOut(Reservation $reservation): bool
+    private function isCheckedOut(Reservation $reservation, ?ReservationRoom $room): bool
     {
+        if ($room !== null) {
+            return (int) $room->logedin === ReservationRoom::LOGEDIN_NOT_IN_HOUSE && filled($room->logout_time);
+        }
+
         return (int) $reservation->logedin === Reservation::LOGEDIN_NOT_IN_HOUSE && filled($reservation->login_time);
     }
 
-    private function isFolioClosed(Reservation $reservation): bool
+    private function isFolioClosed(Reservation $reservation, ?ReservationRoom $room): bool
     {
-        return (string) $reservation->expire_date < now()->toDateString() && !$this->isCheckedOut($reservation);
+        return (string) $reservation->expire_date < now()->toDateString() && !$this->isCheckedOut($reservation, $room);
     }
 
     private function rejected(string $reason): JsonResponse

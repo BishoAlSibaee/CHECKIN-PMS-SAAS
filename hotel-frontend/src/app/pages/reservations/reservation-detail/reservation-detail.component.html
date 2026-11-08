@@ -484,6 +484,9 @@
                   <span class="badge rounded-pill" [ngClass]="getRoomStatusBadgeClass(rm.roomStatus)" *ngIf="!rm.isCancelled">
                     {{ getRoomStatusLabel(rm.roomStatus) }}
                   </span>
+                  <span class="badge rounded-pill bg-success" *ngIf="!rm.isCancelled && rm.logedin === 1">
+                    {{ 'RESERVATIONS.ROOM_CHECKED_IN' | translate }}
+                  </span>
                 </div>
                 <div *ngIf="rm.typeName">
                   <span class="rd-room-card__label">{{ 'RESERVATIONS.ROOM_TYPE' | translate }}</span>
@@ -503,6 +506,12 @@
               </button>
               <button type="button" class="btn btn-sm btn-outline-danger mt-2" *ngIf="canCancelRoom(rm)" (click)="cancelRoom(rm)">
                 {{ 'RESERVATIONS.CANCEL_THIS_ROOM' | translate }}
+              </button>
+              <button type="button" class="btn btn-sm btn-outline-success mt-2" *ngIf="canCheckInRoom(rm)" (click)="checkInRoom(rm)">
+                {{ 'RESERVATIONS.CHECK_IN_THIS_ROOM' | translate }}
+              </button>
+              <button type="button" class="btn btn-sm btn-outline-primary mt-2" *ngIf="canCheckOutRoom(rm)" (click)="checkOutRoom(rm)">
+                {{ 'RESERVATIONS.CHECK_OUT_THIS_ROOM' | translate }}
               </button>
             </article>
           </div>

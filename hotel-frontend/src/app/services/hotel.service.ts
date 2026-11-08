@@ -949,6 +949,18 @@ export class HotelService {
     });
   }
 
+  checkInReservationRoom(reservationId: string | number, reservationRoomId: string | number): Observable<any> {
+    return this.http.post<any>(`${this.dataService.Url}users/reservations/${reservationId}/rooms/${reservationRoomId}/check-in`, {}, {
+      headers: this.dataService.getHeaders()
+    });
+  }
+
+  checkOutReservationRoom(reservationId: string | number, reservationRoomId: string | number): Observable<any> {
+    return this.http.post<any>(`${this.dataService.Url}users/reservations/${reservationId}/rooms/${reservationRoomId}/check-out`, {}, {
+      headers: this.dataService.getHeaders()
+    });
+  }
+
   extendReservation(id: string | number, expire_date: string): Observable<any> {
     return this.http.patch<any>(`${this.dataService.Url}users/reservations/${id}/extend`, { expire_date }, {
       headers: this.dataService.getHeaders()

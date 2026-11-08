@@ -265,6 +265,22 @@ export class RoomBoardComponent implements OnInit, OnDestroy {
     return this.statusFilter === key;
   }
 
+  trackByBuildingId(_index: number, building: { buildingId: number }): number {
+    return building.buildingId;
+  }
+
+  trackByFloorId(_index: number, floor: { floorId: number }): number {
+    return floor.floorId;
+  }
+
+  trackBySuiteId(_index: number, suite: { suiteId: number }): number {
+    return suite.suiteId;
+  }
+
+  trackByRoomId(_index: number, room: RoomBoardItem): number {
+    return room.id;
+  }
+
   loadBoard(options?: { soft?: boolean }): void {
     if (!options?.soft) {
       this.isLoading = true;
@@ -542,7 +558,7 @@ export class RoomBoardComponent implements OnInit, OnDestroy {
         this.checkingInReservationId = null;
         if (res?.success) {
           this.dataService.showToast(this.translate.instant('RESERVATIONS.UPDATED_OK'), 'success');
-          this.loadBoard();
+          this.loadBoard({ soft: true });
         } else {
           this.dataService.showToast(res?.message || this.translate.instant('COMMON.ERROR'), 'error');
         }
@@ -587,7 +603,7 @@ export class RoomBoardComponent implements OnInit, OnDestroy {
         this.checkingOutReservationId = null;
         if (res?.success) {
           this.dataService.showToast(this.translate.instant('RESERVATIONS.UPDATED_OK'), 'success');
-          this.loadBoard();
+          this.loadBoard({ soft: true });
         } else {
           this.dataService.showToast(res?.message || this.translate.instant('COMMON.ERROR'), 'error');
         }
@@ -611,7 +627,7 @@ export class RoomBoardComponent implements OnInit, OnDestroy {
         this.markingReadyRoomId = null;
         if (res?.success) {
           this.dataService.showToast(this.translate.instant('ROOM_BOARD.MARK_READY_SUCCESS'), 'success');
-          this.loadBoard();
+          this.loadBoard({ soft: true });
         } else {
           this.dataService.showToast(res?.message || this.translate.instant('COMMON.ERROR'), 'error');
         }

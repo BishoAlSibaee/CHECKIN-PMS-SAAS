@@ -4,7 +4,9 @@ namespace Tests\Feature\Dashboard;
 
 use App\Events\HotelLiveUpdated;
 use App\Models\Client;
+use App\Models\Reservation;
 use App\Models\Reservation_source;
+use App\Models\ReservationRoom;
 use App\Models\Room;
 use App\Models\Stay_reason;
 use App\Services\HotelLivePublisher;
@@ -98,6 +100,70 @@ class RoomBoardTest extends TestCase
             return in_array(HotelLivePublisher::SCOPE_OCCUPANCY_BOARD, $event->scopes, true)
                 || $event->action === 'checked_in';
         });
+
+        Carbon::setTestNow();
+    }
+
+    /**
+     * Regression: a room checked out individually (another room on the same
+     * reservation still in-house) must show as its own status on the board,
+     * not "in_house" (reservation's aggregate) and not "check_in_today"
+     * (mistaken for a pending arrival just because the stay starts today).
+     */
+    public function test_board_reflects_a_single_rooms_checkout_independent_of_its_roommate(): void
+    {
+        Carbon::setTestNow('2026-09-20');
+
+        $this->artisan('db:seed', [
+            '--class' => ReservationTestDataSeeder::class,
+            '--force' => true,
+            '--no-interaction' => true,
+        ]);
+
+        $user = $this->userWithApiPermissions(['view reservations', 'create reservations', 'update reservations']);
+        $client = Client::first();
+        $stayReason = Stay_reason::first();
+        $source = Reservation_source::first();
+        $roomA = $this->findOrCreateAvailableRoom('2026-09-20', '2026-09-22');
+        $roomB = $this->createIsolatedTestRoom();
+        $this->assertNotNull($roomA);
+        $this->assertNotNull($roomB);
+
+        $create = $this->actingAs($user, 'api')->postJson('/api/users/makeReservation', [
+            'client_id' => $client->id,
+            'rooms' => [['room_id' => $roomA->id], ['room_id' => $roomB->id]],
+            'start_date' => '2026-09-20',
+            'expire_date' => '2026-09-22',
+            'reservation_type' => 0,
+            'reservation_status' => Reservation::STATUS_CONFIRMED,
+            'stay_reason_id' => $stayReason->id,
+            'reservation_source_id' => $source->id,
+            'rent_type' => 0,
+            'price_calculation_mode' => 0,
+            'logedin' => Reservation::LOGEDIN_IN_HOUSE,
+        ]);
+        $create->assertOk();
+        $reservationId = (int) $create->json('data.reservation.id');
+
+        $reservation = Reservation::with('reservationRooms')->findOrFail($reservationId);
+        $resRoomA = $reservation->reservationRooms->firstWhere('room_id', $roomA->id);
+
+        $this->actingAs($user, 'api')
+            ->postJson("/api/users/reservations/{$reservationId}/rooms/{$resRoomA->id}/check-out")
+            ->assertOk();
+
+        $board = $this->actingAs($user, 'api')->getJson('/api/users/rooms/occupancy-board?date=2026-09-20');
+        $board->assertOk();
+
+        $rooms = collect($board->json('data.rooms'));
+        $boardRoomA = $rooms->firstWhere('id', $roomA->id);
+        $boardRoomB = $rooms->firstWhere('id', $roomB->id);
+
+        $this->assertNotNull($boardRoomA);
+        $this->assertNotNull($boardRoomB);
+        $this->assertNotSame('in_house', $boardRoomA['occupancy_status']);
+        $this->assertNotSame('check_in_today', $boardRoomA['occupancy_status']);
+        $this->assertSame('in_house', $boardRoomB['occupancy_status']);
 
         Carbon::setTestNow();
     }

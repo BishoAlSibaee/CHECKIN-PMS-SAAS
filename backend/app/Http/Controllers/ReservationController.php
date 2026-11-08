@@ -356,14 +356,21 @@ class ReservationController extends Controller
                 return;
             }
 
+            $loginTime = $reservation->login_time ?: Carbon::today()->toDateString();
+
             foreach ($reservation->reservationRooms as $resRoom) {
                 if ($resRoom->room) {
                     $this->roomStatusService->assertRoomReadyForCheckIn($resRoom->room, $reservation->id);
                 }
+                if (!ReservationRoom::isCancelled((int) $resRoom->status)) {
+                    $resRoom->logedin = ReservationRoom::LOGEDIN_IN_HOUSE;
+                    $resRoom->login_time = $loginTime;
+                    $resRoom->save();
+                }
             }
 
             $reservation->logedin = Reservation::LOGEDIN_IN_HOUSE;
-            $reservation->login_time = $reservation->login_time ?: Carbon::today()->toDateString();
+            $reservation->login_time = $loginTime;
             $reservation->save();
 
             $this->roomStatusService->syncForReservation($reservation->fresh(['reservationRooms']));
@@ -744,14 +751,32 @@ class ReservationController extends Controller
 
             $reservation->save();
 
-            if ($request->has('logedin')
-                && (int) $request->logedin === 0
-                && $isCheckingOut) {
+            // Whole-reservation check-in/out now also keeps every active
+            // room's own per-room logedin in sync, so a later per-room
+            // action (checkInRoom/checkOutRoom) sees accurate starting state.
+            if ($pendingLogedin !== null) {
                 foreach ($reservation->reservationRooms as $resRoom) {
-                    if ($resRoom->room_id) {
-                        $this->roomStatusService->markNeedsPreparation($resRoom->room_id);
+                    if (ReservationRoom::isCancelled((int) $resRoom->status)) {
+                        continue;
+                    }
+
+                    if ($pendingLogedin === Reservation::LOGEDIN_IN_HOUSE) {
+                        if ((int) $resRoom->logedin !== ReservationRoom::LOGEDIN_IN_HOUSE) {
+                            $resRoom->logedin = ReservationRoom::LOGEDIN_IN_HOUSE;
+                            $resRoom->login_time = $reservation->login_time;
+                            $resRoom->save();
+                        }
+                    } elseif ($isCheckingOut) {
+                        $resRoom->logedin = ReservationRoom::LOGEDIN_NOT_IN_HOUSE;
+                        $resRoom->logout_time = now();
+                        $resRoom->save();
+                        if ($resRoom->room_id) {
+                            $this->roomStatusService->markNeedsPreparation($resRoom->room_id);
+                        }
                     }
                 }
+
+                $this->roomStatusService->recalculateAggregateLogedin($reservation->fresh(['reservationRooms']));
             }
 
             $this->roomStatusService->syncForReservation($reservation->fresh(['reservationRooms']));
@@ -994,8 +1019,8 @@ class ReservationController extends Controller
                 return $this->failedTransaction('This room is not part of the reservation or is already cancelled.', 404);
             }
 
-            if ((int) $reservation->logedin === Reservation::LOGEDIN_IN_HOUSE) {
-                return $this->failedTransaction('Cannot cancel a room while the reservation is checked in. Check out or cancel the whole reservation instead.');
+            if ((int) $resRoom->logedin === ReservationRoom::LOGEDIN_IN_HOUSE) {
+                return $this->failedTransaction('Cannot cancel a room while it is checked in. Check it out first, or cancel the whole reservation instead.');
             }
 
             // GRMS contract section 5: a suite's rooms are an all-or-nothing
@@ -1075,6 +1100,186 @@ class ReservationController extends Controller
             return $this->show($id);
         } catch (\Exception $e) {
             DB::rollBack();
+
+            return \Failed($e->getMessage());
+        }
+    }
+
+    /**
+     * Checks in ONE room of a reservation, independent of its other rooms —
+     * e.g. one occupant of a multi-room booking arrives before the others.
+     * Guards mirror the whole-reservation check-in branch of update()
+     * (dates, room readiness); the reservation-level `logedin` aggregate is
+     * recomputed afterward, so if this was the first room to go in-house it
+     * flips the aggregate exactly as update() would, and we fire the same
+     * 'checked_in' action (and its existing GRMS stay.checked_in event) for
+     * that transition. A subsequent room checking in while another is
+     * already in-house is a genuinely new, finer-grained action with no
+     * existing GRMS event — 'room_checked_in' is deliberately absent from
+     * GRMS_V1_EVENT_TYPES.
+     */
+    public function checkInRoom(int $id, int $roomId)
+    {
+        try {
+            DB::beginTransaction();
+
+            $reservation = Reservation::with('reservationRooms.room')->findOrFail($id);
+            $beforeSnapshot = $this->changeLogService->snapshot($reservation);
+
+            if (Reservation::isCancelled((int) $reservation->reservation_status)) {
+                return $this->failedTransaction('Cannot check in a room on a cancelled reservation.');
+            }
+
+            $resRoom = $reservation->reservationRooms->firstWhere('id', $roomId);
+            if ($resRoom === null || ReservationRoom::isCancelled((int) $resRoom->status)) {
+                return $this->failedTransaction('This room is not part of the reservation or is already cancelled.', 404);
+            }
+
+            if ((int) $resRoom->logedin === ReservationRoom::LOGEDIN_IN_HOUSE) {
+                return $this->show($id);
+            }
+
+            $today = Carbon::today()->toDateString();
+            if ($reservation->expire_date < $today) {
+                return $this->failedTransaction('Check-in is not allowed after the scheduled departure date.');
+            }
+            if ($reservation->start_date > $today) {
+                return $this->failedTransaction('Check-in is not allowed before the arrival date.');
+            }
+
+            $wasAggregateInHouse = (int) $reservation->logedin === Reservation::LOGEDIN_IN_HOUSE;
+
+            if ($resRoom->room) {
+                try {
+                    $this->roomStatusService->assertRoomReadyForCheckIn($resRoom->room, $reservation->id);
+                } catch (\RuntimeException $e) {
+                    return $this->failedTransaction($e->getMessage());
+                }
+            }
+
+            $resRoom->logedin = ReservationRoom::LOGEDIN_IN_HOUSE;
+            $resRoom->login_time = now();
+            $resRoom->save();
+
+            $this->roomStatusService->recalculateAggregateLogedin($reservation->fresh(['reservationRooms']));
+            $this->roomStatusService->syncForReservation($reservation->fresh(['reservationRooms']));
+
+            $afterSnapshot = $this->changeLogService->snapshot($reservation->fresh(['reservationRooms.room', 'payments']));
+            $isFirstRoomIn = !$wasAggregateInHouse && (int) $reservation->fresh()->logedin === Reservation::LOGEDIN_IN_HOUSE;
+            $logAction = $isFirstRoomIn ? 'checked_in' : 'room_checked_in';
+            $this->changeLogService->recordIfChanged($id, $logAction, $beforeSnapshot, $afterSnapshot);
+
+            DB::commit();
+
+            $this->notifyReservationLive($id, $isFirstRoomIn ? 'checked_in' : 'room_checked_in', true);
+
+            return $this->show($id);
+        } catch (\Exception $e) {
+            if (DB::transactionLevel() > 0) {
+                DB::rollBack();
+            }
+
+            return \Failed($e->getMessage());
+        }
+    }
+
+    /**
+     * Checks out ONE room of a reservation, independent of its other rooms
+     * — the gap this whole feature was built for (see
+     * ReservationRoomStatusService::recalculateAggregateLogedin). Mirrors
+     * cancelRoom()'s structure and guards (suite all-or-nothing, room
+     * resolution). When this happens to be the LAST active in-house room,
+     * it IS a full reservation checkout in every way that matters
+     * downstream (balance-due guard, ZATCA reporting, the 'checked_out'
+     * change-log action and its existing GRMS stay.checked_out event) —
+     * otherwise it's a partial checkout with none of those, since the
+     * folio stays open while another room is still occupied.
+     */
+    public function checkOutRoom(int $id, int $roomId)
+    {
+        try {
+            DB::beginTransaction();
+
+            $reservation = Reservation::with(['reservationRooms.room', 'payments'])->findOrFail($id);
+            $beforeSnapshot = $this->changeLogService->snapshot($reservation);
+
+            if (Reservation::isCancelled((int) $reservation->reservation_status)) {
+                return $this->failedTransaction('Cannot check out a room on a cancelled reservation.');
+            }
+
+            $resRoom = $reservation->reservationRooms->firstWhere('id', $roomId);
+            if ($resRoom === null || ReservationRoom::isCancelled((int) $resRoom->status)) {
+                return $this->failedTransaction('This room is not part of the reservation or is already cancelled.', 404);
+            }
+
+            if ((int) $resRoom->logedin !== ReservationRoom::LOGEDIN_IN_HOUSE) {
+                return $this->show($id);
+            }
+
+            // Same suite all-or-nothing rule as cancelRoom() — GRMS contract
+            // section 5 treats a suite's rooms as one unit on their side.
+            $suiteId = $resRoom->room?->suite_id;
+            if ($suiteId !== null) {
+                $otherActiveSuiteRoom = $reservation->reservationRooms->contains(
+                    fn (ReservationRoom $rr) => $rr->id !== $resRoom->id
+                        && !ReservationRoom::isCancelled((int) $rr->status)
+                        && $rr->room?->suite_id === $suiteId,
+                );
+                if ($otherActiveSuiteRoom) {
+                    return $this->failedTransaction('Cannot check out a single room of a suite — check out the whole reservation instead.');
+                }
+            }
+
+            $otherActiveInHouseRoom = $reservation->reservationRooms->contains(
+                fn (ReservationRoom $rr) => $rr->id !== $resRoom->id
+                    && !ReservationRoom::isCancelled((int) $rr->status)
+                    && (int) $rr->logedin === ReservationRoom::LOGEDIN_IN_HOUSE,
+            );
+            $isLastRoom = !$otherActiveInHouseRoom;
+
+            if ($isLastRoom) {
+                $balance = $reservation->balanceDue();
+                if ($balance > 0.005) {
+                    return $this->failedTransaction(
+                        'Outstanding balance must be paid before check-out. Remaining: '.number_format($balance, 2, '.', ''),
+                        422
+                    );
+                }
+            }
+
+            $resRoom->logedin = ReservationRoom::LOGEDIN_NOT_IN_HOUSE;
+            $resRoom->logout_time = now();
+            $resRoom->save();
+
+            if ($resRoom->room_id) {
+                $this->roomStatusService->markNeedsPreparation((int) $resRoom->room_id);
+            }
+
+            $this->roomStatusService->recalculateAggregateLogedin($reservation->fresh(['reservationRooms']));
+            $this->roomStatusService->syncForReservation($reservation->fresh(['reservationRooms']));
+
+            $afterSnapshot = $this->changeLogService->snapshot($reservation->fresh(['reservationRooms.room', 'payments']));
+            $logAction = $isLastRoom ? 'checked_out' : 'room_checked_out';
+            $this->changeLogService->recordIfChanged($id, $logAction, $beforeSnapshot, $afterSnapshot);
+
+            DB::commit();
+
+            $this->notifyReservationLive($id, $logAction, true);
+
+            if ($isLastRoom && $this->zatcaCheckoutReportingService->shouldReportOnCheckout($id)) {
+                try {
+                    $this->zatcaCheckoutReportingService->reportReservationCheckout($id);
+                } catch (\Throwable $e) {
+                    report($e);
+                    ReportZatcaCheckoutInvoiceJob::dispatchAfterResponse($id);
+                }
+            }
+
+            return $this->show($id);
+        } catch (\Exception $e) {
+            if (DB::transactionLevel() > 0) {
+                DB::rollBack();
+            }
 
             return \Failed($e->getMessage());
         }
@@ -1621,6 +1826,8 @@ class ReservationController extends Controller
                     'room_id' => $room->id,
                     'suite_id' => $data['suite_id'],
                     'price' => $finalRoomPrice,
+                    'logedin' => $reservation->logedin,
+                    'login_time' => (int) $reservation->logedin === Reservation::LOGEDIN_IN_HOUSE ? $reservation->login_time : null,
                 ]);
 
                 $dailyLines = $data['daily_lines'] ?? $this->pricingEngine->buildDailyBreakdown(
@@ -1799,6 +2006,14 @@ class ReservationController extends Controller
                     'reservation_status' => Reservation::STATUS_CANCELLED,
                     'logedin' => Reservation::LOGEDIN_NOT_IN_HOUSE,
                 ]);
+                foreach ($reservation->reservationRooms as $resRoom) {
+                    if (!ReservationRoom::isCancelled((int) $resRoom->status)
+                        && (int) $resRoom->logedin === ReservationRoom::LOGEDIN_IN_HOUSE) {
+                        $resRoom->logedin = ReservationRoom::LOGEDIN_NOT_IN_HOUSE;
+                        $resRoom->logout_time = now();
+                        $resRoom->save();
+                    }
+                }
                 $this->roomStatusService->releaseRoomsAfterCancellation(
                     $reservation->fresh(['reservationRooms']),
                     $wasInHouse
@@ -2239,12 +2454,13 @@ class ReservationController extends Controller
                     ->groupBy('room_id')
                     ->map(fn ($rows) => $rows->first());
 
-                // Still-checked-in guests block the room for any new booking until checkout.
+                // A still-checked-in guest in THIS room blocks any new booking
+                // until it checks out — other rooms on the same reservation
+                // don't matter here, this is per-room, not reservation-wide.
                 $inHouseByRoom = ReservationRoom::whereIn('room_id', $roomIds)
-                    ->whereHas('reservation', function ($q) {
-                        $q->where('reservation_status', Reservation::STATUS_CONFIRMED)
-                            ->where('logedin', Reservation::LOGEDIN_IN_HOUSE);
-                    })
+                    ->where('status', ReservationRoom::STATUS_ACTIVE)
+                    ->where('logedin', ReservationRoom::LOGEDIN_IN_HOUSE)
+                    ->whereHas('reservation', fn ($q) => $q->where('reservation_status', Reservation::STATUS_CONFIRMED))
                     ->with(['reservation.client'])
                     ->get()
                     ->groupBy('room_id')

@@ -192,7 +192,7 @@
 
   <!-- Grid view: grouped by building → floor -->
   <ng-container *ngIf="!isLoading && viewMode === 'grid' && groupedRooms.length">
-    <section class="building-block" *ngFor="let building of groupedRooms">
+    <section class="building-block" *ngFor="let building of groupedRooms; trackBy: trackByBuildingId">
       <div class="building-header">
         <div class="building-header__icon"><i class="bi bi-building" aria-hidden="true"></i></div>
         <div>
@@ -201,14 +201,14 @@
         </div>
       </div>
 
-      <div class="floor-block" *ngFor="let floor of building.floors">
+      <div class="floor-block" *ngFor="let floor of building.floors; trackBy: trackByFloorId">
         <div class="floor-header">
           <span class="floor-header__label">{{ 'ROOM_BOARD.FLOOR' | translate }} {{ floor.floorNumber }}</span>
           <span class="floor-header__count">{{ 'ROOM_BOARD.ROOMS_COUNT' | translate:{ count: floor.rooms.length } }}</span>
         </div>
 
         <div class="suites-row" *ngIf="floor.suites.length">
-          <div class="suite-block" *ngFor="let suite of floor.suites" [ngClass]="suiteBlockClass(suite)">
+          <div class="suite-block" *ngFor="let suite of floor.suites; trackBy: trackBySuiteId" [ngClass]="suiteBlockClass(suite)">
             <div class="suite-header">
               <div class="suite-header__main">
                 <i class="bi bi-door-open suite-header__icon" aria-hidden="true"></i>
@@ -220,7 +220,7 @@
               <span class="suite-header__count">{{ 'ROOM_BOARD.ROOMS_COUNT' | translate:{ count: suite.rooms.length } }}</span>
             </div>
             <div class="suite-room-grid">
-              <div class="suite-room-slot" *ngFor="let room of suite.rooms">
+              <div class="suite-room-slot" *ngFor="let room of suite.rooms; trackBy: trackByRoomId">
                 <ng-container *ngTemplateOutlet="roomCard; context: { room: room, compact: true }"></ng-container>
               </div>
             </div>
@@ -232,7 +232,7 @@
             <span class="standalone-header__label">{{ 'ROOM_BOARD.STANDALONE_ROOMS' | translate }}</span>
           </div>
           <div class="row g-2 room-grid">
-            <div class="col-6 col-sm-4 col-md-3 col-lg-2 col-xl-2" *ngFor="let room of floor.standaloneRooms">
+            <div class="col-6 col-sm-4 col-md-3 col-lg-2 col-xl-2" *ngFor="let room of floor.standaloneRooms; trackBy: trackByRoomId">
               <ng-container *ngTemplateOutlet="roomCard; context: { room: room }"></ng-container>
             </div>
           </div>
@@ -243,7 +243,7 @@
 
   <!-- List view: grouped by building → floor -->
   <ng-container *ngIf="!isLoading && viewMode === 'list' && groupedRooms.length">
-    <section class="building-block" *ngFor="let building of groupedRooms">
+    <section class="building-block" *ngFor="let building of groupedRooms; trackBy: trackByBuildingId">
       <div class="building-header">
         <div class="building-header__icon"><i class="bi bi-building" aria-hidden="true"></i></div>
         <div>
@@ -252,13 +252,13 @@
         </div>
       </div>
 
-      <div class="floor-block" *ngFor="let floor of building.floors">
+      <div class="floor-block" *ngFor="let floor of building.floors; trackBy: trackByFloorId">
         <div class="floor-header">
           <span class="floor-header__label">{{ 'ROOM_BOARD.FLOOR' | translate }} {{ floor.floorNumber }}</span>
           <span class="floor-header__count">{{ 'ROOM_BOARD.ROOMS_COUNT' | translate:{ count: floor.rooms.length } }}</span>
         </div>
 
-        <div class="suite-block" *ngFor="let suite of floor.suites">
+        <div class="suite-block" *ngFor="let suite of floor.suites; trackBy: trackBySuiteId">
           <div class="suite-header">
             <div class="suite-header__main">
               <i class="bi bi-door-open suite-header__icon" aria-hidden="true"></i>
@@ -285,7 +285,7 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr *ngFor="let room of suite.rooms" class="list-row list-row--clickable"
+                  <tr *ngFor="let room of suite.rooms; trackBy: trackByRoomId" class="list-row list-row--clickable"
                       [ngClass]="statusClass(room.occupancy_status)" (click)="openCreateReservation(room)">
                     <td class="fw-bold">#{{ room.number }}</td>
                     <td>{{ room.room_type_name }}</td>
@@ -304,14 +304,23 @@
                     <td class="text-end">
                       <button type="button" class="btn btn-xs btn-primary me-1" *ngIf="canCheckIn(room)"
                               [disabled]="checkingInReservationId === room.reservation?.reservation_id"
-                              (click)="checkInGuest(room, $event)">{{ 'RESERVATIONS.CHECK_IN_BTN' | translate }}</button>
+                              (click)="checkInGuest(room, $event)">
+                        <i class="bi bi-arrow-repeat spin" *ngIf="checkingInReservationId === room.reservation?.reservation_id" aria-hidden="true"></i>
+                        <span *ngIf="checkingInReservationId !== room.reservation?.reservation_id">{{ 'RESERVATIONS.CHECK_IN_BTN' | translate }}</span>
+                      </button>
                       <button type="button" class="btn btn-xs btn-success me-1" *ngIf="canCheckOut(room)"
                               [disabled]="checkingOutReservationId === room.reservation?.reservation_id"
-                              (click)="checkOutGuest(room, $event)">{{ 'DASHBOARD.CHECK_OUT_BTN' | translate }}</button>
+                              (click)="checkOutGuest(room, $event)">
+                        <i class="bi bi-arrow-repeat spin" *ngIf="checkingOutReservationId === room.reservation?.reservation_id" aria-hidden="true"></i>
+                        <span *ngIf="checkingOutReservationId !== room.reservation?.reservation_id">{{ 'DASHBOARD.CHECK_OUT_BTN' | translate }}</span>
+                      </button>
                       <button type="button" class="btn btn-xs btn-warning me-1"
                               *ngIf="room.occupancy_status === 'preparation' && canManageRooms"
                               [disabled]="markingReadyRoomId === room.id"
-                              (click)="markRoomReady(room, $event)">{{ 'ROOM_BOARD.MARK_READY' | translate }}</button>
+                              (click)="markRoomReady(room, $event)">
+                        <i class="bi bi-arrow-repeat spin" *ngIf="markingReadyRoomId === room.id" aria-hidden="true"></i>
+                        <span *ngIf="markingReadyRoomId !== room.id">{{ 'ROOM_BOARD.MARK_READY' | translate }}</span>
+                      </button>
                       <button type="button" class="btn btn-xs btn-outline-primary" *ngIf="room.reservation"
                               (click)="openReservation(room); $event.stopPropagation()">{{ 'ROOM_BOARD.VIEW' | translate }}</button>
                     </td>
@@ -342,7 +351,7 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr *ngFor="let room of floor.standaloneRooms" class="list-row list-row--clickable"
+                  <tr *ngFor="let room of floor.standaloneRooms; trackBy: trackByRoomId" class="list-row list-row--clickable"
                       [ngClass]="statusClass(room.occupancy_status)" (click)="openCreateReservation(room)">
                     <td class="fw-bold">#{{ room.number }}</td>
                     <td>{{ room.room_type_name }}</td>
@@ -361,14 +370,23 @@
                     <td class="text-end">
                       <button type="button" class="btn btn-xs btn-primary me-1" *ngIf="canCheckIn(room)"
                               [disabled]="checkingInReservationId === room.reservation?.reservation_id"
-                              (click)="checkInGuest(room, $event)">{{ 'RESERVATIONS.CHECK_IN_BTN' | translate }}</button>
+                              (click)="checkInGuest(room, $event)">
+                        <i class="bi bi-arrow-repeat spin" *ngIf="checkingInReservationId === room.reservation?.reservation_id" aria-hidden="true"></i>
+                        <span *ngIf="checkingInReservationId !== room.reservation?.reservation_id">{{ 'RESERVATIONS.CHECK_IN_BTN' | translate }}</span>
+                      </button>
                       <button type="button" class="btn btn-xs btn-success me-1" *ngIf="canCheckOut(room)"
                               [disabled]="checkingOutReservationId === room.reservation?.reservation_id"
-                              (click)="checkOutGuest(room, $event)">{{ 'DASHBOARD.CHECK_OUT_BTN' | translate }}</button>
+                              (click)="checkOutGuest(room, $event)">
+                        <i class="bi bi-arrow-repeat spin" *ngIf="checkingOutReservationId === room.reservation?.reservation_id" aria-hidden="true"></i>
+                        <span *ngIf="checkingOutReservationId !== room.reservation?.reservation_id">{{ 'DASHBOARD.CHECK_OUT_BTN' | translate }}</span>
+                      </button>
                       <button type="button" class="btn btn-xs btn-warning me-1"
                               *ngIf="room.occupancy_status === 'preparation' && canManageRooms"
                               [disabled]="markingReadyRoomId === room.id"
-                              (click)="markRoomReady(room, $event)">{{ 'ROOM_BOARD.MARK_READY' | translate }}</button>
+                              (click)="markRoomReady(room, $event)">
+                        <i class="bi bi-arrow-repeat spin" *ngIf="markingReadyRoomId === room.id" aria-hidden="true"></i>
+                        <span *ngIf="markingReadyRoomId !== room.id">{{ 'ROOM_BOARD.MARK_READY' | translate }}</span>
+                      </button>
                       <button type="button" class="btn btn-xs btn-outline-primary" *ngIf="room.reservation"
                               (click)="openReservation(room); $event.stopPropagation()">{{ 'ROOM_BOARD.VIEW' | translate }}</button>
                     </td>
@@ -434,19 +452,22 @@
                 *ngIf="canCheckIn(room)"
                 [disabled]="checkingInReservationId === room.reservation?.reservation_id"
                 (click)="checkInGuest(room, $event)">
-          {{ 'RESERVATIONS.CHECK_IN_BTN' | translate }}
+          <i class="bi bi-arrow-repeat spin" *ngIf="checkingInReservationId === room.reservation?.reservation_id" aria-hidden="true"></i>
+          <span *ngIf="checkingInReservationId !== room.reservation?.reservation_id">{{ 'RESERVATIONS.CHECK_IN_BTN' | translate }}</span>
         </button>
         <button type="button" class="btn btn-xs btn-success flex-fill"
                 *ngIf="canCheckOut(room)"
                 [disabled]="checkingOutReservationId === room.reservation?.reservation_id"
                 (click)="checkOutGuest(room, $event)">
-          {{ 'DASHBOARD.CHECK_OUT_BTN' | translate }}
+          <i class="bi bi-arrow-repeat spin" *ngIf="checkingOutReservationId === room.reservation?.reservation_id" aria-hidden="true"></i>
+          <span *ngIf="checkingOutReservationId !== room.reservation?.reservation_id">{{ 'DASHBOARD.CHECK_OUT_BTN' | translate }}</span>
         </button>
         <button type="button" class="btn btn-xs btn-warning flex-fill"
                 *ngIf="room.occupancy_status === 'preparation' && canManageRooms"
                 [disabled]="markingReadyRoomId === room.id"
                 (click)="markRoomReady(room, $event)">
-          {{ 'ROOM_BOARD.MARK_READY' | translate }}
+          <i class="bi bi-arrow-repeat spin" *ngIf="markingReadyRoomId === room.id" aria-hidden="true"></i>
+          <span *ngIf="markingReadyRoomId !== room.id">{{ 'ROOM_BOARD.MARK_READY' | translate }}</span>
         </button>
         <button type="button" class="btn btn-xs btn-outline-primary flex-fill" *ngIf="room.reservation"
                 (click)="openReservation(room)">

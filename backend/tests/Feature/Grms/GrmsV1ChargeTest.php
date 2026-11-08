@@ -106,9 +106,31 @@ class GrmsV1ChargeTest extends TestCase
             'reservation_id' => $reservation->id,
             'room_id' => $room->id,
             'price' => 575,
+            'logedin' => ReservationRoom::LOGEDIN_IN_HOUSE,
+            'login_time' => now(),
         ]);
 
         return [$reservation, $room];
+    }
+
+    /** @return array{0: Reservation, 1: Room, 2: Room} room B already checked out, room A still in-house */
+    private function reservationWithOneRoomCheckedOut(int $hotelId): array
+    {
+        [$reservation, $roomA] = $this->checkedInReservationWithRoom($hotelId);
+
+        $roomB = Room::whereHas('building', fn ($q) => $q->where('hotel_id', $hotelId))
+            ->where('id', '!=', $roomA->id)
+            ->first() ?? $this->createIsolatedTestRoom();
+
+        ReservationRoom::query()->create([
+            'reservation_id' => $reservation->id,
+            'room_id' => $roomB->id,
+            'price' => 0,
+            'logedin' => ReservationRoom::LOGEDIN_NOT_IN_HOUSE,
+            'logout_time' => now(),
+        ]);
+
+        return [$reservation, $roomA, $roomB];
     }
 
     public function test_tax_inclusive_charge_is_posted_and_idempotent(): void
@@ -194,6 +216,50 @@ class GrmsV1ChargeTest extends TestCase
 
         $response->assertStatus(422);
         $response->assertJsonPath('reason', 'reservation_not_found');
+    }
+
+    /**
+     * Per-room check-in/check-out (ReservationRoomStatusService::
+     * recalculateAggregateLogedin): a charge must be judged on the SPECIFIC
+     * room it targets, not the reservation's aggregate — one room checked
+     * out doesn't close the folio for a room that's still occupied.
+     */
+    public function test_a_charge_against_a_checked_out_room_is_rejected_even_though_another_room_is_still_in_house(): void
+    {
+        $hotelId = $this->hotelId();
+        DB::table('hotels')->where('id', $hotelId)->update(['pms_protocol' => 'v1']);
+        [$keyId, $secret] = $this->inboundCredential($hotelId);
+        [$reservation, $roomA, $roomB] = $this->reservationWithOneRoomCheckedOut($hotelId);
+
+        $response = $this->postSigned('/api/grms/v1/charges', [
+            'charge_id' => (string) Str::uuid(),
+            'reservation_id' => (string) $reservation->id,
+            'room' => ['code' => $roomB->number],
+            'department' => 'restaurant',
+            'items' => [['description' => 'x', 'quantity' => 1, 'unit_price' => ['amount' => 100]]],
+        ], $keyId, $secret);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('reason', 'guest_checked_out');
+    }
+
+    public function test_a_charge_against_the_still_in_house_room_posts_despite_the_other_rooms_checkout(): void
+    {
+        $hotelId = $this->hotelId();
+        DB::table('hotels')->where('id', $hotelId)->update(['pms_protocol' => 'v1']);
+        [$keyId, $secret] = $this->inboundCredential($hotelId);
+        [$reservation, $roomA] = $this->reservationWithOneRoomCheckedOut($hotelId);
+
+        $response = $this->postSigned('/api/grms/v1/charges', [
+            'charge_id' => (string) Str::uuid(),
+            'reservation_id' => (string) $reservation->id,
+            'room' => ['code' => $roomA->number],
+            'department' => 'restaurant',
+            'items' => [['description' => 'x', 'quantity' => 1, 'unit_price' => ['amount' => 100]]],
+        ], $keyId, $secret);
+
+        $response->assertStatus(200);
+        $response->assertJsonPath('status', 'posted');
     }
 
     /**

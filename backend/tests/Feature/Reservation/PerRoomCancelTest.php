@@ -195,15 +195,36 @@ class PerRoomCancelTest extends TestCase
     }
 
     /**
-     * Known limitation, documented in ReservationController::cancelRoom():
-     * no per-room check-in tracking exists, so this blocks ALL per-room
-     * cancels while the whole reservation is checked in.
+     * Per-room check-in tracking (see ReservationRoomStatusService::
+     * recalculateAggregateLogedin) means another room of the same
+     * reservation being checked in no longer blocks cancelling THIS one —
+     * only this room's own check-in state does. Previously this was
+     * refused outright (logedin was reservation-wide only).
      */
-    public function test_cancel_room_is_refused_while_reservation_is_checked_in(): void
+    public function test_cancel_room_succeeds_while_another_room_of_the_reservation_is_checked_in(): void
+    {
+        [$hotelId, $roomA, $roomB, $stayReasonId, $sourceId, $user] = $this->seedFixtures();
+        [$reservation, $resRoomA, $resRoomB] = $this->makeTwoRoomReservation($hotelId, $roomA, $roomB, $stayReasonId, $sourceId, $user);
+
+        $resRoomB->update(['logedin' => ReservationRoom::LOGEDIN_IN_HOUSE, 'login_time' => now()]);
+        $reservation->update(['logedin' => Reservation::LOGEDIN_IN_HOUSE]);
+
+        $response = $this->actingAs($user, 'api')
+            ->withHeader('X-Hotel-Id', (string) $hotelId)
+            ->postJson("/api/users/reservations/{$reservation->id}/rooms/{$resRoomA->id}/cancel");
+
+        $response->assertOk();
+
+        $resRoomA->refresh();
+        $this->assertTrue(ReservationRoom::isCancelled((int) $resRoomA->status));
+    }
+
+    public function test_cancel_room_is_refused_while_that_room_itself_is_checked_in(): void
     {
         [$hotelId, $roomA, $roomB, $stayReasonId, $sourceId, $user] = $this->seedFixtures();
         [$reservation, $resRoomA] = $this->makeTwoRoomReservation($hotelId, $roomA, $roomB, $stayReasonId, $sourceId, $user);
 
+        $resRoomA->update(['logedin' => ReservationRoom::LOGEDIN_IN_HOUSE, 'login_time' => now()]);
         $reservation->update(['logedin' => Reservation::LOGEDIN_IN_HOUSE]);
 
         $response = $this->actingAs($user, 'api')

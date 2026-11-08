@@ -232,6 +232,8 @@ class ReservationTestDataSeeder extends Seeder
             'room_id' => $room->id,
             'suite_id' => null,
             'price' => round($finalRoomPrice, 2),
+            'logedin' => 1,
+            'login_time' => $startDate->toDateString(),
         ]);
 
         $revenueAccrual->persistDailyCharges(

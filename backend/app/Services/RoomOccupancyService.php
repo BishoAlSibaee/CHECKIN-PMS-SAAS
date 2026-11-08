@@ -44,8 +44,9 @@ class RoomOccupancyService
         $summary = $this->emptySummary();
 
         foreach ($rooms as $room) {
-            $reservation = $reservationByRoom->get($room->id);
-            $occupancyStatus = $this->resolveOccupancyStatus($room, $reservation, $dateStr);
+            $reservationRoom = $reservationByRoom->get($room->id);
+            $reservation = $reservationRoom?->reservation;
+            $occupancyStatus = $this->resolveOccupancyStatus($room, $reservation, $dateStr, (int) ($reservationRoom?->logedin ?? 0), (string) ($reservationRoom?->logout_time ?? ''));
 
             // A "vacant" room must never carry a specific guest/booking in its
             // payload — e.g. a reservation that already completed its full
@@ -100,8 +101,9 @@ class RoomOccupancyService
         $summary = $this->emptySummary();
 
         foreach ($rooms as $room) {
-            $reservation = $reservationByRoom->get($room->id);
-            $occupancyStatus = $this->resolveOccupancyStatus($room, $reservation, $dateStr);
+            $reservationRoom = $reservationByRoom->get($room->id);
+            $reservation = $reservationRoom?->reservation;
+            $occupancyStatus = $this->resolveOccupancyStatus($room, $reservation, $dateStr, (int) ($reservationRoom?->logedin ?? 0), (string) ($reservationRoom?->logout_time ?? ''));
 
             $summary['total']++;
             $summary[$occupancyStatus] = ($summary[$occupancyStatus] ?? 0) + 1;
@@ -143,12 +145,13 @@ class RoomOccupancyService
             $vacant = 0;
 
             foreach ($rooms as $room) {
-                $reservation = $this->pickReservationForRoomOnDate(
+                $reservationRoom = $this->pickReservationForRoomOnDate(
                     $reservationRooms,
                     (int) $room->id,
                     $dateStr
                 );
-                $status = $this->resolveOccupancyStatus($room, $reservation, $dateStr);
+                $reservation = $reservationRoom?->reservation;
+                $status = $this->resolveOccupancyStatus($room, $reservation, $dateStr, (int) ($reservationRoom?->logedin ?? 0), (string) ($reservationRoom?->logout_time ?? ''));
 
                 if ($status === 'in_house' || $status === 'check_out_today') {
                     $inHouse++;
@@ -270,17 +273,23 @@ class RoomOccupancyService
             'reservation.payments',
         ])
             ->whereIn('room_id', $roomIds)
-            ->whereHas('reservation', function ($q) use ($dateStr) {
-                $q->whereIn('reservation_status', [1, 2])
-                    ->where(function ($q2) use ($dateStr) {
-                        $q2->where(function ($q3) use ($dateStr) {
-                            $q3->where('start_date', '<=', $dateStr)
-                                ->where('expire_date', '>', $dateStr);
-                        })
-                            ->orWhere('start_date', $dateStr)
-                            ->orWhere('expire_date', $dateStr)
-                            ->orWhere(function ($q4) use ($dateStr) {
-                                $q4->where('logedin', Reservation::LOGEDIN_IN_HOUSE)
+            ->where(function ($outer) use ($dateStr) {
+                $outer->whereHas('reservation', function ($q) use ($dateStr) {
+                    $q->whereIn('reservation_status', [1, 2])
+                        ->where(function ($q2) use ($dateStr) {
+                            $q2->where(function ($q3) use ($dateStr) {
+                                $q3->where('start_date', '<=', $dateStr)
+                                    ->where('expire_date', '>', $dateStr);
+                            })
+                                ->orWhere('start_date', $dateStr)
+                                ->orWhere('expire_date', $dateStr);
+                        });
+                })
+                    // Still checked into THIS room past its scheduled departure.
+                    ->orWhere(function ($q4) use ($dateStr) {
+                        $q4->where('logedin', ReservationRoom::LOGEDIN_IN_HOUSE)
+                            ->whereHas('reservation', function ($qr) use ($dateStr) {
+                                $qr->whereIn('reservation_status', [1, 2])
                                     ->where('start_date', '<=', $dateStr)
                                     ->where('expire_date', '<', $dateStr);
                             });
@@ -299,9 +308,9 @@ class RoomOccupancyService
                 continue;
             }
 
-            if (! $existing || $this->reservationPriority($reservation, $dateStr)
-                > $this->reservationPriority($existing, $dateStr)) {
-                $byRoom->put($roomId, $reservation);
+            if (! $existing || $this->reservationPriority($reservation, $dateStr, (int) $reservationRoom->logedin, (string) ($reservationRoom->logout_time ?? ''))
+                > $this->reservationPriority($existing->reservation, $dateStr, (int) $existing->logedin, (string) ($existing->logout_time ?? ''))) {
+                $byRoom->put($roomId, $reservationRoom);
             }
         }
 
@@ -322,15 +331,17 @@ class RoomOccupancyService
             'reservation.payments',
         ])
             ->whereIn('room_id', $roomIds)
-            ->whereHas('reservation', function ($q) use ($startStr, $endStr) {
-                $q->whereIn('reservation_status', [1, 2])
-                    ->where(function ($q2) use ($startStr, $endStr) {
-                        $q2->where(function ($q3) use ($startStr, $endStr) {
-                            $q3->where('start_date', '<=', $endStr)
-                                ->where('expire_date', '>=', $startStr);
-                        })
-                            ->orWhere(function ($q4) use ($startStr) {
-                                $q4->where('logedin', Reservation::LOGEDIN_IN_HOUSE)
+            ->where(function ($outer) use ($startStr, $endStr) {
+                $outer->whereHas('reservation', function ($q) use ($startStr, $endStr) {
+                    $q->whereIn('reservation_status', [1, 2])
+                        ->where('start_date', '<=', $endStr)
+                        ->where('expire_date', '>=', $startStr);
+                })
+                    // Still checked into THIS room, regardless of date range.
+                    ->orWhere(function ($q4) use ($startStr) {
+                        $q4->where('logedin', ReservationRoom::LOGEDIN_IN_HOUSE)
+                            ->whereHas('reservation', function ($qr) use ($startStr) {
+                                $qr->whereIn('reservation_status', [1, 2])
                                     ->where('start_date', '<=', $startStr);
                             });
                     });
@@ -338,7 +349,7 @@ class RoomOccupancyService
             ->get();
     }
 
-    private function pickReservationForRoomOnDate(Collection $reservationRooms, int $roomId, string $dateStr): ?Reservation
+    private function pickReservationForRoomOnDate(Collection $reservationRooms, int $roomId, string $dateStr): ?ReservationRoom
     {
         $best = null;
 
@@ -356,9 +367,9 @@ class RoomOccupancyService
                 continue;
             }
 
-            if (! $best || $this->reservationPriority($reservation, $dateStr)
-                > $this->reservationPriority($best, $dateStr)) {
-                $best = $reservation;
+            if (! $best || $this->reservationPriority($reservation, $dateStr, (int) $reservationRoom->logedin, (string) ($reservationRoom->logout_time ?? ''))
+                > $this->reservationPriority($best->reservation, $dateStr, (int) $best->logedin, (string) ($best->logout_time ?? ''))) {
+                $best = $reservationRoom;
             }
         }
 
@@ -382,12 +393,14 @@ class RoomOccupancyService
         return false;
     }
 
-    private function reservationPriority(Reservation $reservation, string $dateStr): int
+    private function reservationPriority(Reservation $reservation, string $dateStr, int $roomLogedin, string $roomLogoutTime = ''): int
     {
         $status = $this->resolveOccupancyStatus(
             (object) ['roomStatus' => 1, 'active' => 1],
             $reservation,
-            $dateStr
+            $dateStr,
+            $roomLogedin,
+            $roomLogoutTime
         );
 
         return match ($status) {
@@ -401,7 +414,7 @@ class RoomOccupancyService
         };
     }
 
-    private function resolveOccupancyStatus($room, ?Reservation $reservation, string $dateStr): string
+    private function resolveOccupancyStatus($room, ?Reservation $reservation, string $dateStr, int $roomLogedin = 0, string $roomLogoutTime = ''): string
     {
         $roomStatus = is_object($room) && isset($room->roomStatus) ? (int) $room->roomStatus : 1;
         $active = is_object($room) && isset($room->active) ? (int) $room->active : 1;
@@ -434,7 +447,9 @@ class RoomOccupancyService
         $expire = $reservation->expire_date;
         $overlapsNight = $start <= $dateStr && $expire > $dateStr;
         $touchesToday = $start <= $dateStr && $expire >= $dateStr;
-        $checkedIn = (int) $reservation->logedin === Reservation::LOGEDIN_IN_HOUSE;
+        // THIS room's own check-in state, not the reservation's aggregate —
+        // another room on the same reservation may already be checked out.
+        $checkedIn = $roomLogedin === ReservationRoom::LOGEDIN_IN_HOUSE;
 
         if ($checkedIn && $start <= $dateStr && ($overlapsNight || $expire <= $dateStr)) {
             if ($expire === $dateStr) {
@@ -442,6 +457,14 @@ class RoomOccupancyService
             }
 
             return 'in_house';
+        }
+
+        // This specific room already completed its own stay on this reservation
+        // (checked in and back out) — must not look like a pending arrival just
+        // because the reservation starts today, or because another room on the
+        // same reservation is still mid-stay.
+        if (! $checkedIn && filled($roomLogoutTime)) {
+            return 'vacant';
         }
 
         if ($start === $dateStr) {

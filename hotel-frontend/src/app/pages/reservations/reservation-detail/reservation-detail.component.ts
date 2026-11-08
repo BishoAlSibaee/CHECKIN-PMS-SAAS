@@ -59,7 +59,7 @@ export class ReservationDetailComponent implements OnInit, OnDestroy {
   readonly POS_CHARGE_STATUS_ACTIVE = POS_CHARGE_STATUS_ACTIVE;
   readonly POS_PAYMENT_STATUS_CHARGED_TO_ROOM = POS_PAYMENT_STATUS_CHARGED_TO_ROOM;
   priceBreakdownLines: PriceBreakdownLine[] = [];
-  assignedRooms: { resRoomId?: number; number: string; typeName: string; building?: string; floor?: string; roomStatus: number; needsCleaning: boolean; isCancelled: boolean }[] = [];
+  assignedRooms: { resRoomId?: number; number: string; typeName: string; building?: string; floor?: string; roomStatus: number; needsCleaning: boolean; isCancelled: boolean; logedin: number }[] = [];
   roomsDisplay = '—';
   paidAmount = 0;
   balanceDue = 0;
@@ -541,6 +541,7 @@ export class ReservationDetailComponent implements OnInit, OnDestroy {
         roomStatus,
         needsCleaning: roomStatus === 3,
         isCancelled: Number(row?.status ?? 0) === 1,
+        logedin: Number(row?.logedin ?? 0),
       };
     });
     this.dailyCharges = (res.data.daily_charges ?? []).map((line: any) => ({
@@ -903,6 +904,82 @@ export class ReservationDetailComponent implements OnInit, OnDestroy {
       error: (err) => {
         this.isSaving = false;
         this.dataService.showToast(err.error?.message || this.translate.instant('RESERVATIONS.ROOM_CANCEL_FAILED'), 'error');
+      }
+    });
+  }
+
+  /** Per-room check-in — keyed on the room's OWN logedin, not the reservation aggregate. */
+  canCheckInRoom(rm: { isCancelled: boolean; logedin: number }): boolean {
+    return this.canUpdate && !this.isCancelled && !this.isStayEnded && !this.isBeforeCheckIn
+      && !rm.isCancelled && rm.logedin === 0;
+  }
+
+  /** Per-room check-out — available once this room's own departure date is today or overdue. */
+  canCheckOutRoom(rm: { isCancelled: boolean; logedin: number }): boolean {
+    // Unlike the whole-reservation checkout, the backend lets a single room
+    // check out any time (an early departure while another room stays) —
+    // no "on/after the departure date" restriction to mirror here.
+    return this.canUpdate && !this.isCancelled && !rm.isCancelled && rm.logedin === 1;
+  }
+
+  async checkInRoom(rm: { resRoomId?: number; number: string }): Promise<void> {
+    if (!this.booking || !rm.resRoomId) return;
+
+    this.isSaving = true;
+    this.hotelService.checkInReservationRoom(this.booking.id, rm.resRoomId).subscribe({
+      next: (res) => {
+        this.isSaving = false;
+        if (res?.success) {
+          this.dataService.showToast(this.translate.instant('RESERVATIONS.CHECK_IN_ROOM_OK'), 'success');
+          this.loadBooking(this.booking!.id);
+        } else {
+          this.dataService.showToast(res?.message || this.translate.instant('RESERVATIONS.CHECK_IN_ROOM_FAILED'), 'error');
+        }
+      },
+      error: (err) => {
+        this.isSaving = false;
+        this.dataService.showToast(err.error?.message || this.translate.instant('RESERVATIONS.CHECK_IN_ROOM_FAILED'), 'error');
+      }
+    });
+  }
+
+  async checkOutRoom(rm: { resRoomId?: number; number: string }): Promise<void> {
+    if (!this.booking || !rm.resRoomId) return;
+
+    // Checking out the LAST active in-house room is a full reservation
+    // checkout downstream (balance-due guard + ZATCA on the backend) — so
+    // it gets the same payment guard the whole-reservation checkOut() does.
+    // Any other room still in-house means the folio stays open — no guard.
+    const otherActiveInHouse = this.assignedRooms.some(
+      (r) => r.resRoomId !== rm.resRoomId && !r.isCancelled && r.logedin === 1
+    );
+    if (!otherActiveInHouse && !this.isFullyPaid) {
+      this.dataService.showToast(
+        this.translate.instant('RESERVATIONS.CHECKOUT_REQUIRES_PAYMENT', { amount: this.balanceDue.toFixed(2) }),
+        'warning'
+      );
+      return;
+    }
+
+    const ok = await this.confirm.confirm(
+      this.translate.instant('RESERVATIONS.CHECK_OUT_ROOM_CONFIRM', { room: rm.number })
+    );
+    if (!ok) return;
+
+    this.isSaving = true;
+    this.hotelService.checkOutReservationRoom(this.booking.id, rm.resRoomId).subscribe({
+      next: (res) => {
+        this.isSaving = false;
+        if (res?.success) {
+          this.dataService.showToast(this.translate.instant('RESERVATIONS.CHECK_OUT_ROOM_OK'), 'success');
+          this.loadBooking(this.booking!.id);
+        } else {
+          this.dataService.showToast(res?.message || this.translate.instant('RESERVATIONS.CHECK_OUT_ROOM_FAILED'), 'error');
+        }
+      },
+      error: (err) => {
+        this.isSaving = false;
+        this.dataService.showToast(err.error?.message || this.translate.instant('RESERVATIONS.CHECK_OUT_ROOM_FAILED'), 'error');
       }
     });
   }
