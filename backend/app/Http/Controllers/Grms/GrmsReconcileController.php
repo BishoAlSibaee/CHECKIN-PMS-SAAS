@@ -6,7 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\GrmsHotelCredential;
 use App\Models\PosCharge;
 use App\Models\Reservation;
+use App\Models\Room;
 use App\Services\Grms\GrmsSignatureService;
+use App\Services\ReservationRoomStatusService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 
@@ -17,6 +19,14 @@ use Illuminate\Http\Response;
  */
 class GrmsReconcileController extends Controller
 {
+    /** Contract section 7's closed room-status enum, mapped from our roomStatus. */
+    private const ROOM_STATUS_MAP = [
+        ReservationRoomStatusService::ROOM_OCCUPIED => 'occupied',
+        ReservationRoomStatusService::ROOM_PREPARATION => 'dirty',
+        ReservationRoomStatusService::ROOM_AVAILABLE => 'clean',
+        ReservationRoomStatusService::ROOM_OUT_OF_SERVICE => 'out_of_order',
+    ];
+
     public function __construct(private GrmsSignatureService $signatureService) {}
 
     public function show(Request $request)
@@ -60,7 +70,7 @@ class GrmsReconcileController extends Controller
             ->whereDate('charge_date', $date)
             ->get(['grms_charge_id', 'reservation_id', 'amount', 'tax_amount', 'status']);
 
-        return response()->json([
+        $payload = [
             'date' => $date,
             'reservations' => $reservations->map(fn (Reservation $r) => [
                 'id' => (string) $r->id,
@@ -81,6 +91,23 @@ class GrmsReconcileController extends Controller
                     'currency' => 'SAR',
                 ],
             ]),
-        ], Response::HTTP_OK);
+        ];
+
+        // Contract section 7: room status is only given (and compared) for
+        // "today" — it's a live snapshot, not something meaningful to
+        // reconstruct for a past date. One entry per active room; GRMS
+        // diffs this list against its own room map.
+        if ($date === now()->toDateString()) {
+            $payload['rooms'] = Room::whereHas('building', fn ($q) => $q->where('hotel_id', $hotelId))
+                ->where('active', 1)
+                ->get(['number', 'roomStatus'])
+                ->map(fn (Room $r) => [
+                    'code' => $r->number,
+                    'status' => self::ROOM_STATUS_MAP[(int) $r->roomStatus] ?? 'clean',
+                ])
+                ->values();
+        }
+
+        return response()->json($payload, Response::HTTP_OK);
     }
 }

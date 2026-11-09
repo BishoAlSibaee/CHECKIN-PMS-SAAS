@@ -313,7 +313,10 @@
     "STANDALONE_ROOMS": "Individual rooms",
     "COL_SUITE": "Suite",
     "MARK_READY": "Mark ready",
-    "MARK_READY_SUCCESS": "Room marked ready for check-in."
+    "MARK_READY_SUCCESS": "Room marked ready for check-in.",
+    "GRMS_OCCUPIED": "Occupied (sensor)",
+    "GRMS_VACANT": "Vacant (sensor)",
+    "GRMS_MANAGES_HOUSEKEEPING": "GRMS manages this room's cleaning status — complete the cleaning in GRMS, don't override it here."
   },
   "ROOM_HISTORY": {
     "TITLE": "Room {{number}} History",

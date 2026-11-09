@@ -91,6 +91,20 @@
               "sourceMap": true,
               "namedChunks": true
             },
+            "grms-staging": {
+              "fileReplacements": [
+                {
+                  "replace": "src/environments/environment.ts",
+                  "with": "src/environments/environment.grms-staging.ts"
+                }
+              ],
+              "buildOptimizer": false,
+              "optimization": false,
+              "vendorChunk": true,
+              "extractLicenses": false,
+              "sourceMap": true,
+              "namedChunks": true
+            },
             "demo": {
               "fileReplacements": [
                 {
@@ -148,6 +162,11 @@
               "buildTarget": "HotelManageSystemAngular:build:lan",
               "host": "0.0.0.0",
               "port": 4300
+            },
+            "grms-staging": {
+              "buildTarget": "HotelManageSystemAngular:build:grms-staging",
+              "host": "127.0.0.1",
+              "port": 4301
             }
           },
           "defaultConfiguration": "development"

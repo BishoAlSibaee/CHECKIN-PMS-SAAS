@@ -504,6 +504,11 @@ class RoomOccupancyService
             'suite_name' => $this->formatSuiteLabel($room->suite?->number),
             'suite_floor_id' => $room->suite?->floor_id ?? $room->floor_id,
             'suite_floor_number' => $room->suite?->floor?->number ?? $room->floor?->number,
+            // GRMS occupancy sensor — null means GRMS has never reported a
+            // reading for this room (no sensor, or no GRMS link at all),
+            // distinct from a reported "vacant" reading.
+            'grms_occupied' => $room->grms_occupied === null ? null : (bool) $room->grms_occupied,
+            'grms_occupancy_changed_at' => $room->grms_occupancy_changed_at,
             'reservation' => null,
         ];
 

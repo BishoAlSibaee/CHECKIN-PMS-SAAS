@@ -12,6 +12,10 @@ class Room extends Model
     use HasFactory;
     public $timestamps = true;
 
+    protected $casts = [
+        'grms_occupancy_changed_at' => 'datetime',
+    ];
+
     /**
      * GRMS v1 contract staleness check for room.blocked/unblocked — same
      * pattern as Reservation::version.

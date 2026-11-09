@@ -34,6 +34,8 @@ export interface RoomBoardItem {
   suite_name?: string | null;
   suite_floor_id?: number | null;
   suite_floor_number?: string | null;
+  grms_occupied?: boolean | null;
+  grms_occupancy_changed_at?: string | null;
   reservation?: {
     reservation_id: number;
     client_name: string;
@@ -98,6 +100,8 @@ export class RoomBoardComponent implements OnInit, OnDestroy {
   rooms: RoomBoardItem[] = [];
   groupedRooms: RoomBoardBuildingGroup[] = [];
   markingReadyRoomId: number | null = null;
+  /** GRMS is the sole source of truth for housekeeping once linked — hides the local "mark ready" action. */
+  grmsLinked = false;
   checkingOutReservationId: number | null = null;
   checkingInReservationId: number | null = null;
 
@@ -147,6 +151,10 @@ export class RoomBoardComponent implements OnInit, OnDestroy {
 
   get canManageRooms(): boolean {
     return this.authPerm.has('manage rooms');
+  }
+
+  canMarkRoomReady(room: RoomBoardItem): boolean {
+    return this.canManageRooms && room.occupancy_status === 'preparation' && !this.grmsLinked;
   }
 
   ngOnInit(): void {
@@ -302,6 +310,7 @@ export class RoomBoardComponent implements OnInit, OnDestroy {
         }
         this.summary = res.data.summary ?? {};
         this.rooms = res.data.rooms ?? [];
+        this.grmsLinked = !!res.data.grms_linked;
         this.groupedRooms = this.buildGroupedRooms(this.rooms);
         this.isLoading = false;
       },
@@ -617,7 +626,7 @@ export class RoomBoardComponent implements OnInit, OnDestroy {
 
   markRoomReady(room: RoomBoardItem, event: Event): void {
     event.stopPropagation();
-    if (!this.canManageRooms || room.occupancy_status !== 'preparation') {
+    if (!this.canMarkRoomReady(room)) {
       return;
     }
 

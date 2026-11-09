@@ -30,6 +30,15 @@ class RoomBoardController extends Controller
 
             $board = OccupancyBoardCache::remember($date, $filters, fn () => $this->occupancyService->buildBoard($date, $filters));
 
+            // GRMS is the sole source of truth for housekeeping cleanliness
+            // once a hotel is linked (pms_protocol=v1) — the frontend uses
+            // this to hide the local "mark ready" action rather than let
+            // staff declare a room clean without GRMS's own verification.
+            $hotelId = $request->attributes->get('currentHotelId');
+            $board['grms_linked'] = $hotelId
+                ? \App\Services\Grms\GrmsProtocolGuard::allows((int) $hotelId, 'v1')
+                : false;
+
             return \SuccessData('Room occupancy board retrieved', $board);
         } catch (\Exception $e) {
             return \Failed($e->getMessage());

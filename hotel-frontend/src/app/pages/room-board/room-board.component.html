@@ -315,12 +315,15 @@
                         <span *ngIf="checkingOutReservationId !== room.reservation?.reservation_id">{{ 'DASHBOARD.CHECK_OUT_BTN' | translate }}</span>
                       </button>
                       <button type="button" class="btn btn-xs btn-warning me-1"
-                              *ngIf="room.occupancy_status === 'preparation' && canManageRooms"
+                              *ngIf="canMarkRoomReady(room)"
                               [disabled]="markingReadyRoomId === room.id"
                               (click)="markRoomReady(room, $event)">
                         <i class="bi bi-arrow-repeat spin" *ngIf="markingReadyRoomId === room.id" aria-hidden="true"></i>
                         <span *ngIf="markingReadyRoomId !== room.id">{{ 'ROOM_BOARD.MARK_READY' | translate }}</span>
                       </button>
+                      <i class="bi bi-info-circle text-muted me-1"
+                         *ngIf="canManageRooms && room.occupancy_status === 'preparation' && grmsLinked"
+                         [title]="'ROOM_BOARD.GRMS_MANAGES_HOUSEKEEPING' | translate" aria-hidden="true"></i>
                       <button type="button" class="btn btn-xs btn-outline-primary" *ngIf="room.reservation"
                               (click)="openReservation(room); $event.stopPropagation()">{{ 'ROOM_BOARD.VIEW' | translate }}</button>
                     </td>
@@ -381,12 +384,15 @@
                         <span *ngIf="checkingOutReservationId !== room.reservation?.reservation_id">{{ 'DASHBOARD.CHECK_OUT_BTN' | translate }}</span>
                       </button>
                       <button type="button" class="btn btn-xs btn-warning me-1"
-                              *ngIf="room.occupancy_status === 'preparation' && canManageRooms"
+                              *ngIf="canMarkRoomReady(room)"
                               [disabled]="markingReadyRoomId === room.id"
                               (click)="markRoomReady(room, $event)">
                         <i class="bi bi-arrow-repeat spin" *ngIf="markingReadyRoomId === room.id" aria-hidden="true"></i>
                         <span *ngIf="markingReadyRoomId !== room.id">{{ 'ROOM_BOARD.MARK_READY' | translate }}</span>
                       </button>
+                      <i class="bi bi-info-circle text-muted me-1"
+                         *ngIf="canManageRooms && room.occupancy_status === 'preparation' && grmsLinked"
+                         [title]="'ROOM_BOARD.GRMS_MANAGES_HOUSEKEEPING' | translate" aria-hidden="true"></i>
                       <button type="button" class="btn btn-xs btn-outline-primary" *ngIf="room.reservation"
                               (click)="openReservation(room); $event.stopPropagation()">{{ 'ROOM_BOARD.VIEW' | translate }}</button>
                     </td>
@@ -423,7 +429,17 @@
            [attr.aria-label]="('DASHBOARD.ROOM' | translate) + ' ' + room.number">
         <div class="d-flex justify-content-between align-items-start gap-1 mb-1">
           <div class="min-w-0">
-            <div class="room-number">#{{ room.number }}</div>
+            <div class="room-number">
+              #{{ room.number }}
+              <i class="bi grms-occupancy-icon"
+                 *ngIf="room.grms_occupied !== null && room.grms_occupied !== undefined"
+                 [class.bi-person-fill]="room.grms_occupied"
+                 [class.text-danger]="room.grms_occupied"
+                 [class.bi-person]="!room.grms_occupied"
+                 [class.text-muted]="!room.grms_occupied"
+                 [title]="(room.grms_occupied ? ('ROOM_BOARD.GRMS_OCCUPIED' | translate) : ('ROOM_BOARD.GRMS_VACANT' | translate)) + (room.grms_occupancy_changed_at ? ' — ' + (room.grms_occupancy_changed_at | date:'short') : '')"
+                 aria-hidden="true"></i>
+            </div>
             <div class="room-type text-truncate">{{ room.room_type_name }}</div>
             <div class="suite-badge text-truncate" *ngIf="room.suite_name && !compact">{{ room.suite_name }}</div>
           </div>
@@ -463,12 +479,16 @@
           <span *ngIf="checkingOutReservationId !== room.reservation?.reservation_id">{{ 'DASHBOARD.CHECK_OUT_BTN' | translate }}</span>
         </button>
         <button type="button" class="btn btn-xs btn-warning flex-fill"
-                *ngIf="room.occupancy_status === 'preparation' && canManageRooms"
+                *ngIf="canMarkRoomReady(room)"
                 [disabled]="markingReadyRoomId === room.id"
                 (click)="markRoomReady(room, $event)">
           <i class="bi bi-arrow-repeat spin" *ngIf="markingReadyRoomId === room.id" aria-hidden="true"></i>
           <span *ngIf="markingReadyRoomId !== room.id">{{ 'ROOM_BOARD.MARK_READY' | translate }}</span>
         </button>
+        <p class="grms-housekeeping-hint text-muted small mb-0 w-100"
+           *ngIf="canManageRooms && room.occupancy_status === 'preparation' && grmsLinked">
+          {{ 'ROOM_BOARD.GRMS_MANAGES_HOUSEKEEPING' | translate }}
+        </p>
         <button type="button" class="btn btn-xs btn-outline-primary flex-fill" *ngIf="room.reservation"
                 (click)="openReservation(room)">
           {{ compact ? ('ROOM_BOARD.VIEW' | translate) : ('ROOM_BOARD.VIEW_BOOKING' | translate) }}

@@ -155,6 +155,73 @@ class ReservationLifecycleOutboxTest extends TestCase
         Carbon::setTestNow();
     }
 
+    /**
+     * GRMS confirmed (after we asked): stay.checked_out's rooms[] may be
+     * partial — the reservation stays open on their side as long as it's
+     * not empty. So a per-room checkout always fires this ONE event, with
+     * rooms[] scoped to just the room that checked out, whether or not it
+     * happens to be the last one.
+     */
+    public function test_checking_out_one_room_sends_stay_checked_out_with_only_that_room(): void
+    {
+        Carbon::setTestNow('2026-08-16');
+
+        $roomA = $this->findOrCreateAvailableRoom('2026-08-16', '2026-08-18');
+        $roomB = Room::where('active', 1)->where('id', '!=', $roomA->id)->whereHas('roomType')
+            ->orderBy('id')->get()
+            ->first(fn (Room $r) => !$this->roomHasReservationOverlap($r->id, '2026-08-16', '2026-08-18'))
+            ?? $this->createIsolatedTestRoom();
+        $hotelId = $this->setHotelToV1($roomA);
+        [$reservation, $resRooms] = $this->makeReservationWithRooms([$roomA, $roomB], '2026-08-16', '2026-08-18');
+        ReservationRoom::whereIn('id', [$resRooms[0]->id, $resRooms[1]->id])
+            ->update(['logedin' => ReservationRoom::LOGEDIN_IN_HOUSE, 'login_time' => now()]);
+
+        $user = $this->userWithApiPermissions(['view reservations', 'update reservations']);
+        $response = $this->actingAs($user, 'api')->postJson(
+            "/api/users/reservations/{$reservation->id}/rooms/{$resRooms[0]->id}/check-out",
+        );
+        $response->assertOk();
+
+        $events = GrmsOutboxEvent::where('hotel_id', $hotelId)
+            ->where('entity_id', (string) $reservation->id)
+            ->where('type', 'stay.checked_out')
+            ->get();
+
+        $this->assertCount(1, $events, 'Exactly one stay.checked_out event, no duplicate from the generic dispatch.');
+        $this->assertCount(1, $events->first()->payload['data']['rooms']);
+        $this->assertSame($roomA->number, $events->first()->payload['data']['rooms'][0]['room']['code']);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_checking_out_the_last_room_still_sends_exactly_one_stay_checked_out_event(): void
+    {
+        Carbon::setTestNow('2026-08-16');
+
+        $room = $this->findOrCreateAvailableRoom('2026-08-15', '2026-08-30');
+        $hotelId = $this->setHotelToV1($room);
+        [$reservation, $resRooms] = $this->makeReservationWithRooms([$room], '2026-08-15', '2026-08-18');
+        $resRooms[0]->update(['logedin' => ReservationRoom::LOGEDIN_IN_HOUSE, 'login_time' => now()]);
+        $reservation->payments()->create(['pay' => $reservation->total, 'type' => 0, 'user_id' => $this->apiTestUser()->id]);
+
+        $user = $this->userWithApiPermissions(['view reservations', 'update reservations']);
+        $response = $this->actingAs($user, 'api')->postJson(
+            "/api/users/reservations/{$reservation->id}/rooms/{$resRooms[0]->id}/check-out",
+        );
+        $response->assertOk();
+
+        $events = GrmsOutboxEvent::where('hotel_id', $hotelId)
+            ->where('entity_id', (string) $reservation->id)
+            ->where('type', 'stay.checked_out')
+            ->get();
+
+        $this->assertCount(1, $events, 'Last room checking out must not double-send (manual enqueue + generic dispatch).');
+        $this->assertCount(1, $events->first()->payload['data']['rooms']);
+        $this->assertSame($room->number, $events->first()->payload['data']['rooms'][0]['room']['code']);
+
+        Carbon::setTestNow();
+    }
+
     public function test_a_legacy_hotel_never_gets_an_outbox_event(): void
     {
         Carbon::setTestNow('2026-08-16');

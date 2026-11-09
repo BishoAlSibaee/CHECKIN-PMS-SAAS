@@ -106,6 +106,64 @@ class GrmsV1EventsTest extends TestCase
         );
     }
 
+    public function test_occupancy_changed_stores_the_sensor_reading(): void
+    {
+        $hotelId = $this->hotelId();
+        DB::table('hotels')->where('id', $hotelId)->update(['pms_protocol' => 'v1']);
+        [$keyId, $secret] = $this->inboundCredentialForHotel($hotelId);
+
+        $room = Room::whereHas('building', fn ($q) => $q->where('hotel_id', $hotelId))->first();
+        $this->assertNotNull($room);
+        $this->assertNull($room->grms_occupied);
+
+        $body = json_encode(['events' => [[
+            'id' => (string) \Illuminate\Support\Str::uuid(),
+            'type' => 'room.occupancy_changed',
+            'data' => ['room' => ['code' => $room->number], 'occupied' => true, 'changed_at' => '2026-11-08T10:00:00+03:00'],
+        ]]]);
+
+        $response = $this->call(
+            'POST',
+            '/api/grms/v1/events',
+            [], [], [],
+            $this->transformHeadersToServerVars($this->signedHeaders($keyId, $secret, $body)),
+            $body,
+        );
+
+        $response->assertStatus(202);
+        $response->assertJsonPath('results.0.status', 'accepted');
+
+        $room->refresh();
+        $this->assertTrue((bool) $room->grms_occupied);
+        $this->assertNotNull($room->grms_occupancy_changed_at);
+    }
+
+    public function test_occupancy_changed_with_a_non_boolean_value_is_rejected(): void
+    {
+        $hotelId = $this->hotelId();
+        DB::table('hotels')->where('id', $hotelId)->update(['pms_protocol' => 'v1']);
+        [$keyId, $secret] = $this->inboundCredentialForHotel($hotelId);
+        $room = Room::whereHas('building', fn ($q) => $q->where('hotel_id', $hotelId))->first();
+
+        $body = json_encode(['events' => [[
+            'id' => (string) \Illuminate\Support\Str::uuid(),
+            'type' => 'room.occupancy_changed',
+            'data' => ['room' => ['code' => $room->number], 'occupied' => 'yes'],
+        ]]]);
+
+        $response = $this->call(
+            'POST',
+            '/api/grms/v1/events',
+            [], [], [],
+            $this->transformHeadersToServerVars($this->signedHeaders($keyId, $secret, $body)),
+            $body,
+        );
+
+        $response->assertStatus(202);
+        $response->assertJsonPath('results.0.status', 'rejected');
+        $response->assertJsonPath('results.0.reason', 'invalid_value');
+    }
+
     public function test_a_repeated_event_id_is_reported_as_duplicate(): void
     {
         $hotelId = $this->hotelId();
@@ -170,5 +228,62 @@ class GrmsV1EventsTest extends TestCase
 
         $response->assertStatus(200);
         $this->assertGreaterThan(0, count($response->json('rooms')));
+    }
+
+    public function test_reconcile_includes_room_status_only_for_today(): void
+    {
+        $hotelId = $this->hotelId();
+        DB::table('hotels')->where('id', $hotelId)->update(['pms_protocol' => 'v1']);
+        [$keyId, $secret] = $this->inboundCredentialForHotel($hotelId);
+
+        $room = Room::whereHas('building', fn ($q) => $q->where('hotel_id', $hotelId))->first();
+        $this->assertNotNull($room);
+        Room::where('id', $room->id)->update(['roomStatus' => \App\Services\ReservationRoomStatusService::ROOM_PREPARATION]);
+
+        $today = now()->toDateString();
+        $timestamp = (string) time();
+        $signature = app(GrmsSignatureService::class)->sign($timestamp, '', $secret);
+
+        $response = $this->call(
+            'GET',
+            "/api/grms/v1/reconcile?date={$today}",
+            [], [], [],
+            $this->transformHeadersToServerVars([
+                'X-Key-Id' => $keyId,
+                'X-Timestamp' => $timestamp,
+                'X-Signature' => $signature,
+            ]),
+        );
+
+        $response->assertStatus(200);
+        $rooms = collect($response->json('rooms'));
+        $this->assertNotNull($rooms, 'rooms key must be present for today.');
+        $entry = $rooms->firstWhere('code', $room->number);
+        $this->assertNotNull($entry);
+        $this->assertSame('dirty', $entry['status']);
+    }
+
+    public function test_reconcile_omits_room_status_for_a_past_date(): void
+    {
+        $hotelId = $this->hotelId();
+        DB::table('hotels')->where('id', $hotelId)->update(['pms_protocol' => 'v1']);
+        [$keyId, $secret] = $this->inboundCredentialForHotel($hotelId);
+
+        $timestamp = (string) time();
+        $signature = app(GrmsSignatureService::class)->sign($timestamp, '', $secret);
+
+        $response = $this->call(
+            'GET',
+            '/api/grms/v1/reconcile?date=2026-01-01',
+            [], [], [],
+            $this->transformHeadersToServerVars([
+                'X-Key-Id' => $keyId,
+                'X-Timestamp' => $timestamp,
+                'X-Signature' => $signature,
+            ]),
+        );
+
+        $response->assertStatus(200);
+        $this->assertArrayNotHasKey('rooms', $response->json());
     }
 }

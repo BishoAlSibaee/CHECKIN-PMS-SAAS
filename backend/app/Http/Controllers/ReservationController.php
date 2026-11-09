@@ -1247,6 +1247,9 @@ class ReservationController extends Controller
                 }
             }
 
+            $checkedOutRoomNumber = (string) ($resRoom->room?->number ?? '');
+            $checkedOutHotelId = (int) ($resRoom->room?->building?->hotel_id ?? 0);
+
             $resRoom->logedin = ReservationRoom::LOGEDIN_NOT_IN_HOUSE;
             $resRoom->logout_time = now();
             $resRoom->save();
@@ -1264,7 +1267,35 @@ class ReservationController extends Controller
 
             DB::commit();
 
-            $this->notifyReservationLive($id, $logAction, true);
+            // Always 'room_checked_out' here, even when $isLastRoom — that
+            // action is deliberately absent from GRMS_V1_EVENT_TYPES, so
+            // notifyReservationLive() never ALSO fires the generic
+            // enqueueGrmsOutboxEvent('checked_out') path below our own
+            // manual one, which would double-send to GRMS for this room.
+            $this->notifyReservationLive($id, 'room_checked_out', true);
+
+            // GRMS contract: stay.checked_out carries rooms[] scoped to just
+            // the room(s) actually checking out — confirmed with the GRMS
+            // team that a partial rooms[] keeps the reservation open on
+            // their side and only closes it once no room remains, so this
+            // fires the same event whether or not this is the last room.
+            if ($checkedOutRoomNumber !== '' && $checkedOutHotelId > 0
+                && \App\Services\Grms\GrmsProtocolGuard::allows($checkedOutHotelId, 'v1')) {
+                app(\App\Services\Grms\GrmsOutboxService::class)->enqueue(
+                    $checkedOutHotelId,
+                    'stay.checked_out',
+                    'reservation',
+                    (string) $reservation->id,
+                    (int) $reservation->fresh()->version,
+                    [
+                        'reservation' => ['id' => (string) $reservation->id],
+                        'rooms' => [[
+                            'room' => ['code' => $checkedOutRoomNumber],
+                            'checked_out_at' => now()->toIso8601String(),
+                        ]],
+                    ],
+                );
+            }
 
             if ($isLastRoom && $this->zatcaCheckoutReportingService->shouldReportOnCheckout($id)) {
                 try {

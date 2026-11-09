@@ -13,6 +13,7 @@ use App\Services\HotelLivePublisher;
 use App\Services\ReservationRoomStatusService;
 use Carbon\Carbon;
 use Database\Seeders\ReservationTestDataSeeder;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
 
@@ -110,6 +111,32 @@ class RoomBoardTest extends TestCase
      * not "in_house" (reservation's aggregate) and not "check_in_today"
      * (mistaken for a pending arrival just because the stay starts today).
      */
+    public function test_grms_linked_flag_reflects_the_hotels_protocol(): void
+    {
+        $this->artisan('db:seed', [
+            '--class' => ReservationTestDataSeeder::class,
+            '--force' => true,
+            '--no-interaction' => true,
+        ]);
+
+        $user = $this->userWithApiPermissions();
+        $hotelId = (int) DB::table('hotels')->orderBy('id')->value('id');
+
+        DB::table('hotels')->where('id', $hotelId)->update(['pms_protocol' => 'legacy']);
+        $legacy = $this->actingAs($user, 'api')
+            ->withHeader('X-Hotel-Id', (string) $hotelId)
+            ->getJson('/api/users/rooms/occupancy-board?date=2026-08-01');
+        $legacy->assertOk();
+        $this->assertFalse($legacy->json('data.grms_linked'));
+
+        DB::table('hotels')->where('id', $hotelId)->update(['pms_protocol' => 'v1']);
+        $linked = $this->actingAs($user, 'api')
+            ->withHeader('X-Hotel-Id', (string) $hotelId)
+            ->getJson('/api/users/rooms/occupancy-board?date=2026-08-01');
+        $linked->assertOk();
+        $this->assertTrue($linked->json('data.grms_linked'));
+    }
+
     public function test_board_reflects_a_single_rooms_checkout_independent_of_its_roommate(): void
     {
         Carbon::setTestNow('2026-09-20');

@@ -620,7 +620,10 @@
     "STANDALONE_ROOMS": "غرف مستقلة",
     "COL_SUITE": "الجناح",
     "MARK_READY": "جاهزة للتسليم",
-    "MARK_READY_SUCCESS": "تم تأكيد جاهزية الغرفة لتسجيل الدخول."
+    "MARK_READY_SUCCESS": "تم تأكيد جاهزية الغرفة لتسجيل الدخول.",
+    "GRMS_OCCUPIED": "مشغولة (حسّاس)",
+    "GRMS_VACANT": "شاغرة (حسّاس)",
+    "GRMS_MANAGES_HOUSEKEEPING": "نظام GRMS يتحكم بحالة تنظيف هذه الغرفة — أكمل التنظيف من خلاله، لا تتجاوزه من هنا."
   },
   "ROOM_HISTORY": {
     "TITLE": "سجل الغرفة {{number}}",

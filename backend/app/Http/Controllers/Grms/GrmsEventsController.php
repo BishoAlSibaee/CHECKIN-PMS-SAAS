@@ -19,9 +19,11 @@ use Illuminate\Http\Response;
  * DispatchGrmsOutboxCommand. Coexists with the legacy room-ready webhook
  * (GrmsWebhookController) during the pms_protocol migration — see hotels.pms_protocol.
  *
- * Only room.housekeeping_status_changed actually changes anything on our
- * side today (no occupancy-sensor or maintenance-ticket model exists yet —
- * maintenance.requested is surfaced as a live staff notification only).
+ * room.occupancy_changed is stored (rooms.grms_occupied/grms_occupancy_changed_at)
+ * purely for display — a sensor signal, independent of our own reservation-based
+ * occupancy and housekeeping roomStatus; nothing in our availability/check-in
+ * logic reads it. maintenance.requested still has no ticket model, only a
+ * live staff notification.
  */
 class GrmsEventsController extends Controller
 {
@@ -85,7 +87,7 @@ class GrmsEventsController extends Controller
         return match ($type) {
             'room.housekeeping_status_changed' => $this->applyHousekeepingStatus($hotelId, $event),
             'maintenance.requested' => $this->applyMaintenanceRequested($hotelId, $event),
-            'room.occupancy_changed' => ['id' => $id, 'status' => 'accepted'], // not consumed, see class docblock
+            'room.occupancy_changed' => $this->applyOccupancyChanged($hotelId, $event),
             default => ['id' => $id, 'status' => 'rejected', 'reason' => 'unknown_type'],
         };
     }
@@ -113,6 +115,35 @@ class GrmsEventsController extends Controller
         }
 
         $room->roomStatus = $targetStatus;
+        $room->save();
+
+        OccupancyBoardCache::bump();
+
+        return ['id' => $id, 'status' => 'accepted'];
+    }
+
+    private function applyOccupancyChanged(int $hotelId, array $event): array
+    {
+        $id = (string) $event['id'];
+        $roomCode = (string) ($event['data']['room']['code'] ?? '');
+        if (!is_bool($event['data']['occupied'] ?? null)) {
+            return ['id' => $id, 'status' => 'rejected', 'reason' => 'invalid_value'];
+        }
+        $occupied = (bool) $event['data']['occupied'];
+        $changedAt = (string) ($event['data']['changed_at'] ?? now()->toIso8601String());
+
+        $room = Room::whereHas('building', fn ($q) => $q->where('hotel_id', $hotelId))
+            ->where('number', $roomCode)
+            ->first();
+
+        if (!$room) {
+            // Same reasoning as the housekeeping/maintenance handlers:
+            // nothing GRMS can usefully retry for an unknown room code.
+            return ['id' => $id, 'status' => 'accepted'];
+        }
+
+        $room->grms_occupied = $occupied;
+        $room->grms_occupancy_changed_at = $changedAt;
         $room->save();
 
         OccupancyBoardCache::bump();
