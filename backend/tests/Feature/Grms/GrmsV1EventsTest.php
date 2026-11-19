@@ -2,11 +2,14 @@
 
 namespace Tests\Feature\Grms;
 
+use App\Events\HotelLiveUpdated;
 use App\Models\GrmsHotelCredential;
 use App\Models\Room;
 use App\Services\Grms\GrmsCredentialService;
 use App\Services\Grms\GrmsSignatureService;
+use App\Services\HotelLivePublisher;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
 
 class GrmsV1EventsTest extends TestCase
@@ -104,6 +107,68 @@ class GrmsV1EventsTest extends TestCase
             \App\Services\ReservationRoomStatusService::ROOM_OUT_OF_SERVICE,
             (int) Room::find($room->id)->roomStatus,
         );
+    }
+
+    /**
+     * Regression: GRMS-driven room status updates only bumped the server
+     * cache, never told a connected browser to refetch — so the room board
+     * stayed stale until a manual refresh. Must broadcast the same way the
+     * PMS's own actions already do (notifyReservationLive).
+     */
+    public function test_housekeeping_status_changed_broadcasts_a_live_update(): void
+    {
+        Event::fake([HotelLiveUpdated::class]);
+
+        $hotelId = $this->hotelId();
+        DB::table('hotels')->where('id', $hotelId)->update(['pms_protocol' => 'v1']);
+        [$keyId, $secret] = $this->inboundCredentialForHotel($hotelId);
+        $room = Room::whereHas('building', fn ($q) => $q->where('hotel_id', $hotelId))->first();
+
+        $body = json_encode(['events' => [[
+            'id' => (string) \Illuminate\Support\Str::uuid(),
+            'type' => 'room.housekeeping_status_changed',
+            'data' => ['room' => ['code' => $room->number], 'status' => 'clean'],
+        ]]]);
+
+        $this->call(
+            'POST',
+            '/api/grms/v1/events',
+            [], [], [],
+            $this->transformHeadersToServerVars($this->signedHeaders($keyId, $secret, $body)),
+            $body,
+        )->assertStatus(202);
+
+        Event::assertDispatched(HotelLiveUpdated::class, function (HotelLiveUpdated $event) {
+            return in_array(HotelLivePublisher::SCOPE_OCCUPANCY_BOARD, $event->scopes, true);
+        });
+    }
+
+    public function test_occupancy_changed_broadcasts_a_live_update(): void
+    {
+        Event::fake([HotelLiveUpdated::class]);
+
+        $hotelId = $this->hotelId();
+        DB::table('hotels')->where('id', $hotelId)->update(['pms_protocol' => 'v1']);
+        [$keyId, $secret] = $this->inboundCredentialForHotel($hotelId);
+        $room = Room::whereHas('building', fn ($q) => $q->where('hotel_id', $hotelId))->first();
+
+        $body = json_encode(['events' => [[
+            'id' => (string) \Illuminate\Support\Str::uuid(),
+            'type' => 'room.occupancy_changed',
+            'data' => ['room' => ['code' => $room->number], 'occupied' => true],
+        ]]]);
+
+        $this->call(
+            'POST',
+            '/api/grms/v1/events',
+            [], [], [],
+            $this->transformHeadersToServerVars($this->signedHeaders($keyId, $secret, $body)),
+            $body,
+        )->assertStatus(202);
+
+        Event::assertDispatched(HotelLiveUpdated::class, function (HotelLiveUpdated $event) {
+            return in_array(HotelLivePublisher::SCOPE_OCCUPANCY_BOARD, $event->scopes, true);
+        });
     }
 
     public function test_occupancy_changed_stores_the_sensor_reading(): void

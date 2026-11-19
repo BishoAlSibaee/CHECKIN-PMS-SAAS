@@ -8,8 +8,17 @@ use App\Services\Grms\GrmsCredentialService;
 use App\Services\Grms\GrmsOutboxService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
+/**
+ * Tests the command/dispatcher's retry logic in isolation. GrmsOutboxService::
+ * enqueue() also queues a near-immediate DispatchGrmsOutboxForHotelJob
+ * (see GrmsOutboxServiceTest for that) — Queue::fake() here stops it from
+ * actually running and sending before Http::fake()/the test's own manual
+ * `attempts` setup are in place, which would otherwise corrupt
+ * next_attempt_at before the command under test even runs.
+ */
 class DispatchGrmsOutboxCommandTest extends TestCase
 {
     use \Illuminate\Foundation\Testing\DatabaseTransactions;
@@ -23,6 +32,7 @@ class DispatchGrmsOutboxCommandTest extends TestCase
     {
         parent::setUp();
         config(['grms.enabled' => true, 'grms.base_url' => 'https://grms.test/api']);
+        Queue::fake();
     }
 
     private function hotelId(): int

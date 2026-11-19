@@ -118,6 +118,10 @@ class GrmsEventsController extends Controller
         $room->save();
 
         OccupancyBoardCache::bump();
+        app(HotelLivePublisher::class)->publishBoardChanged(
+            ['type' => 'room', 'id' => $room->id],
+            'room_housekeeping_updated',
+        );
 
         return ['id' => $id, 'status' => 'accepted'];
     }
@@ -147,6 +151,10 @@ class GrmsEventsController extends Controller
         $room->save();
 
         OccupancyBoardCache::bump();
+        app(HotelLivePublisher::class)->publishBoardChanged(
+            ['type' => 'room', 'id' => $room->id],
+            'room_occupancy_updated',
+        );
 
         return ['id' => $id, 'status' => 'accepted'];
     }

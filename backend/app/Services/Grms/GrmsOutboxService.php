@@ -2,6 +2,7 @@
 
 namespace App\Services\Grms;
 
+use App\Jobs\Grms\DispatchGrmsOutboxForHotelJob;
 use App\Models\GrmsOutboxEvent;
 use Illuminate\Support\Str;
 
@@ -62,21 +63,31 @@ class GrmsOutboxService
                 'next_attempt_at' => now()->addSeconds($delaySeconds),
                 'last_error' => null,
             ]);
-
-            return $existing->fresh();
+            $event = $existing->fresh();
+        } else {
+            $event = GrmsOutboxEvent::create([
+                'event_uuid' => $payload['id'],
+                'hotel_id' => $hotelId,
+                'type' => $type,
+                'entity_type' => $entityType,
+                'entity_id' => $entityId,
+                'version' => $version,
+                'payload' => $payload,
+                'status' => GrmsOutboxEvent::STATUS_PENDING,
+                'next_attempt_at' => now()->addSeconds($delaySeconds),
+            ]);
         }
 
-        return GrmsOutboxEvent::create([
-            'event_uuid' => $payload['id'],
-            'hotel_id' => $hotelId,
-            'type' => $type,
-            'entity_type' => $entityType,
-            'entity_id' => $entityId,
-            'version' => $version,
-            'payload' => $payload,
-            'status' => GrmsOutboxEvent::STATUS_PENDING,
-            'next_attempt_at' => now()->addSeconds($delaySeconds),
-        ]);
+        // Near-immediate attempt instead of waiting for the once-a-minute
+        // DispatchGrmsOutboxCommand safety net — ->afterCommit() so the
+        // worker never races the caller's own transaction (most call sites
+        // enqueue() from inside one), ->delay() so it never fires before
+        // this event's own debounce window (suites) has elapsed.
+        DispatchGrmsOutboxForHotelJob::dispatch($hotelId)
+            ->delay(now()->addSeconds($delaySeconds))
+            ->afterCommit();
+
+        return $event;
     }
 
     /**
