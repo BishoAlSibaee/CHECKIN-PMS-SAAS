@@ -1392,8 +1392,17 @@ class ReservationController extends Controller
             $resRoom->room_id = $newRoom->id;
             $resRoom->save();
 
+            // Same convention as releaseRoomsAfterCancellation(): a room a
+            // checked-in guest just vacated needs housekeeping before it's
+            // available again — only an empty/not-yet-occupied room can go
+            // straight to available. Matches GRMS's own rule (a room it
+            // just saw checked out of defaults to "needs cleaning").
             if ($oldRoomId) {
-                $this->roomStatusService->setAvailableIfNoActiveStay($oldRoomId, $reservation->id);
+                if ((int) $resRoom->logedin === ReservationRoom::LOGEDIN_IN_HOUSE) {
+                    $this->roomStatusService->markNeedsPreparation($oldRoomId);
+                } else {
+                    $this->roomStatusService->setAvailableIfNoActiveStay($oldRoomId, $reservation->id);
+                }
             }
             $this->roomStatusService->syncForReservation($reservation->fresh(['reservationRooms']));
 

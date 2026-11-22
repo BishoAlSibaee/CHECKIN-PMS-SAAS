@@ -158,4 +158,62 @@ class MoveRoomTest extends TestCase
 
         Carbon::setTestNow();
     }
+
+    public function test_moving_a_checked_in_room_marks_the_old_room_for_cleaning(): void
+    {
+        Carbon::setTestNow('2026-08-16');
+
+        $oldRoom = $this->findOrCreateAvailableRoom('2026-08-15', '2026-08-18');
+        [$reservation, $resRoom] = $this->makeInHouseReservation($oldRoom, '2026-08-15', '2026-08-18');
+        $resRoom->logedin = ReservationRoom::LOGEDIN_IN_HOUSE;
+        $resRoom->save();
+
+        $newRoom = $this->findOrCreateAvailableRoom('2026-08-16', '2026-08-18');
+
+        $user = $this->userWithApiPermissions(['view reservations', 'update reservations']);
+        $response = $this->actingAs($user, 'api')->postJson(
+            "/api/users/reservations/{$reservation->id}/rooms/{$resRoom->id}/move",
+            ['new_room_id' => $newRoom->id],
+        );
+
+        $response->assertOk();
+        $response->assertJsonPath('success', true);
+
+        $this->assertSame(
+            \App\Services\ReservationRoomStatusService::ROOM_PREPARATION,
+            $oldRoom->fresh()->roomStatus,
+            'A room a checked-in guest just moved out of must need cleaning, not go straight to available.'
+        );
+
+        Carbon::setTestNow();
+    }
+
+    public function test_moving_a_not_yet_checked_in_room_leaves_the_old_room_available(): void
+    {
+        Carbon::setTestNow('2026-08-16');
+
+        $oldRoom = $this->findOrCreateAvailableRoom('2026-08-15', '2026-08-18');
+        [$reservation, $resRoom] = $this->makeInHouseReservation($oldRoom, '2026-08-15', '2026-08-18');
+        $resRoom->logedin = ReservationRoom::LOGEDIN_NOT_IN_HOUSE;
+        $resRoom->save();
+
+        $newRoom = $this->findOrCreateAvailableRoom('2026-08-16', '2026-08-18');
+
+        $user = $this->userWithApiPermissions(['view reservations', 'update reservations']);
+        $response = $this->actingAs($user, 'api')->postJson(
+            "/api/users/reservations/{$reservation->id}/rooms/{$resRoom->id}/move",
+            ['new_room_id' => $newRoom->id],
+        );
+
+        $response->assertOk();
+        $response->assertJsonPath('success', true);
+
+        $this->assertSame(
+            \App\Services\ReservationRoomStatusService::ROOM_AVAILABLE,
+            $oldRoom->fresh()->roomStatus,
+            'A room nobody had actually checked into yet should go straight to available.'
+        );
+
+        Carbon::setTestNow();
+    }
 }
