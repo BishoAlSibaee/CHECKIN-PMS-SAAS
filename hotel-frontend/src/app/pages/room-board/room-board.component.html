@@ -58,31 +58,31 @@
       <button type="button" class="board-stat board-stat--vacant"
               [class.board-stat--active]="isKpiActive('vacant')"
               (click)="setStatusFromKpi('vacant')">
-        <span class="board-stat__label">{{ 'ROOM_BOARD.KPI_VACANT' | translate }}</span>
+        <span class="board-stat__label"><span class="material-icons kpi-icon" aria-hidden="true">check_circle</span>{{ 'ROOM_BOARD.KPI_VACANT' | translate }}</span>
         <span class="board-stat__value">{{ summaryCount('vacant') }}</span>
       </button>
       <button type="button" class="board-stat board-stat--in-house"
               [class.board-stat--active]="isKpiActive('in_house')"
               (click)="setStatusFromKpi('in_house')">
-        <span class="board-stat__label">{{ 'ROOM_BOARD.KPI_IN_HOUSE' | translate }}</span>
+        <span class="board-stat__label"><span class="material-icons kpi-icon" aria-hidden="true">person</span>{{ 'ROOM_BOARD.KPI_IN_HOUSE' | translate }}</span>
         <span class="board-stat__value">{{ summaryCount('in_house') }}</span>
       </button>
       <button type="button" class="board-stat board-stat--arrival"
               [class.board-stat--active]="isKpiActive('check_in_today')"
               (click)="setStatusFromKpi('check_in_today')">
-        <span class="board-stat__label">{{ 'ROOM_BOARD.KPI_CHECK_IN_TODAY' | translate }}</span>
+        <span class="board-stat__label"><i class="bi" [ngClass]="statusIcon('check_in_today')" aria-hidden="true"></i>{{ 'ROOM_BOARD.KPI_CHECK_IN_TODAY' | translate }}</span>
         <span class="board-stat__value">{{ summaryCount('check_in_today') }}</span>
       </button>
       <button type="button" class="board-stat board-stat--departure"
               [class.board-stat--active]="isKpiActive('check_out_today')"
               (click)="setStatusFromKpi('check_out_today')">
-        <span class="board-stat__label">{{ 'ROOM_BOARD.KPI_CHECK_OUT_TODAY' | translate }}</span>
+        <span class="board-stat__label"><i class="bi" [ngClass]="statusIcon('check_out_today')" aria-hidden="true"></i>{{ 'ROOM_BOARD.KPI_CHECK_OUT_TODAY' | translate }}</span>
         <span class="board-stat__value">{{ summaryCount('check_out_today') }}</span>
       </button>
       <button type="button" class="board-stat board-stat--prep board-stat--secondary-kpi"
               [class.board-stat--active]="isKpiActive('preparation')"
               (click)="setStatusFromKpi('preparation')">
-        <span class="board-stat__label">{{ 'ROOM_BOARD.KPI_PREPARATION' | translate }}</span>
+        <span class="board-stat__label"><span class="material-icons kpi-icon" aria-hidden="true">cleaning_services</span>{{ 'ROOM_BOARD.KPI_PREPARATION' | translate }}</span>
         <span class="board-stat__value">{{ summaryCount('preparation') }}</span>
       </button>
       <div class="board-stat board-stat--rate board-stat--secondary-kpi">
@@ -287,7 +287,7 @@
                 <tbody>
                   <tr *ngFor="let room of suite.rooms; trackBy: trackByRoomId" class="list-row list-row--clickable"
                       [ngClass]="statusClass(room.occupancy_status)" (click)="openCreateReservation(room)">
-                    <td class="fw-bold">#{{ room.number }}</td>
+                    <td class="fw-bold">{{ room.number }}</td>
                     <td>{{ room.room_type_name }}</td>
                     <td>
                       <span class="badge status-badge" [ngClass]="statusClass(room.occupancy_status)">
@@ -356,7 +356,7 @@
                 <tbody>
                   <tr *ngFor="let room of floor.standaloneRooms; trackBy: trackByRoomId" class="list-row list-row--clickable"
                       [ngClass]="statusClass(room.occupancy_status)" (click)="openCreateReservation(room)">
-                    <td class="fw-bold">#{{ room.number }}</td>
+                    <td class="fw-bold">{{ room.number }}</td>
                     <td>{{ room.room_type_name }}</td>
                     <td>
                       <span class="badge status-badge" [ngClass]="statusClass(room.occupancy_status)">
@@ -427,24 +427,26 @@
            tabindex="0"
            role="button"
            [attr.aria-label]="('DASHBOARD.ROOM' | translate) + ' ' + room.number">
-        <div class="d-flex justify-content-between align-items-start gap-1 mb-1">
-          <div class="min-w-0">
-            <div class="room-number">
-              #{{ room.number }}
-              <i class="bi grms-occupancy-icon"
-                 *ngIf="room.grms_occupied !== null && room.grms_occupied !== undefined"
-                 [class.bi-person-fill]="room.grms_occupied"
-                 [class.text-danger]="room.grms_occupied"
-                 [class.bi-person]="!room.grms_occupied"
-                 [class.text-muted]="!room.grms_occupied"
-                 [title]="(room.grms_occupied ? ('ROOM_BOARD.GRMS_OCCUPIED' | translate) : ('ROOM_BOARD.GRMS_VACANT' | translate)) + (room.grms_occupancy_changed_at ? ' — ' + (room.grms_occupancy_changed_at | date:'short') : '')"
-                 aria-hidden="true"></i>
-            </div>
-            <div class="room-type text-truncate">{{ room.room_type_name }}</div>
-            <div class="suite-badge text-truncate" *ngIf="room.suite_name && !compact">{{ room.suite_name }}</div>
+        <div class="room-card__top-row mb-1">
+          <span class="status-chip" [title]="('ROOM_BOARD.STATUS_' + room.occupancy_status.toUpperCase()) | translate">
+            <span class="material-icons" *ngIf="isGrmsIcon(room.occupancy_status)" aria-hidden="true">{{ statusIcon(room.occupancy_status) }}</span>
+            <i class="bi" [ngClass]="statusIcon(room.occupancy_status)" *ngIf="!isGrmsIcon(room.occupancy_status)" aria-hidden="true"></i>
+            <span class="visually-hidden">{{ ('ROOM_BOARD.STATUS_' + room.occupancy_status.toUpperCase()) | translate }}</span>
+          </span>
+          <div class="room-number">
+            {{ room.number }}
+            <i class="bi grms-occupancy-icon"
+               *ngIf="room.grms_occupied !== null && room.grms_occupied !== undefined"
+               [class.bi-person-fill]="room.grms_occupied"
+               [class.text-danger]="room.grms_occupied"
+               [class.bi-person]="!room.grms_occupied"
+               [class.text-muted]="!room.grms_occupied"
+               [title]="(room.grms_occupied ? ('ROOM_BOARD.GRMS_OCCUPIED' | translate) : ('ROOM_BOARD.GRMS_VACANT' | translate)) + (room.grms_occupancy_changed_at ? ' — ' + (room.grms_occupancy_changed_at | date:'short') : '')"
+               aria-hidden="true"></i>
           </div>
-          <span class="badge status-badge flex-shrink-0">{{ ('ROOM_BOARD.STATUS_' + room.occupancy_status.toUpperCase()) | translate }}</span>
         </div>
+        <div class="room-type text-truncate">{{ room.room_type_name }}</div>
+        <div class="suite-badge text-truncate" *ngIf="room.suite_name && !compact">{{ room.suite_name }}</div>
 
         <ng-container *ngIf="room.reservation; else vacantBlock">
           <div class="guest-name text-truncate">{{ room.reservation.client_name }}</div>

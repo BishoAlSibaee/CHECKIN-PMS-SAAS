@@ -122,13 +122,13 @@ button.board-stat:hover {
 }
 
 .board-stat--vacant {
-  border-color: rgba(34, 197, 94, 0.22);
+  border-color: rgba(15, 157, 106, 0.22);
   background: linear-gradient(155deg, rgba(240, 253, 244, 0.95), #fff 55%);
 }
 
 .board-stat--in-house {
-  border-color: rgba(15, 76, 76, 0.22);
-  background: linear-gradient(155deg, rgba(232, 238, 245, 0.95), #fff 55%);
+  border-color: rgba(29, 78, 216, 0.22);
+  background: linear-gradient(155deg, rgba(228, 236, 255, 0.95), #fff 55%);
 }
 
 .board-stat--arrival {
@@ -137,7 +137,7 @@ button.board-stat:hover {
 }
 
 .board-stat--departure {
-  border-color: rgba(245, 158, 11, 0.25);
+  border-color: rgba(146, 64, 14, 0.25);
   background: linear-gradient(155deg, rgba(255, 251, 235, 0.95), #fff 55%);
 }
 
@@ -145,6 +145,15 @@ button.board-stat:hover {
   border-color: rgba(180, 83, 9, 0.22);
   background: linear-gradient(155deg, rgba(255, 247, 237, 0.95), #fff 55%);
 }
+
+/* Icon color mirrors each status's own color everywhere else on the
+   board (card stripe, badge, room number) — same mapping as GRMS for
+   vacant/in-house/prep, see statusIcon()'s docblock. */
+.board-stat--vacant .board-stat__label .kpi-icon { color: #0f9d6a; }
+.board-stat--in-house .board-stat__label .kpi-icon { color: #1d4ed8; }
+.board-stat--arrival .board-stat__label .bi { color: #0f766e; }
+.board-stat--departure .board-stat__label .bi { color: #92400e; }
+.board-stat--prep .board-stat__label .kpi-icon { color: #b45309; }
 
 .board-stat--rate {
   cursor: default;
@@ -163,6 +172,18 @@ button.board-stat:hover {
   font-weight: 700;
   color: #475569;
   margin-bottom: 0.3rem;
+}
+
+.board-stat__label .bi {
+  margin-inline-end: 0.3rem;
+  font-size: 0.85rem;
+  vertical-align: -1px;
+}
+
+.board-stat__label .kpi-icon {
+  margin-inline-end: 0.3rem;
+  font-size: 0.95rem;
+  vertical-align: -2px;
 }
 
 .board-stat__value {
@@ -607,9 +628,14 @@ button.board-stat:hover {
 /* Compact room cards */
 .room-card {
   border-width: 1.5px;
+  border-inline-start-width: 7px;
   border-radius: 10px;
   transition: transform 0.12s ease, box-shadow 0.12s ease;
   cursor: pointer;
+}
+
+.room-card--compact {
+  border-inline-start-width: 5px;
 }
 
 .room-card:hover {
@@ -636,7 +662,7 @@ button.board-stat:hover {
 }
 
 .room-card--compact .room-number {
-  font-size: 0.78rem;
+  font-size: 1.17rem;
 }
 
 .room-card--compact .room-type {
@@ -678,11 +704,84 @@ button.board-stat:hover {
 }
 
 .room-number {
-  font-size: 0.95rem;
+  font-size: 1.425rem;
   font-weight: 700;
   line-height: 1.2;
   color: #0f172a;
 }
+
+/* GRMS's own room card always puts the status chip on the physical left
+   and the room number on the physical right, independent of the UI
+   language — direction: ltr pins that layout even when the page itself
+   is RTL (Arabic), instead of flipping with statusClass()'s host card. */
+.room-card__top-row {
+  display: flex;
+  direction: ltr;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+
+/* Matches GRMS's room card exactly: a 24px circular chip, tinted
+   background, icon colored with the status's own saturated hex —
+   not the solid-fill-plus-white-icon badge used in list/suite views. */
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-chip .bi {
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+/* Google's own required base rule for the ligature-based Material
+   Icons font (https://fonts.google.com/icons) — without it the icon
+   name renders as literal text instead of the glyph. */
+.status-chip .material-icons,
+.kpi-icon {
+  font-family: 'Material Icons';
+  font-weight: normal;
+  font-style: normal;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-smoothing: antialiased;
+}
+
+.status-chip .material-icons {
+  font-size: 0.95rem;
+}
+
+.room-card--compact .status-chip {
+  width: 19px;
+  height: 19px;
+}
+
+.room-card--compact .status-chip .bi {
+  font-size: 0.68rem;
+}
+
+.room-card--compact .status-chip .material-icons {
+  font-size: 0.75rem;
+}
+
+.room-card--vacant .status-chip { background: rgba(15, 157, 106, 0.14); color: #0f9d6a; }
+.room-card--reserved .status-chip { background: rgba(15, 76, 76, 0.14); color: #0f4c4c; }
+.room-card--in_house .status-chip { background: rgba(29, 78, 216, 0.14); color: #1d4ed8; }
+.room-card--check_in_today .status-chip { background: rgba(15, 118, 110, 0.14); color: #0f766e; }
+.room-card--check_out_today .status-chip { background: rgba(146, 64, 14, 0.14); color: #92400e; }
+.room-card--pending .status-chip { background: rgba(194, 65, 12, 0.14); color: #c2410c; }
+.room-card--preparation .status-chip { background: rgba(180, 83, 9, 0.14); color: #b45309; }
+.room-card--out_of_service .status-chip { background: rgba(100, 116, 139, 0.16); color: #64748b; }
 
 .grms-occupancy-icon {
   font-size: 0.85rem;
@@ -737,47 +836,59 @@ button.board-stat:hover {
   line-height: 1.3;
 }
 
-/* Card shell only — do not apply to standalone .status-badge on suite headers */
+/* Card shell: plain white body, status carried entirely by the bold
+   stripe on the leading edge (border-inline-start), the status chip,
+   and the room number's color — tried a tinted gradient wash across
+   the whole card first, but a flat white body read cleaner.
+   Colors/icons for vacant, in_house, preparation and out_of_service are
+   pinned to GRMS's own room-status palette (its room.component.css),
+   not chosen independently — PMS and GRMS are one product family now,
+   so a room in either app should read as the same color. GRMS has no
+   equivalent for reserved/check_in_today/check_out_today/pending, so
+   those keep PMS-only colors, reshuffled only to free up the ones GRMS
+   now owns (no new hex invented besides out_of_service's required grey
+   and vacant's exact GRMS green). */
 .room-card.room-card--vacant {
   border-color: #86efac;
-  background: linear-gradient(180deg, #f0fdf4 0%, #fff 50%);
+  border-inline-start-color: #0f9d6a;
 }
 
 .room-card.room-card--reserved {
-  border-color: #93c5fd;
-  background: linear-gradient(180deg, #eff6ff 0%, #fff 50%);
+  border-color: #5eead4;
+  border-inline-start-color: #0f4c4c;
 }
 
+/* = GRMS "Occupied" */
 .room-card.room-card--in_house {
-  border-color: #0f4c4c;
-  background: linear-gradient(180deg, #e8eef5 0%, #fff 50%);
+  border-color: #93c5fd;
+  border-inline-start-color: #1d4ed8;
 }
 
 .room-card.room-card--check_in_today {
   border-color: #2dd4bf;
-  background: linear-gradient(180deg, #f0fdfa 0%, #fff 50%);
+  border-inline-start-color: #0f766e;
 }
 
 .room-card.room-card--check_out_today {
-  border-color: #fbbf24;
-  background: linear-gradient(180deg, #fffbeb 0%, #fff 50%);
+  border-color: #fde68a;
+  border-inline-start-color: #92400e;
 }
 
 .room-card.room-card--pending {
   border-color: #fdba74;
-  background: linear-gradient(180deg, #fff7ed 0%, #fff 50%);
+  border-inline-start-color: #c2410c;
 }
 
-/* Needs cleaning / preparation (roomStatus 3) */
+/* Needs cleaning / preparation (roomStatus 3) = GRMS "Needs prep" */
 .room-card.room-card--preparation {
-  border-color: #fde68a;
-  background: linear-gradient(180deg, #fffbeb 0%, #fff 50%);
+  border-color: #fbbf24;
+  border-inline-start-color: #b45309;
 }
 
-/* Maintenance / out of service (roomStatus 4) */
+/* Maintenance / out of service (roomStatus 4) = GRMS "Out of service" */
 .room-card.room-card--out_of_service {
-  border-color: #fca5a5;
-  background: linear-gradient(180deg, #fef2f2 0%, #fff 50%);
+  border-color: #cbd5e1;
+  border-inline-start-color: #64748b;
   opacity: 0.95;
 }
 
@@ -788,25 +899,44 @@ button.board-stat:hover {
   white-space: nowrap;
 }
 
+/* Icon-only now (text moved to visually-hidden) — a touch bigger and
+   more evenly padded than the old short text label needed. */
+.status-badge .bi {
+  font-size: 0.8rem;
+  line-height: 1;
+  vertical-align: -1px;
+}
+
 /* Badge fills tuned for WCAG AA with white text on small labels */
-.room-card.room-card--vacant .status-badge { background: #15803d; color: #fff; }
-.room-card.room-card--reserved .status-badge { background: #1d4ed8; color: #fff; }
-.room-card.room-card--in_house .status-badge { background: #0f4c4c; color: #fff; }
+.room-card.room-card--vacant .status-badge { background: #0f9d6a; color: #fff; }
+.room-card.room-card--reserved .status-badge { background: #0f4c4c; color: #fff; }
+.room-card.room-card--in_house .status-badge { background: #1d4ed8; color: #fff; }
 .room-card.room-card--check_in_today .status-badge { background: #0f766e; color: #fff; }
-.room-card.room-card--check_out_today .status-badge { background: #b45309; color: #fff; }
+.room-card.room-card--check_out_today .status-badge { background: #92400e; color: #fff; }
 .room-card.room-card--pending .status-badge { background: #c2410c; color: #fff; }
-.room-card.room-card--preparation .status-badge { background: #92400e; color: #fff; }
-.room-card.room-card--out_of_service .status-badge { background: #b91c1c; color: #fff; }
+.room-card.room-card--preparation .status-badge { background: #b45309; color: #fff; }
+.room-card.room-card--out_of_service .status-badge { background: #64748b; color: #fff; }
+
+/* Room number takes the same status color as the stripe/badge, so the
+   biggest thing on the card carries the status at a glance. */
+.room-card.room-card--vacant .room-number { color: #0f9d6a; }
+.room-card.room-card--reserved .room-number { color: #0f4c4c; }
+.room-card.room-card--in_house .room-number { color: #1d4ed8; }
+.room-card.room-card--check_in_today .room-number { color: #0f766e; }
+.room-card.room-card--check_out_today .room-number { color: #92400e; }
+.room-card.room-card--pending .room-number { color: #c2410c; }
+.room-card.room-card--preparation .room-number { color: #b45309; }
+.room-card.room-card--out_of_service .room-number { color: #64748b; }
 
 /* Suite headers + list rows: badge carries status class directly */
-.status-badge.room-card--vacant { background: #15803d !important; color: #fff !important; border: none; }
-.status-badge.room-card--reserved { background: #1d4ed8 !important; color: #fff !important; border: none; }
-.status-badge.room-card--in_house { background: #0f4c4c !important; color: #fff !important; border: none; }
+.status-badge.room-card--vacant { background: #0f9d6a !important; color: #fff !important; border: none; }
+.status-badge.room-card--reserved { background: #0f4c4c !important; color: #fff !important; border: none; }
+.status-badge.room-card--in_house { background: #1d4ed8 !important; color: #fff !important; border: none; }
 .status-badge.room-card--check_in_today { background: #0f766e !important; color: #fff !important; border: none; }
-.status-badge.room-card--check_out_today { background: #b45309 !important; color: #fff !important; border: none; }
+.status-badge.room-card--check_out_today { background: #92400e !important; color: #fff !important; border: none; }
 .status-badge.room-card--pending { background: #c2410c !important; color: #fff !important; border: none; }
-.status-badge.room-card--preparation { background: #92400e !important; color: #fff !important; border: none; }
-.status-badge.room-card--out_of_service { background: #b91c1c !important; color: #fff !important; border: none; }
+.status-badge.room-card--preparation { background: #b45309 !important; color: #fff !important; border: none; }
+.status-badge.room-card--out_of_service { background: #64748b !important; color: #fff !important; border: none; }
 
 /* List view */
 .list-card {
@@ -827,27 +957,18 @@ button.board-stat:hover {
   padding: 0.4rem 0.65rem;
 }
 
-.list-row.room-card--vacant td:first-child { border-left: 3px solid #22c55e; }
-.list-row.room-card--reserved td:first-child { border-left: 3px solid #3b82f6; }
-.list-row.room-card--in_house td:first-child { border-left: 3px solid #0f4c4c; }
-.list-row.room-card--check_in_today td:first-child { border-left: 3px solid #14b8a6; }
-.list-row.room-card--check_out_today td:first-child { border-left: 3px solid #f59e0b; }
-.list-row.room-card--pending td:first-child { border-left: 3px solid #f97316; }
-.list-row.room-card--preparation td:first-child { border-left: 3px solid #f59e0b; }
-.list-row.room-card--out_of_service td:first-child { border-left: 3px solid #dc2626; }
-
-[dir="rtl"] .list-row.room-card--preparation td:first-child,
-[dir="rtl"] .list-row.room-card--out_of_service td:first-child {
-  border-left: none;
-}
-
-[dir="rtl"] .list-row.room-card--preparation td:first-child {
-  border-right: 3px solid #f59e0b;
-}
-
-[dir="rtl"] .list-row.room-card--out_of_service td:first-child {
-  border-right: 3px solid #dc2626;
-}
+/* Logical border-inline-start matches the grid card stripe colors and
+   flips sides automatically under [dir="rtl"], unlike the old border-left
+   rules this replaces (which only had a manual rtl override for 2 of 8
+   statuses). */
+.list-row.room-card--vacant td:first-child { border-inline-start: 4px solid #0f9d6a; }
+.list-row.room-card--reserved td:first-child { border-inline-start: 4px solid #0f4c4c; }
+.list-row.room-card--in_house td:first-child { border-inline-start: 4px solid #1d4ed8; }
+.list-row.room-card--check_in_today td:first-child { border-inline-start: 4px solid #0f766e; }
+.list-row.room-card--check_out_today td:first-child { border-inline-start: 4px solid #92400e; }
+.list-row.room-card--pending td:first-child { border-inline-start: 4px solid #c2410c; }
+.list-row.room-card--preparation td:first-child { border-inline-start: 4px solid #b45309; }
+.list-row.room-card--out_of_service td:first-child { border-inline-start: 4px solid #64748b; }
 
 .list-row--clickable {
   cursor: pointer;

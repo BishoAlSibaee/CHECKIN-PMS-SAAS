@@ -961,6 +961,16 @@ export class HotelService {
     });
   }
 
+  moveReservationRoom(
+    reservationId: string | number,
+    reservationRoomId: string | number,
+    data: { new_room_id: number; reprice?: boolean; move_date?: string }
+  ): Observable<any> {
+    return this.http.post<any>(`${this.dataService.Url}users/reservations/${reservationId}/rooms/${reservationRoomId}/move`, data, {
+      headers: this.dataService.getHeaders()
+    });
+  }
+
   extendReservation(id: string | number, expire_date: string): Observable<any> {
     return this.http.patch<any>(`${this.dataService.Url}users/reservations/${id}/extend`, { expire_date }, {
       headers: this.dataService.getHeaders()

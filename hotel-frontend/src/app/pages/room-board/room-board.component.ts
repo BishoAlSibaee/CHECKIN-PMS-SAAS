@@ -499,6 +499,39 @@ export class RoomBoardComponent implements OnInit, OnDestroy {
     return `room-card--${status}`;
   }
 
+  /** Same icon used on the board-summary KPI cards, so a room card's
+   *  status badge visually matches its corresponding count up top.
+   *  reserved/check_in_today/check_out_today/pending have no GRMS
+   *  equivalent, so they keep their own Bootstrap Icons glyph. */
+  private static readonly STATUS_ICONS: Record<string, string> = {
+    reserved: 'bi-calendar-check',
+    check_in_today: 'bi-box-arrow-in-right',
+    check_out_today: 'bi-box-arrow-right',
+    pending: 'bi-hourglass-split',
+  };
+
+  /** vacant/in_house/preparation/out_of_service are pinned to GRMS's own
+   *  room-status icons exactly — same Material Icons glyph, not a
+   *  Bootstrap Icons lookalike, since an approximate icon (e.g. a paint
+   *  brush standing in for "cleaning_services") still reads as a
+   *  different icon side-by-side with the real GRMS card. */
+  private static readonly GRMS_MATERIAL_ICONS: Record<string, string> = {
+    vacant: 'check_circle',
+    in_house: 'person',
+    preparation: 'cleaning_services',
+    out_of_service: 'build',
+  };
+
+  isGrmsIcon(status: string): boolean {
+    return status in RoomBoardComponent.GRMS_MATERIAL_ICONS;
+  }
+
+  statusIcon(status: string): string {
+    return RoomBoardComponent.GRMS_MATERIAL_ICONS[status]
+      ?? RoomBoardComponent.STATUS_ICONS[status]
+      ?? 'bi-question-circle';
+  }
+
   /** Width tier so small suites (e.g. 2 rooms) can sit side-by-side on the board. */
   suiteBlockClass(suite: RoomBoardSuiteGroup): string {
     const count = suite.rooms.length;

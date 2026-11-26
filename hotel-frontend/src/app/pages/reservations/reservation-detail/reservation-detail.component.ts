@@ -59,7 +59,7 @@ export class ReservationDetailComponent implements OnInit, OnDestroy {
   readonly POS_CHARGE_STATUS_ACTIVE = POS_CHARGE_STATUS_ACTIVE;
   readonly POS_PAYMENT_STATUS_CHARGED_TO_ROOM = POS_PAYMENT_STATUS_CHARGED_TO_ROOM;
   priceBreakdownLines: PriceBreakdownLine[] = [];
-  assignedRooms: { resRoomId?: number; number: string; typeName: string; building?: string; floor?: string; roomStatus: number; needsCleaning: boolean; isCancelled: boolean; logedin: number }[] = [];
+  assignedRooms: { resRoomId?: number; roomId?: number; buildingId?: number; number: string; typeName: string; building?: string; floor?: string; roomStatus: number; needsCleaning: boolean; isCancelled: boolean; logedin: number }[] = [];
   roomsDisplay = '—';
   paidAmount = 0;
   balanceDue = 0;
@@ -76,10 +76,16 @@ export class ReservationDetailComponent implements OnInit, OnDestroy {
   showRedeemModal = false;
   showMoreActions = false;
   showDateChangeModal = false;
+  showMoveRoomModal = false;
   refundPreview: any = null;
   dateChangePreview: any = null;
   refundPreviewLoading = false;
   dateChangePreviewLoading = false;
+  moveRoomTarget: { resRoomId?: number; roomId?: number; buildingId?: number; number: string } | null = null;
+  moveRoomOptions: any[] = [];
+  moveRoomOptionsLoading = false;
+  moveRoomSelectedId: number | null = null;
+  moveRoomReprice = false;
   extendExpireDate = '';
   shortenExpireDate = '';
   partialRefundPreview: any = null;
@@ -534,6 +540,8 @@ export class ReservationDetailComponent implements OnInit, OnDestroy {
       const roomStatus = Number(rm?.roomStatus ?? 1);
       return {
         resRoomId: row?.id,
+        roomId: rm?.id,
+        buildingId: rm?.building?.id,
         number: rm?.number != null ? String(rm.number) : '—',
         typeName: this.hotelService.localizeRoomTypeName(rt, this.currentLang),
         building: rm?.building?.name,
@@ -980,6 +988,76 @@ export class ReservationDetailComponent implements OnInit, OnDestroy {
       error: (err) => {
         this.isSaving = false;
         this.dataService.showToast(err.error?.message || this.translate.instant('RESERVATIONS.CHECK_OUT_ROOM_FAILED'), 'error');
+      }
+    });
+  }
+
+  /** Moving works regardless of check-in state — unlike cancelRoom(), the
+   *  backend doesn't gate this on logedin (see ReservationController::
+   *  moveRoom()), so a guest already in-house who doesn't like the room
+   *  can still be relocated. */
+  canMoveRoom(rm: { isCancelled: boolean }): boolean {
+    return this.canUpdate && !this.isCancelled && !this.isStayEnded && !rm.isCancelled;
+  }
+
+  openMoveRoomModal(rm: { resRoomId?: number; roomId?: number; buildingId?: number; number: string }): void {
+    if (!rm.buildingId) {
+      this.dataService.showToast(this.translate.instant('RESERVATIONS.MOVE_ROOM_FAILED'), 'error');
+      return;
+    }
+    this.moveRoomTarget = rm;
+    this.moveRoomSelectedId = null;
+    this.moveRoomReprice = false;
+    this.moveRoomOptions = [];
+    this.showMoveRoomModal = true;
+    this.moveRoomOptionsLoading = true;
+
+    const expire = this.editExpireDate || this.booking?.checkOut || '';
+    this.hotelService.getBookingRoomAvailability({
+      building_id: rm.buildingId,
+      start_date: this.today,
+      expire_date: expire
+    }).subscribe({
+      next: (res) => {
+        this.moveRoomOptionsLoading = false;
+        const rooms = (res?.data?.rooms ?? []) as any[];
+        this.moveRoomOptions = rooms.filter((r) => r.id !== rm.roomId && r.available_for_period);
+      },
+      error: () => {
+        this.moveRoomOptionsLoading = false;
+        this.dataService.showToast(this.translate.instant('RESERVATIONS.MOVE_ROOM_FAILED'), 'error');
+      }
+    });
+  }
+
+  closeMoveRoomModal(): void {
+    if (this.isSaving) return;
+    this.showMoveRoomModal = false;
+    this.moveRoomTarget = null;
+  }
+
+  confirmMoveRoom(): void {
+    if (!this.booking || !this.moveRoomTarget?.resRoomId || !this.moveRoomSelectedId) return;
+
+    this.isSaving = true;
+    this.hotelService.moveReservationRoom(this.booking.id, this.moveRoomTarget.resRoomId, {
+      new_room_id: this.moveRoomSelectedId,
+      reprice: this.moveRoomReprice
+    }).subscribe({
+      next: (res) => {
+        this.isSaving = false;
+        if (res?.success) {
+          this.dataService.showToast(this.translate.instant('RESERVATIONS.MOVE_ROOM_OK'), 'success');
+          this.showMoveRoomModal = false;
+          this.moveRoomTarget = null;
+          this.loadBooking(this.booking!.id);
+        } else {
+          this.dataService.showToast(res?.message || this.translate.instant('RESERVATIONS.MOVE_ROOM_FAILED'), 'error');
+        }
+      },
+      error: (err) => {
+        this.isSaving = false;
+        this.dataService.showToast(err.error?.message || this.translate.instant('RESERVATIONS.MOVE_ROOM_FAILED'), 'error');
       }
     });
   }
