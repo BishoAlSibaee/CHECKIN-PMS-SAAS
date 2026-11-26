@@ -48,11 +48,14 @@ class RoomOccupancyService
             $reservation = $reservationRoom?->reservation;
             $occupancyStatus = $this->resolveOccupancyStatus($room, $reservation, $dateStr, (int) ($reservationRoom?->logedin ?? 0), (string) ($reservationRoom?->logout_time ?? ''));
 
-            // A "vacant" room must never carry a specific guest/booking in its
-            // payload — e.g. a reservation that already completed its full
-            // check-in/check-out cycle still technically "touches" today's date,
-            // but the room card must not show that stale booking as if active.
-            if ($occupancyStatus === 'vacant') {
+            // A room with no active/upcoming stay must never carry a specific
+            // guest/booking in its payload — e.g. a reservation that already
+            // completed its full check-in/check-out cycle still technically
+            // "touches" today's date, but the room card must not show that
+            // stale booking as if active. This also covers a room awaiting
+            // housekeeping after checkout ('preparation') and one taken out
+            // of service — neither has a current guest to display.
+            if (in_array($occupancyStatus, ['vacant', 'preparation', 'out_of_service'], true)) {
                 $reservation = null;
             }
 
